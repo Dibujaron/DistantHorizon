@@ -70,21 +70,23 @@ def mirrored_path(start, segs, fill, stroke=INK, sw=2.5, opacity=1.0):
             f'stroke-linejoin="round" opacity="{opacity}"/>')
 
 # ------------------------------------------------------------- PHE parts ----
-def phe_rack(top, rows, cols, bw=26, bh=19):
-    """container rack: a real bay grid. Returns (svg, bay-center list)."""
+def phe_rack(top, rows, cols, bw=24, bh=19):
+    """container rack, done the Classic way: struts protrude outward from a
+    central spine, each with small brackets that grip the containers. The
+    row struts do NOT connect to each other — no outer rails, no grid."""
     w = cols * bw
-    xs = [-w / 2 + i * bw for i in range(cols + 1)]
-    ys = [top + j * bh for j in range(rows + 1)]
-    s = ""
-    for x in xs:
-        s += line(x, top, x, top + rows * bh, PHE_TRUSS, 2.5)
-    for y in ys:
-        s += line(xs[0] - 6, y, xs[-1] + 6, y, PHE_TRUSS, 3)
-        for cap_x in (xs[0] - 6, xs[-1] + 6):
-            s += line(cap_x, y - 4, cap_x, y + 4, PHE_TRUSS, 3)
-    bays = [(xs[i] + bw / 2, ys[j] + bh / 2)
-            for j in range(rows) for i in range(cols)]
-    return s, bays
+    s = line(-3, top - 6, -3, top + rows * bh + 2, PHE_TRUSS, 2.5)
+    s += line(3, top - 6, 3, top + rows * bh + 2, PHE_TRUSS, 2.5)
+    slots = []
+    for j in range(rows):
+        y = top + (j + .5) * bh
+        s += line(-w / 2 - 6, y, w / 2 + 6, y, PHE_TRUSS, 3)
+        for i in range(cols + 1):  # container-gripping brackets
+            x = -w / 2 + i * bw
+            s += line(x, y - 6.5, x, y + 6.5, PHE_TRUSS, 2.5)
+        for i in range(cols):
+            slots.append((-w / 2 + (i + .5) * bw, y))
+    return s, slots
 
 def phe_fill_bays(bays, bw, bh, fill_count, seed):
     """seat containers IN the slots, snug to the rails"""
@@ -128,7 +130,7 @@ def phe_strut_cockpit(cy, w, h):
 def ship_thumper24():
     """24 = 24 bays: a 6x4 rack, containers seated in slots. Part loaded."""
     s = phe_mast(-128, 64)
-    rack, bays = phe_rack(-112, 6, 4, bw=24)
+    rack, bays = phe_rack(-112, 6, 4)
     s += rack
     s += phe_fill_bays(bays, 24, 19, 14, seed=24)
     s += phe_strut_cockpit(8, 34, 24)
@@ -163,22 +165,21 @@ def ship_longhorn():
         s += poly([(sx * 40 - 5, 42), (sx * 40 + 5, 42),
                    (sx * 40 + 6, 49), (sx * 40 - 6, 49)], PHE_GRAY_D, sw=1.6)
         s += f'<ellipse cx="{sx * 40}" cy="52" rx="6" ry="5" fill="url(#glow)"/>'
-    # the hammer: wide lobed bow, substantial hull
-    hammer = mirror([(0, -116), (16, -114), (34, -108), (46, -98), (46, -86),
-                     (36, -78), (18, -74), (0, -72)])
+    # the hammer: thin, winglike, purpose unclear (ask Porter)
+    hammer = mirror([(0, -108), (18, -107), (38, -102), (50, -94), (46, -86),
+                     (28, -82), (10, -80), (0, -80)])
     s += poly(hammer, PHE_GRAY, sw=2.5)
     s += poly(shrink(hammer, .84), "#9aa0a8", stroke="none", opacity=.45)
-    for sx in (-1, 1):  # orange diagonal accents on the lobes
-        s += line(sx * 20, -108, sx * 36, -96, PHE_POD, 4.5)
-        s += line(sx * 26, -84, sx * 38, -90, PHE_POD, 4)
+    for sx in (-1, 1):  # small orange wingtip caps, nothing weirder
+        s += rrect(sx * 48 - 4, -96, 8, 9, 1.5, PHE_POD, sw=1.6)
     # glass block at the hammer's top center
-    s += rrect(-11, -128, 22, 15, 3, PHE_GRAY, sw=2)
-    s += rrect(-8, -125, 16, 9, 1.5, GLASS, stroke=INK, sw=1.2)
-    s += line(0, -125, 0, -116, INK, 1.4)
+    s += rrect(-11, -120, 22, 15, 3, PHE_GRAY, sw=2)
+    s += rrect(-8, -117, 16, 9, 1.5, GLASS, stroke=INK, sw=1.2)
+    s += line(0, -117, 0, -108, INK, 1.4)
     # the neck: ribbed, windows down the middle
-    s += rrect(-14, -72, 28, 62, 2, PHE_GRAY, sw=2.2)
+    s += rrect(-14, -80, 28, 70, 2, PHE_GRAY, sw=2.2)
     for i in range(3):
-        y = -66 + i * 19
+        y = -72 + i * 21
         for rx in (-21, 14):
             s += rrect(rx, y, 7, 10, 1.5, PHE_POD, sw=1.6)
         s += rrect(-3.5, y + 2, 7, 8, 1.5, GLASS, stroke=INK, sw=1.1)
@@ -231,27 +232,43 @@ def rijay_cockpit(cy, w):
     return rrect(-w / 2, cy, w, 13, 5, GLASS, stroke=INK, sw=1.6)
 
 def ship_mockingbird():
-    """Republic cruiser energy, more birdlike: Firefly neck up front, big
-    engine block aft with tail fins around it"""
+    """the original sprite, honored: one continuous birdlike form — small
+    head, thick neck flowing into a teardrop breast — ending in a fan of
+    striped tail feathers spread around the engines"""
     s = ""
-    for sx in (-1, 1):  # tail fins radiating around the engine block (under)
-        s += poly([(sx * 16, 46), (sx * 42, 60), (sx * 46, 82), (sx * 22, 74)],
-                  RIJ_BLUE_D, sw=2)
-        s += poly([(sx * 10, 56), (sx * 28, 90), (sx * 24, 100), (sx * 8, 82)],
-                  RIJ_BLUE, sw=2)
-    head = mirror([(0, -116), (9, -112), (13, -102), (12, -92), (8, -86), (0, -84)])
-    s += poly(head, RIJ_BLUE, sw=2.2)  # the Firefly head
-    s += rijay_cockpit(-110, 15)
-    s += rrect(-6, -86, 12, 34, 3, RIJ_BLUE, sw=2.2)  # the neck
-    s += line(0, -82, 0, -54, RIJ_WHITE, 3, .9)
-    body = mirror([(0, -54), (10, -50), (18, -30), (23, 0), (25, 30), (24, 50),
-                   (0, 54)])
-    s += poly(body, RIJ_BLUE, sw=2.5)
-    s += poly(shrink(body, .8), "#5aa3ea", stroke="none", opacity=.5)
-    s += poly([(-3, -48), (3, -48), (4.5, 46), (-4.5, 46)], RIJ_WHITE, sw=1.2)
-    for sx in (-1, 1):  # cargo blisters: practicality over sleekness
-        s += rrect(sx * 24 - 5, -16, 10, 36, 4, RIJ_BLUE_D, sw=2)
-    s += rijay_engine_bank(52, 44, 3)  # the big block the fins surround
+    # tail-feather fan (under hull): striped white/blue, radiating
+    feathers = [(-44, 86, -26, 96, RIJ_WHITE), (-26, 96, -12, 102, RIJ_BLUE),
+                (-12, 102, 12, 102, RIJ_WHITE), (12, 102, 26, 96, RIJ_BLUE),
+                (26, 96, 44, 86, RIJ_WHITE)]
+    for x1, y1, x2, y2, col in feathers:
+        s += poly([(x1 * .3, 48), (x2 * .3, 48), (x2, y2), (x1, y1)], col, sw=2)
+    for sx in (-1, 1):  # outermost feathers, swept wide
+        s += poly([(sx * 12, 46), (sx * 34, 66), (sx * 52, 78), (sx * 44, 88),
+                   (sx * 24, 80)], RIJ_BLUE, sw=2)
+    # engines glow through the fan roots
+    for gx in (-13, 0, 13):
+        s += f'<ellipse cx="{gx}" cy="66" rx="7" ry="10" fill="url(#glow)"/>'
+        s += (f'<ellipse cx="{gx}" cy="61" rx="4" ry="5.5" fill="{GLOW_CORE}" '
+              f'stroke="none"/>')
+    # hull: head -> neck -> breast, one organic path (no skeleton anywhere)
+    s += mirrored_path((0, -112), [
+        ("Q", 8, -110, 10, -100),                 # head bulb
+        ("Q", 11, -91, 8, -83),                   # back of head
+        ("Q", 6, -73, 7, -61),                    # thick neck
+        ("Q", 9, -46, 16, -31),                   # breast flare
+        ("Q", 22, -13, 22, 4),                    # widest
+        ("Q", 21, 27, 14, 44),                    # taper to tail
+        ("Q", 9, 53, 0, 56)], RIJ_BLUE, sw=2.5)
+    hi = mirrored_path((0, -112), [
+        ("Q", 8, -110, 10, -100), ("Q", 11, -91, 8, -83), ("Q", 6, -73, 7, -61),
+        ("Q", 9, -46, 16, -31), ("Q", 22, -13, 22, 4), ("Q", 21, 27, 14, 44),
+        ("Q", 9, 53, 0, 56)], "#5aa3ea", stroke="none", opacity=.5)
+    s += group(hi, ty=-4, scale=.85)
+    # dorsal stripe, full length like the sprite
+    s += poly([(-2, -104), (2, -104), (3.5, 48), (-3.5, 48)], RIJ_WHITE, sw=1.1)
+    s += rrect(-4, -113, 8, 9, 3.5, GLASS, stroke=INK, sw=1.4)  # canopy at tip
+    for sx in (-1, 1):  # flank lights at the widest point
+        s += rrect(sx * 19 - 2.5, 0, 5, 7, 1.5, GLASS, stroke=INK, sw=1.1)
     return s
 
 def ship_swallow():
@@ -291,18 +308,19 @@ def radi_stern(y, w):
     return s
 
 def ship_kx6():
-    """kx6 XR: split bow, coke-bottle waist, mid-ship canopy, hidden drive"""
-    s = radi_hull((0, -92), [
-        ("L", 5, -112), ("L", 11, -130),          # prong
-        ("Q", 17, -118, 20, -96),                 # prong shoulder
-        ("Q", 27, -70, 27, -46),                  # wide: the bottle
-        ("Q", 21, -10, 21, 14),                   # narrow: the waist
-        ("Q", 21, 42, 28, 66),                    # wide again: the hips
-        ("Q", 31, 92, 22, 108),                   # taper
-        ("Q", 12, 120, 0, 124)], span_center=-3)  # stern
-    s += line(0, -92, 0, -34, RADI_TRIM, 1.4, .6)  # bow part line
-    s += radi_canopy(-4, 26)
-    s += radi_stern(112, 32)
+    """kx6 XR: split bow, coke-bottle waist, mid-ship canopy, hidden drive.
+    Same shape as round 2.1 but 2/3 the length — per review."""
+    s = radi_hull((0, -61), [
+        ("L", 5, -75), ("L", 11, -87),            # prong
+        ("Q", 17, -79, 20, -64),                  # prong shoulder
+        ("Q", 27, -47, 27, -31),                  # wide: the bottle
+        ("Q", 21, -7, 21, 9),                     # narrow: the waist
+        ("Q", 21, 28, 28, 44),                    # wide again: the hips
+        ("Q", 31, 61, 22, 72),                    # taper
+        ("Q", 12, 80, 0, 83)], span_center=-2)    # stern
+    s += line(0, -61, 0, -23, RADI_TRIM, 1.4, .6)  # bow part line
+    s += radi_canopy(-3, 26)
+    s += radi_stern(72, 32)
     return s
 
 def ship_y_interceptor():
@@ -330,10 +348,10 @@ def ship_y_interceptor():
 SHIPS = [  # (mfr, name, sub, fn, display_scale, classic_px_height, model_units)
     ("PHE", "THUMPER 24", "container freighter · 6×4 bays", ship_thumper24, .78, 64, 235),
     ("PHE", "THUMPER 6", "container freighter · 3×2 bays", ship_thumper6, .78, 32, 150),
-    ("PHE", "LONGHORN", "passenger liner · sprite name: Hammerhead", ship_longhorn, .78, 41, 200),
-    ("RIJAY", "MOCKINGBIRD", "medium fast freighter", ship_mockingbird, .85, 45, 220),
+    ("PHE", "LONGHORN", "passenger liner · sprite name: Hammerhead", ship_longhorn, .78, 41, 195),
+    ("RIJAY", "MOCKINGBIRD", "medium fast freighter", ship_mockingbird, .85, 45, 215),
     ("RIJAY", "SWALLOW", "interceptor", ship_swallow, .85, 20, 115),
-    ("RADI", "KX6 XR", "long-haul yacht", ship_kx6, .85, 52, 255),
+    ("RADI", "KX6 XR", "long-haul yacht", ship_kx6, .85, 52, 175),
     ("RADI", "Y-SERIES", "interceptor, ask no questions", ship_y_interceptor, .85, 30, 125),
 ]
 MFR_HEAD = {
