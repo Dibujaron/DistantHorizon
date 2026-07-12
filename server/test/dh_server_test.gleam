@@ -1,6 +1,8 @@
 import dh_server/protocol
 import dh_server/ship
+import dh_server/sim
 import dh_server/stats
+import gleam/erlang/process
 import gleam/float
 import gleam/list
 import gleam/string
@@ -62,6 +64,44 @@ pub fn stats_percentiles_test() {
   assert s.p95_ms == 95.0
   assert s.p99_ms == 99.0
   assert s.max_ms == 100.0
+}
+
+pub fn dead_client_is_unregistered_test() {
+  let assert Ok(started) = sim.start()
+  let sim_subject = started.data
+
+  // A fake client handler process: creates its subject (the owner must be
+  // the process that will receive on it), hands it back, then idles.
+  let handoff = process.new_subject()
+  let pid =
+    process.spawn_unlinked(fn() {
+      process.send(handoff, process.new_subject())
+      process.sleep_forever()
+    })
+  let assert Ok(client) = process.receive(handoff, 1000)
+
+  sim.register(sim_subject, client)
+  assert sim.get_stats(sim_subject, 1000).clients == 1
+
+  // Crash the client without any goodbye; the monitor must clean it up.
+  process.kill(pid)
+  assert wait_for_clients(sim_subject, 0, 100)
+}
+
+/// The Down message races our stats call, so poll briefly.
+fn wait_for_clients(
+  s: process.Subject(sim.Msg),
+  want: Int,
+  tries: Int,
+) -> Bool {
+  case sim.get_stats(s, 1000).clients == want, tries {
+    True, _ -> True
+    False, 0 -> False
+    False, _ -> {
+      process.sleep(10)
+      wait_for_clients(s, want, tries - 1)
+    }
+  }
 }
 
 pub fn snapshot_shape_test() {

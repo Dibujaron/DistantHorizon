@@ -5,8 +5,10 @@
 ////
 //// Every `snapshot_every` ticks (15 Hz) it serializes one snapshot and
 //// fans it out to all registered client subjects. WebSocket handler
-//// processes register themselves with `Register` and receive `SendText`
-//// messages to forward down their socket.
+//// processes register themselves with `register` and receive `SendText`
+//// messages to forward down their socket. The sim monitors each handler
+//// process and drops its subscription when the process exits — cleanly or
+//// by crashing — so there is no unregister to forget.
 
 import dh_server/clock
 import dh_server/protocol
@@ -31,13 +33,13 @@ const log_every = 300
 
 const us_per_second = 1_000_000
 
-pub type Msg {
+pub opaque type Msg {
   /// Advance the simulation by one step (self-scheduled).
   Tick
   /// A WebSocket connection wants to receive snapshots.
   Register(client: Subject(ClientMsg))
-  /// A WebSocket connection has gone away.
-  Unregister(client: Subject(ClientMsg))
+  /// A monitored client handler process exited (cleanly or by crashing).
+  ClientDown(down: process.Down)
   /// Reply with current tick statistics.
   GetStats(reply: Subject(stats.StatsReply))
 }
@@ -47,6 +49,23 @@ pub type ClientMsg {
   SendText(String)
 }
 
+/// Subscribe a client handler process for snapshots. The subscription lasts
+/// as long as the process owning `client` is alive; cleanup is automatic.
+pub fn register(sim: Subject(Msg), client: Subject(ClientMsg)) -> Nil {
+  process.send(sim, Register(client))
+}
+
+/// Ask the sim for its current tick statistics (blocking call).
+pub fn get_stats(sim: Subject(Msg), timeout_ms: Int) -> stats.StatsReply {
+  process.call(sim, waiting: timeout_ms, sending: GetStats)
+}
+
+/// A registered snapshot listener: the subject to push to, and the monitor
+/// on its owning process that keys its removal.
+type Client {
+  Client(monitor: process.Monitor, subject: Subject(ClientMsg))
+}
+
 type State {
   State(
     self: Subject(Msg),
@@ -54,7 +73,7 @@ type State {
     tick: Int,
     /// Monotonic time (us) when the tick loop started; scheduling anchor.
     start_us: Int,
-    clients: List(Subject(ClientMsg)),
+    clients: List(Client),
     acc: stats.Accumulator,
   )
 }
@@ -71,7 +90,17 @@ pub fn start() -> Result(actor.Started(Subject(Msg)), actor.StartError) {
         acc: stats.new(),
       )
     process.send(subject, Tick)
-    Ok(actor.initialised(state) |> actor.returning(subject))
+    // Receive our own messages plus Down notifications for every monitor
+    // this process sets up when registering clients.
+    let selector =
+      process.new_selector()
+      |> process.select(subject)
+      |> process.select_monitors(ClientDown)
+    Ok(
+      actor.initialised(state)
+      |> actor.selecting(selector)
+      |> actor.returning(subject),
+    )
   })
   |> actor.on_message(handle)
   |> actor.start
@@ -80,16 +109,30 @@ pub fn start() -> Result(actor.Started(Subject(Msg)), actor.StartError) {
 fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
   case msg {
     Tick -> run_tick(state)
-    Register(client) -> {
-      let state = State(..state, clients: [client, ..state.clients])
-      io.println("client connected (" <> int.to_string(list.length(state.clients)) <> ")")
-      actor.continue(state)
-    }
-    Unregister(client) -> {
-      let clients = list.filter(state.clients, fn(c) { c != client })
-      io.println("client disconnected (" <> int.to_string(list.length(clients)) <> ")")
+    Register(client) ->
+      case process.subject_owner(client) {
+        Ok(pid) -> {
+          let entry = Client(monitor: process.monitor(pid), subject: client)
+          let state = State(..state, clients: [entry, ..state.clients])
+          io.println(
+            "client connected ("
+            <> int.to_string(list.length(state.clients))
+            <> ")",
+          )
+          actor.continue(state)
+        }
+        // A subject with no live owner can never receive anything; drop it.
+        Error(Nil) -> actor.continue(state)
+      }
+    ClientDown(process.ProcessDown(monitor: monitor, ..)) -> {
+      let clients = list.filter(state.clients, fn(c) { c.monitor != monitor })
+      io.println(
+        "client disconnected (" <> int.to_string(list.length(clients)) <> ")",
+      )
       actor.continue(State(..state, clients: clients))
     }
+    // We only monitor processes, never ports.
+    ClientDown(process.PortDown(..)) -> actor.continue(state)
     GetStats(reply) -> {
       process.send(reply, stats_reply(state))
       actor.continue(state)
@@ -109,7 +152,7 @@ fn run_tick(state: State) -> actor.Next(State, Msg) {
     True -> {
       let snapshot = protocol.encode_snapshot(tick, ships)
       list.each(state.clients, fn(client) {
-        process.send(client, SendText(snapshot))
+        process.send(client.subject, SendText(snapshot))
       })
     }
     False -> Nil
@@ -160,5 +203,7 @@ fn log_health(state: State) -> Nil {
 }
 
 fn fmt(ms: Float) -> String {
-  float.to_string(int.to_float(float.round(ms *. 1000.0)) /. 1000.0)
+  ms
+  |> float.to_precision(3)
+  |> float.to_string
 }

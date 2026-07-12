@@ -102,8 +102,7 @@ fn make_ship(id: Int, seed: Int) -> #(Ship, Int) {
 
 /// Speed of a ship in units/second (handy for tests).
 pub fn speed(ship: Ship) -> Float {
-  let assert Ok(s) =
-    float.square_root(ship.vx *. ship.vx +. ship.vy *. ship.vy)
+  let assert Ok(s) = float.square_root(ship.vx *. ship.vx +. ship.vy *. ship.vy)
   s
 }
 

@@ -34,7 +34,13 @@ pub type Accumulator {
 }
 
 pub fn new() -> Accumulator {
-  Accumulator(window: [], window_len: 0, completed: None, all_time_max_us: 0, total_ticks: 0)
+  Accumulator(
+    window: [],
+    window_len: 0,
+    completed: None,
+    all_time_max_us: 0,
+    total_ticks: 0,
+  )
 }
 
 /// Record one tick's duration in microseconds.
@@ -53,7 +59,13 @@ pub fn record(acc: Accumulator, sample_us: Int) -> Accumulator {
         total_ticks: total,
       )
     False ->
-      Accumulator(..acc, window: window, window_len: window_len, all_time_max_us: max_us, total_ticks: total)
+      Accumulator(
+        ..acc,
+        window: window,
+        window_len: window_len,
+        all_time_max_us: max_us,
+        total_ticks: total,
+      )
   }
 }
 
