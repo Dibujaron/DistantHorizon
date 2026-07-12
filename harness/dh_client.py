@@ -23,6 +23,15 @@ class ProtocolError(Exception):
     """A message violated the wire protocol."""
 
 
+class AuthError(Exception):
+    """A login attempt was rejected by the server."""
+
+    def __init__(self, code: Optional[str], message: Optional[str]):
+        super().__init__(f"{code}: {message}")
+        self.code = code
+        self.message = message
+
+
 class DHClient:
     """Async client for the Distant Horizon WebSocket protocol.
 
@@ -109,6 +118,47 @@ class DHClient:
         raise ProtocolError(f"no '{expected_type}' message within {skip} frames")
 
     # --- Convenience wrappers for specific protocol messages ---
+
+    async def login(self, username: str, password: str) -> dict:
+        """Log in and wait for the `welcome` reply.
+
+        Raises `AuthError` if the server sends `error` instead (e.g.
+        `auth_failed`). Other message types (there normally aren't any yet,
+        since the server sends no snapshots pre-login) are skipped.
+        """
+        await self.send({"type": "login", "username": username, "password": password})
+        for _ in range(1000):
+            message = await self.recv()
+            if message["type"] == "welcome":
+                return message
+            if message["type"] == "error":
+                raise AuthError(message.get("code"), message.get("message"))
+        raise ProtocolError("no 'welcome'/'error' message within 1000 frames")
+
+    async def send_helm(self, rotate: float, thrust: float) -> None:
+        """Send helm input. Ignored server-side while docked or pre-login."""
+        await self.send({"type": "helm", "rotate": rotate, "thrust": thrust})
+
+    async def dock(self) -> dict:
+        """Request docking at the nearest station; wait for `dock_result`."""
+        await self.send({"type": "dock"})
+        return await self.recv_type("dock_result")
+
+    async def undock(self) -> dict:
+        """Request undocking; wait for `dock_result`."""
+        await self.send({"type": "undock"})
+        return await self.recv_type("dock_result")
+
+    async def next_snapshot(self) -> dict:
+        """Wait for the next `snapshot` message."""
+        return await self.recv_type("snapshot")
+
+    def ship_in(self, snapshot: dict, ship_id: int) -> Optional[dict]:
+        """Find the ship with `ship_id` in a snapshot's ship list, if present."""
+        for ship in snapshot.get("ships", []):
+            if ship.get("id") == ship_id:
+                return ship
+        return None
 
     async def get_stats(self) -> dict:
         """Request server stats and wait for the stats response."""

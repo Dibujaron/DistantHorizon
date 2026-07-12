@@ -1,12 +1,14 @@
-"""M0 decision-gate benchmark for the Distant Horizon server.
+"""M1 decision-gate benchmark for the Distant Horizon server.
 
-Connects N fake clients to the server, receives 15 Hz snapshots for a
-configurable duration, then queries server-side tick statistics and prints
-a PASS/FAIL report.
+Connects N real clients to the server (each logs in as `bench_N`, so each
+owns one player ship), receives 15 Hz snapshots for a configurable
+duration, then queries server-side tick statistics and prints a PASS/FAIL
+report.
 
 PASS requires:
   * every client achieved >= --min-rate snapshots/s (default 14),
-  * every snapshot parsed and contained exactly --ships ships (default 500),
+  * every snapshot parsed and contained exactly N ships (one per logged-in
+    client -- M1 has no fake ships, unlike M0's fixed 500),
   * snapshot ticks strictly increased,
   * server tick p99 < --budget-ms (default 5.0 ms).
 
@@ -94,6 +96,11 @@ async def check_server_fresh(args: argparse.Namespace) -> str | None:
     server may have other clients attached (a Godot client, an earlier
     benchmark), so results against it are polluted. A fresh server has only
     been ticking for however long it took us to type the two commands.
+
+    The probe connection deliberately does not log in, so it never owns a
+    ship and is never counted in the server's `clients` stat (which, since
+    M1, only counts logged-in clients -- see sim.gleam's AddShip) -- no
+    "minus our probe" adjustment needed.
     """
     probe = DHClient(args.url, name="probe")
     await probe.connect()
@@ -108,7 +115,7 @@ async def check_server_fresh(args: argparse.Namespace) -> str | None:
             f"(limit {args.max_server_age:.0f} s) - its cumulative stats would "
             "pollute this run; restart the server or pass --max-server-age 0"
         )
-    others = stats.get("clients", 1) - 1  # minus our probe
+    others = stats.get("clients", 0)
     if others > 0:
         return f"server already has {others} other client(s) connected"
     return None
@@ -133,9 +140,26 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         print(f"FAIL: could not connect: {e}")
         return 1
 
+    print(f"logging in {args.clients} clients ...")
+    try:
+        await asyncio.gather(
+            *(
+                asyncio.wait_for(c.login(f"bench_{i}", "benchmark"), timeout=5.0)
+                for i, c in enumerate(clients)
+            )
+        )
+    except Exception as e:
+        print(f"FAIL: login failed: {e}")
+        await asyncio.gather(*(c.close() for c in clients), return_exceptions=True)
+        return 1
+
+    # M1 has no fake ships: one logged-in client == one ship, so the
+    # expected ship count per snapshot is just the client count.
+    expected_ships = args.clients
+
     print(f"receiving snapshots for {args.duration:.0f} s ...")
     results = await asyncio.gather(
-        *(run_client(c, args.duration, args.ships) for c in clients)
+        *(run_client(c, args.duration, expected_ships) for c in clients)
     )
 
     # Query server stats while all clients are still connected, so the
@@ -213,7 +237,6 @@ def main() -> int:
     parser.add_argument("--url", default="ws://127.0.0.1:8484/ws")
     parser.add_argument("--clients", type=int, default=20)
     parser.add_argument("--duration", type=float, default=60.0, help="seconds to receive snapshots")
-    parser.add_argument("--ships", type=int, default=500, help="expected ships per snapshot")
     parser.add_argument("--min-rate", type=float, default=14.0, help="minimum snapshots/s per client")
     parser.add_argument("--budget-ms", type=float, default=5.0, help="server tick p99 budget")
     parser.add_argument(
