@@ -75,14 +75,15 @@ def phe_rack(top, rows, cols, bw=24, bh=19):
     central spine, each with small brackets that grip the containers. The
     row struts do NOT connect to each other — no outer rails, no grid."""
     w = cols * bw
-    s = line(-3, top - 6, -3, top + rows * bh + 2, PHE_TRUSS, 2.5)
-    s += line(3, top - 6, 3, top + rows * bh + 2, PHE_TRUSS, 2.5)
+    s = line(0, top - 6, 0, top + rows * bh + 2, PHE_TRUSS, 4)  # single spine
     slots = []
     for j in range(rows):
         y = top + (j + .5) * bh
         s += line(-w / 2 - 6, y, w / 2 + 6, y, PHE_TRUSS, 3)
         for i in range(cols + 1):  # container-gripping brackets
             x = -w / 2 + i * bw
+            if abs(x) < 1:  # skip the center one — the spine is there
+                continue
             s += line(x, y - 6.5, x, y + 6.5, PHE_TRUSS, 2.5)
         for i in range(cols):
             slots.append((-w / 2 + (i + .5) * bw, y))
@@ -172,6 +173,12 @@ def ship_longhorn():
     s += poly(shrink(hammer, .84), "#9aa0a8", stroke="none", opacity=.45)
     for sx in (-1, 1):  # small orange wingtip caps, nothing weirder
         s += rrect(sx * 48 - 4, -96, 8, 9, 1.5, PHE_POD, sw=1.6)
+    for wx in (-32, -16, 0, 16, 32):  # observation windows along the foil
+        s += rrect(wx - 3, -98, 6, 7, 1.5, GLASS, stroke=INK, sw=1.1)
+    for sx in (-1, 1):  # panel seams + vents so the foil isn't a blank
+        s += line(sx * 10, -104, sx * 40, -99, INK, 1.2, .5)
+        for vx in (24, 30, 36):
+            s += line(sx * vx, -87, sx * (vx + 4), -85, INK, 1.6, .55)
     # glass block at the hammer's top center
     s += rrect(-11, -120, 22, 15, 3, PHE_GRAY, sw=2)
     s += rrect(-8, -117, 16, 9, 1.5, GLASS, stroke=INK, sw=1.2)
@@ -237,38 +244,37 @@ def ship_mockingbird():
     striped tail feathers spread around the engines"""
     s = ""
     # tail-feather fan (under hull): striped white/blue, radiating
-    feathers = [(-44, 86, -26, 96, RIJ_WHITE), (-26, 96, -12, 102, RIJ_BLUE),
-                (-12, 102, 12, 102, RIJ_WHITE), (12, 102, 26, 96, RIJ_BLUE),
-                (26, 96, 44, 86, RIJ_WHITE)]
+    feathers = [(-44, 82, -26, 92, RIJ_WHITE), (-26, 92, -12, 98, RIJ_BLUE),
+                (-12, 98, 12, 98, RIJ_WHITE), (12, 98, 26, 92, RIJ_BLUE),
+                (26, 92, 44, 82, RIJ_WHITE)]
     for x1, y1, x2, y2, col in feathers:
-        s += poly([(x1 * .3, 48), (x2 * .3, 48), (x2, y2), (x1, y1)], col, sw=2)
+        s += poly([(x1 * .3, 44), (x2 * .3, 44), (x2, y2), (x1, y1)], col, sw=2)
     for sx in (-1, 1):  # outermost feathers, swept wide
-        s += poly([(sx * 12, 46), (sx * 34, 66), (sx * 52, 78), (sx * 44, 88),
-                   (sx * 24, 80)], RIJ_BLUE, sw=2)
+        s += poly([(sx * 12, 42), (sx * 34, 62), (sx * 52, 74), (sx * 44, 84),
+                   (sx * 24, 76)], RIJ_BLUE, sw=2)
     # engines glow through the fan roots
     for gx in (-13, 0, 13):
-        s += f'<ellipse cx="{gx}" cy="66" rx="7" ry="10" fill="url(#glow)"/>'
-        s += (f'<ellipse cx="{gx}" cy="61" rx="4" ry="5.5" fill="{GLOW_CORE}" '
+        s += f'<ellipse cx="{gx}" cy="62" rx="7" ry="10" fill="url(#glow)"/>'
+        s += (f'<ellipse cx="{gx}" cy="57" rx="4" ry="5.5" fill="{GLOW_CORE}" '
               f'stroke="none"/>')
-    # hull: head -> neck -> breast, one organic path (no skeleton anywhere)
-    s += mirrored_path((0, -112), [
-        ("Q", 8, -110, 10, -100),                 # head bulb
-        ("Q", 11, -91, 8, -83),                   # back of head
-        ("Q", 6, -73, 7, -61),                    # thick neck
-        ("Q", 9, -46, 16, -31),                   # breast flare
-        ("Q", 22, -13, 22, 4),                    # widest
-        ("Q", 21, 27, 14, 44),                    # taper to tail
-        ("Q", 9, 53, 0, 56)], RIJ_BLUE, sw=2.5)
-    hi = mirrored_path((0, -112), [
-        ("Q", 8, -110, 10, -100), ("Q", 11, -91, 8, -83), ("Q", 6, -73, 7, -61),
-        ("Q", 9, -46, 16, -31), ("Q", 22, -13, 22, 4), ("Q", 21, 27, 14, 44),
-        ("Q", 9, 53, 0, 56)], "#5aa3ea", stroke="none", opacity=.5)
+    # hull, per the sprite: straight neck, kinked bird-shoulder, flat-sided
+    # body — segmented like pixels, not an S-curve (no bowling pins)
+    segs = [("L", 8, -103),                       # angular head
+            ("Q", 10, -98, 9, -92),
+            ("L", 8, -86),                        # back of head
+            ("L", 8, -60),                        # straight thick neck
+            ("L", 19, -26),                       # the shoulder kink
+            ("Q", 21, -16, 20, -6),               # widest, briefly
+            ("L", 17, 30),                        # flat taper
+            ("Q", 14, 44, 0, 50)]                 # stern
+    s += mirrored_path((0, -112), segs, RIJ_BLUE, sw=2.5)
+    hi = mirrored_path((0, -112), segs, "#5aa3ea", stroke="none", opacity=.5)
     s += group(hi, ty=-4, scale=.85)
     # dorsal stripe, full length like the sprite
-    s += poly([(-2, -104), (2, -104), (3.5, 48), (-3.5, 48)], RIJ_WHITE, sw=1.1)
+    s += poly([(-2, -104), (2, -104), (3.5, 42), (-3.5, 42)], RIJ_WHITE, sw=1.1)
     s += rrect(-4, -113, 8, 9, 3.5, GLASS, stroke=INK, sw=1.4)  # canopy at tip
     for sx in (-1, 1):  # flank lights at the widest point
-        s += rrect(sx * 19 - 2.5, 0, 5, 7, 1.5, GLASS, stroke=INK, sw=1.1)
+        s += rrect(sx * 17 - 2.5, -12, 5, 7, 1.5, GLASS, stroke=INK, sw=1.1)
     return s
 
 def ship_swallow():
