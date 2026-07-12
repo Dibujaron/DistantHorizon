@@ -269,6 +269,10 @@ WebSocket clients receiving 15 Hz snapshots. If tick time stays comfortably unde
 and the code feels good, Gleam is confirmed. If not, fall back to **Elixir** (same architecture,
 same libraries, minimal redesign) or Kotlin (known quantity).
 
+> **Gate result (2026-07-12): PASSED — Gleam confirmed.** Steady-state tick p99 ≈ 1.1 ms
+> against the 5 ms budget with 500 ships and 20 clients at a rock-solid 15 snapshots/s.
+> Details in [docs/M0-RESULTS.md](docs/M0-RESULTS.md).
+
 ### Database: PostgreSQL
 
 Much smaller than Classic's persistence story: the live sim runs in memory, and the *world* no
@@ -532,7 +536,7 @@ what makes the game developable by agents rather than merely reviewable.
 - **M0 — Spike / decision gate (small):** Gleam tick-loop + WebSocket benchmark (see decision
   gate above); the benchmark client is the seed of the permanent protocol test harness. Godot 4
   walking-skeleton client: connect, see a dot move under server control. *Exit: server language
-  locked.*
+  locked.* **✅ Done 2026-07-12 — gate passed, Gleam locked ([results](docs/M0-RESULTS.md)).**
 - **M1 — Flight core:** one star system loaded from config (a pinned seed); planets on rails;
   flyable ship with Classic feel; two clients see each other fly; station docking; Postgres
   accounts. Protocol test harness and client automation hook land here and are used forever after.

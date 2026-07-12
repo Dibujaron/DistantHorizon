@@ -1,0 +1,5 @@
+# Godot 4 import cache / editor metadata
+.godot/
+
+# Local debug captures
+screenshot.png
