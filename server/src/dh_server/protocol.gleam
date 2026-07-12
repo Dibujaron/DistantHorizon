@@ -64,12 +64,15 @@ pub fn encode_stats(reply: StatsReply) -> String {
     #("type", json.string("stats")),
     #("ticks", json.int(reply.ticks)),
     #("clients", json.int(reply.clients)),
-    #("tick_ms", json.object([
-      #("p50", json.float(reply.stats.p50_ms)),
-      #("p95", json.float(reply.stats.p95_ms)),
-      #("p99", json.float(reply.stats.p99_ms)),
-      #("max", json.float(reply.stats.max_ms)),
-    ])),
+    #(
+      "tick_ms",
+      json.object([
+        #("p50", json.float(reply.stats.p50_ms)),
+        #("p95", json.float(reply.stats.p95_ms)),
+        #("p99", json.float(reply.stats.p99_ms)),
+        #("max", json.float(reply.stats.max_ms)),
+      ]),
+    ),
   ])
   |> json.to_string
 }

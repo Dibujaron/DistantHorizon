@@ -41,14 +41,21 @@ pub fn start() -> Result(
   }
 }
 
-fn route(req: Request(Connection), sim: Subject(sim.Msg)) -> Response(ResponseData) {
+fn route(
+  req: Request(Connection),
+  sim: Subject(sim.Msg),
+) -> Response(ResponseData) {
   case request.path_segments(req) {
     ["ws"] ->
       mist.websocket(
         request: req,
-        handler: fn(state, message, conn) { handle_ws(state, message, conn, sim) },
+        handler: fn(state, message, conn) {
+          handle_ws(state, message, conn, sim)
+        },
         on_init: fn(_conn) { ws_init(sim) },
-        on_close: fn(state) { process.send(sim, sim.Unregister(state)) },
+        // No explicit unregister: the sim monitors this handler process and
+        // drops the subscription when it exits (clean close or crash alike).
+        on_close: fn(_state) { Nil },
       )
     _ ->
       response.new(404)
@@ -61,7 +68,7 @@ fn ws_init(
   sim: Subject(sim.Msg),
 ) -> #(Subject(sim.ClientMsg), option.Option(process.Selector(sim.ClientMsg))) {
   let subject = process.new_subject()
-  process.send(sim, sim.Register(subject))
+  sim.register(sim, subject)
   let selector = process.new_selector() |> process.select(subject)
   #(subject, Some(selector))
 }
@@ -84,7 +91,7 @@ fn handle_ws(
     mist.Text(text) -> {
       case protocol.parse_client_message(text) {
         Ok(protocol.GetStats) -> {
-          let reply = process.call(sim, waiting: 1000, sending: sim.GetStats)
+          let reply = sim.get_stats(sim, 1000)
           let _ = mist.send_text_frame(conn, protocol.encode_stats(reply))
           Nil
         }
