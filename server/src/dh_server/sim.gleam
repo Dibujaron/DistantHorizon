@@ -159,34 +159,37 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
     Tick -> run_tick(state)
 
     AddShip(client, reply) -> {
-      let t = int.to_float(state.tick) *. ship.dt
-      let new_ship = ship.spawn_docked(state.next_ship_id, state.world, t)
-      let clients = case process.subject_owner(client) {
-        Ok(pid) -> [
-          Client(
-            monitor: process.monitor(pid),
-            subject: client,
-            ship_id: new_ship.id,
-          ),
-          ..state.clients
-        ]
-        // A subject with no live owner can never receive anything; still
-        // spawn the ship (and reply, below) but don't track it for
-        // snapshots or cleanup.
-        Error(Nil) -> state.clients
+      case process.subject_owner(client) {
+        Ok(pid) -> {
+          let t = int.to_float(state.tick) *. ship.dt
+          let new_ship = ship.spawn_docked(state.next_ship_id, state.world, t)
+          let state =
+            State(
+              ..state,
+              ships: [new_ship, ..state.ships],
+              next_ship_id: state.next_ship_id + 1,
+              clients: [
+                Client(
+                  monitor: process.monitor(pid),
+                  subject: client,
+                  ship_id: new_ship.id,
+                ),
+                ..state.clients
+              ],
+            )
+          process.send(reply, new_ship.id)
+          io.println(
+            "client connected ("
+            <> int.to_string(list.length(state.clients))
+            <> ")",
+          )
+          actor.continue(state)
+        }
+        // A subject whose owner is already dead will never fire ClientDown,
+        // so spawning a ship for it would leave an un-cleanable ghost in
+        // every snapshot. Don't spawn; the reply can't be received anyway.
+        Error(Nil) -> actor.continue(state)
       }
-      let state =
-        State(
-          ..state,
-          ships: [new_ship, ..state.ships],
-          next_ship_id: state.next_ship_id + 1,
-          clients: clients,
-        )
-      process.send(reply, new_ship.id)
-      io.println(
-        "client connected (" <> int.to_string(list.length(state.clients)) <> ")",
-      )
-      actor.continue(state)
     }
 
     SetControls(ship_id, rotate, thrust) -> {
