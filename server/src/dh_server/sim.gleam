@@ -83,7 +83,7 @@ pub fn start() -> Result(actor.Started(Subject(Msg)), actor.StartError) {
     let state =
       State(
         self: subject,
-        ships: ship.init_fleet(ship_count),
+        ships: [],
         tick: 0,
         start_us: clock.now_us(),
         clients: [],
@@ -144,7 +144,7 @@ fn run_tick(state: State) -> actor.Next(State, Msg) {
   let started_us = clock.now_us()
 
   // 1. Advance the world.
-  let ships = ship.advance_fleet(state.ships)
+  let ships = state.ships
   let tick = state.tick + 1
 
   // 2. Broadcast a snapshot at 15 Hz (skip serialization with no listeners).
