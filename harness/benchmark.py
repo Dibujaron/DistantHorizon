@@ -87,7 +87,44 @@ async def run_client(client: DHClient, duration: float, expected_ships: int) -> 
     return result
 
 
+async def check_server_fresh(args: argparse.Namespace) -> str | None:
+    """Return an error string if the server looks stale, else None.
+
+    The server's tick stats are cumulative since it started, and a lingering
+    server may have other clients attached (a Godot client, an earlier
+    benchmark), so results against it are polluted. A fresh server has only
+    been ticking for however long it took us to type the two commands.
+    """
+    probe = DHClient(args.url, name="probe")
+    await probe.connect()
+    try:
+        stats = await asyncio.wait_for(probe.get_stats(), timeout=5.0)
+    finally:
+        await probe.close()
+    age = stats.get("ticks", 0) / 60.0  # server ticks at 60 Hz
+    if age > args.max_server_age:
+        return (
+            f"server has already been running ~{age:.0f} s "
+            f"(limit {args.max_server_age:.0f} s) - its cumulative stats would "
+            "pollute this run; restart the server or pass --max-server-age 0"
+        )
+    others = stats.get("clients", 1) - 1  # minus our probe
+    if others > 0:
+        return f"server already has {others} other client(s) connected"
+    return None
+
+
 async def run_benchmark(args: argparse.Namespace) -> int:
+    if args.max_server_age > 0:
+        try:
+            stale = await check_server_fresh(args)
+        except Exception as e:
+            print(f"FAIL: could not probe server at {args.url}: {e}")
+            return 1
+        if stale:
+            print(f"FAIL: {stale}")
+            return 1
+
     print(f"connecting {args.clients} clients to {args.url} ...")
     clients = [DHClient(args.url, name=f"c{i:02d}") for i in range(args.clients)]
     try:
@@ -179,6 +216,11 @@ def main() -> int:
     parser.add_argument("--ships", type=int, default=500, help="expected ships per snapshot")
     parser.add_argument("--min-rate", type=float, default=14.0, help="minimum snapshots/s per client")
     parser.add_argument("--budget-ms", type=float, default=5.0, help="server tick p99 budget")
+    parser.add_argument(
+        "--max-server-age", type=float, default=30.0,
+        help="fail if the server has been up longer than this many seconds "
+        "or has other clients attached (0 disables the freshness check)",
+    )
     args = parser.parse_args()
     return asyncio.run(run_benchmark(args))
 
