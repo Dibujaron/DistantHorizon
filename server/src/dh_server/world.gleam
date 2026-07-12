@@ -12,9 +12,11 @@
 ////     + (2*pi*radius/period_s) * (-sin(angle), cos(angle))
 //// The star has no orbit: position (0,0), velocity (0,0).
 ////
-//// Gravity: every body (never stations) with mu > 0 pulls ships toward it,
-//// `a = mu / max(r, body_radius)^2`, clamped at the body's radius so the
-//// pull never blows up for a ship that ends up inside the body.
+//// Gravity: every body (never stations) with mu > 0 pulls ships toward it
+//// along the true unit vector, with magnitude `mu / max(r, body_radius)^2`
+//// — the denominator is clamped at the body's radius so the pull holds
+//// flat (never blows up) inside the body. At the exact centre (r = 0) the
+//// direction is undefined and the body contributes nothing.
 
 import gleam/dynamic/decode
 import gleam/float
@@ -176,9 +178,15 @@ pub fn gravity_at(
         let dx = bx -. x
         let dy = by -. y
         let assert Ok(r) = float.square_root(dx *. dx +. dy *. dy)
-        let r_clamped = float.max(r, body.radius)
-        let a_mag = body.mu /. { r_clamped *. r_clamped }
-        #(ax +. a_mag *. dx /. r_clamped, ay +. a_mag *. dy /. r_clamped)
+        case r == 0.0 {
+          // At the exact centre the direction is undefined; no pull.
+          True -> acc
+          False -> {
+            let r_clamped = float.max(r, body.radius)
+            let a_mag = body.mu /. { r_clamped *. r_clamped }
+            #(ax +. a_mag *. dx /. r, ay +. a_mag *. dy /. r)
+          }
+        }
       }
     }
   })

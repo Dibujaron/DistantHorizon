@@ -8,6 +8,12 @@ const two_pi = 6.283185307179586
 
 const epsilon = 0.000001
 
+@external(erlang, "math", "cos")
+fn cos(x: Float) -> Float
+
+@external(erlang, "math", "sin")
+fn sin(x: Float) -> Float
+
 fn close(a: Float, b: Float) -> Bool {
   float.absolute_value(a -. b) <. epsilon
 }
@@ -152,9 +158,37 @@ pub fn gravity_points_toward_star_test() {
 
 pub fn gravity_clamp_holds_inside_body_radius_test() {
   let w = star_only_world()
-  // Well inside the star's 500-unit radius: acceleration must not blow up.
+  // Inside the star's 500-unit radius (0 < r < body_radius): the magnitude
+  // holds flat at exactly mu / body_radius^2, along the true unit vector
+  // toward the centre (from (10, 0) that is -x).
   let #(ax, ay) = world.gravity_at(w, 10.0, 0.0, 0.0)
   let assert Ok(magnitude) = float.square_root(ax *. ax +. ay *. ay)
-  let max_possible = 20_000_000.0 /. { 500.0 *. 500.0 }
-  assert magnitude <=. max_possible +. epsilon
+  let expected = 20_000_000.0 /. { 500.0 *. 500.0 }
+  assert close(magnitude, expected)
+  assert ax <. 0.0
+  assert close(ay, 0.0)
+}
+
+pub fn station_velocity_chains_through_planet_test() {
+  let assert Ok(w) = world.load("worlds/m1_system.json")
+  let t = 100.0
+  // Hand-computed expectation from the bundled world: meridian's orbital
+  // velocity around the star (radius 4000, period 900, phase 0) plus
+  // meridian_highport's own orbital velocity term around meridian
+  // (radius 400, period 180, phase 0).
+  let planet_angle = two_pi *. t /. 900.0
+  let planet_omega_r = two_pi *. 4000.0 /. 900.0
+  let station_angle = two_pi *. t /. 180.0
+  let station_omega_r = two_pi *. 400.0 /. 180.0
+  let expected_vx =
+    0.0
+    -. planet_omega_r
+    *. sin(planet_angle)
+    -. station_omega_r
+    *. sin(station_angle)
+  let expected_vy =
+    planet_omega_r *. cos(planet_angle) +. station_omega_r *. cos(station_angle)
+  let #(vx, vy) = world.station_velocity(w, "meridian_highport", t)
+  assert close(vx, expected_vx)
+  assert close(vy, expected_vy)
 }
