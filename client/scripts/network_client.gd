@@ -6,11 +6,13 @@ extends Node
 ## when the connection drops. All protocol knowledge for the client lives
 ## here so the rendering layer never touches raw JSON.
 
-signal snapshot_received(tick: int, ships: Array)
+## `ships` is an Array[ShipState] parsed off the wire.
+signal snapshot_received(tick: int, ships: Array[ShipState])
 signal connection_state_changed(state: ConnectionState)
 ## Sent on successful login: `world` is the full world document (schema in
-## m1-shared-context.md) - star/planets/stations with rail parameters.
-signal welcome_received(ship_id: int, world: Dictionary)
+## m1-shared-context.md) - star/planets/stations with rail parameters -
+## parsed into typed objects.
+signal welcome_received(ship_id: int, world: WorldData)
 ## Reply to a `dock`/`undock` request. `reason` is null when `ok`, otherwise
 ## one of "out_of_range" | "too_fast" | "already_docked" | "not_docked".
 signal dock_result_received(ok: bool, reason: Variant)
@@ -38,7 +40,7 @@ var ship_id: int = -1
 var account_id: int = -1
 var tick_rate: int = 60
 var dt: float = 0.016666666666666666
-var world: Dictionary = {}
+var world: WorldData = null
 var logged_in: bool = false
 
 var _socket: WebSocketPeer
@@ -146,7 +148,7 @@ func _handle_welcome(message: Dictionary) -> void:
 	dt = float(message.get("dt", dt))
 	var w: Variant = message.get("world")
 	if w is Dictionary:
-		world = w
+		world = WorldData.from_dict(w)
 	logged_in = true
 	print("[net] welcome: ship_id=%d account_id=%d" % [ship_id, account_id])
 	welcome_received.emit(ship_id, world)
@@ -163,10 +165,14 @@ func _handle_dock_result(message: Dictionary) -> void:
 	dock_result_received.emit(ok, reason)
 
 func _handle_snapshot(message: Dictionary) -> void:
-	var ships: Variant = message.get("ships")
-	if not ships is Array:
+	var raw_ships: Variant = message.get("ships")
+	if not raw_ships is Array:
 		push_warning("[net] snapshot without ships array, ignoring")
 		return
+	var ships: Array[ShipState] = []
+	for ship_data: Variant in raw_ships:
+		if ship_data is Dictionary:
+			ships.append(ShipState.from_dict(ship_data))
 	last_tick = int(message.get("tick", -1))
 	snapshot_count += 1
 	if snapshot_count == 1:

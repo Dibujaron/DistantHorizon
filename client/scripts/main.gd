@@ -22,11 +22,11 @@ const DEFAULT_ZOOM := 0.2
 
 const TRANSIENT_MESSAGE_SEC := 3.0
 
-var _ships: Array = []               # latest snapshot's ship dicts
+var _ships: Array[ShipState] = []    # latest snapshot's ships
 var _snapshot_tick: int = 0
 var _snapshot_ticks_msec: int = 0
 
-var _world: Dictionary = {}
+var _world: WorldData = null
 var _dt: float = 0.016666666666666666
 var _ship_id: int = -1
 
@@ -86,15 +86,15 @@ func _poll_helm_input() -> void:
 func _toggle_dock() -> void:
 	if not NetworkClient.logged_in:
 		return
-	var own: Variant = _own_ship()
-	if own != null and own.get("docked") != null:
+	var own := _own_ship()
+	if own != null and own.is_docked():
 		NetworkClient.send_message({"type": "undock"})
 	else:
 		NetworkClient.send_message({"type": "dock"})
 
-func _own_ship() -> Variant:
-	for ship: Dictionary in _ships:
-		if int(ship.get("id", -1)) == _ship_id:
+func _own_ship() -> ShipState:
+	for ship in _ships:
+		if ship.id == _ship_id:
 			return ship
 	return null
 
@@ -108,35 +108,27 @@ func _seconds_since_snapshot() -> float:
 func _sim_time() -> float:
 	return (float(_snapshot_tick) + TICKS_PER_SEC * _seconds_since_snapshot()) * _dt
 
-func _extrapolated_ship(ship: Dictionary, elapsed: float) -> Dictionary:
-	var out := ship.duplicate()
-	out["x"] = float(ship["x"]) + float(ship["vx"]) * elapsed
-	out["y"] = float(ship["y"]) + float(ship["vy"]) * elapsed
-	return out
-
 func _update_world_view() -> void:
 	var elapsed := _seconds_since_snapshot()
 	var t := _sim_time()
-	var extrapolated: Array = []
+	var extrapolated: Array[ShipState] = []
 	var own_pos := Vector2.ZERO
 	var own_found := false
 	var own_undocked := true
-	for ship: Dictionary in _ships:
-		var e := _extrapolated_ship(ship, elapsed)
+	for ship in _ships:
+		var e := ship.extrapolated(elapsed)
 		extrapolated.append(e)
-		if int(e.get("id", -1)) == _ship_id:
-			own_pos = Vector2(float(e["x"]), float(e["y"]))
+		if e.id == _ship_id:
+			own_pos = e.position()
 			own_found = true
-			own_undocked = e.get("docked") == null
-	if not own_found and not _world.is_empty():
+			own_undocked = not e.is_docked()
+	if not own_found and _world != null and _world.spawn_station != "":
 		# No snapshot with our ship yet: center on the spawn station so the
 		# view isn't empty while we wait.
-		var spawn_station := str(_world.get("spawn_station", ""))
-		if spawn_station != "":
-			own_pos = WorldView.station_position_at(_world, spawn_station, t)
+		own_pos = _world.station_position(_world.spawn_station, t)
 	_world_view.set_frame_data(_world, t, extrapolated, _ship_id, _zoom, own_pos, own_undocked)
 
-func _on_snapshot_received(tick: int, ships: Array) -> void:
+func _on_snapshot_received(tick: int, ships: Array[ShipState]) -> void:
 	_ships = ships
 	_snapshot_tick = tick
 	_snapshot_ticks_msec = Time.get_ticks_msec()
@@ -144,7 +136,7 @@ func _on_snapshot_received(tick: int, ships: Array) -> void:
 func _on_connection_state_changed(_state: NetworkClient.ConnectionState) -> void:
 	_update_status_label()
 
-func _on_welcome_received(ship_id: int, world: Dictionary) -> void:
+func _on_welcome_received(ship_id: int, world: WorldData) -> void:
 	_ship_id = ship_id
 	_world = world
 	_dt = NetworkClient.dt
@@ -177,13 +169,11 @@ func _update_status_label() -> void:
 		NetworkClient.ConnectionState.DISCONNECTED:
 			lines.append("disconnected")
 
-	var own: Variant = _own_ship()
+	var own := _own_ship()
 	if own != null:
-		var speed := Vector2(float(own.get("vx", 0.0)), float(own.get("vy", 0.0))).length()
-		lines.append("speed %.1f u/s" % speed)
-		var docked: Variant = own.get("docked")
-		if docked != null:
-			lines.append("docked at %s" % _station_name(str(docked)))
+		lines.append("speed %.1f u/s" % own.velocity().length())
+		if own.is_docked():
+			lines.append("docked at %s" % _station_name(own.docked_at))
 		else:
 			var near := _nearest_dockable_station_name()
 			if near != "":
@@ -195,22 +185,21 @@ func _update_status_label() -> void:
 	_status_label.text = "\n".join(lines)
 
 func _station_name(station_id: String) -> String:
-	for station: Dictionary in _world.get("stations", []):
-		if str(station.get("id")) == station_id:
-			return str(station.get("name", station_id))
-	return station_id
+	if _world == null:
+		return station_id
+	return _world.station_name(station_id)
 
 ## The name of a station whose dock_radius currently contains our (raw,
 ## last-snapshot) position, or "" if none. Used only for the status-label
 ## prompt; the server is the authority on whether a `dock` actually lands.
 func _nearest_dockable_station_name() -> String:
-	var own: Variant = _own_ship()
-	if own == null or own.get("docked") != null:
+	var own := _own_ship()
+	if own == null or own.is_docked() or _world == null:
 		return ""
-	var own_pos := Vector2(float(own["x"]), float(own["y"]))
+	var own_pos := own.position()
 	var t := _sim_time()
-	for station: Dictionary in _world.get("stations", []):
-		var pos := WorldView.station_position_at(_world, str(station.get("id")), t)
-		if own_pos.distance_to(pos) <= float(station.get("dock_radius", 0.0)):
-			return str(station.get("name", station.get("id")))
+	for station in _world.stations:
+		var pos := _world.station_position(station.id, t)
+		if own_pos.distance_to(pos) <= station.dock_radius:
+			return station.name
 	return ""

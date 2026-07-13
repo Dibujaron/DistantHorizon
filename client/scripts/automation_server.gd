@@ -37,10 +37,10 @@ var _recv_buffer: PackedByteArray = PackedByteArray()
 ## handled (and answered) before the pending screenshot's response.
 var _handling: bool = false
 
-## Latest snapshot's raw ship list, tracked independently of the game
+## Latest snapshot's ships (ShipState), tracked independently of the game
 ## scene so this hook only depends on the NetworkClient autoload's public
 ## signals/fields, not on main.gd's private render-loop state.
-var _latest_ships: Array = []
+var _latest_ships: Array[ShipState] = []
 
 func _ready() -> void:
 	if not OS.is_debug_build():
@@ -58,7 +58,7 @@ func _ready() -> void:
 	NetworkClient.snapshot_received.connect(_on_snapshot_received)
 	print("[automation] listening on %s:%d" % [HOST, PORT])
 
-func _on_snapshot_received(_tick: int, ships: Array) -> void:
+func _on_snapshot_received(_tick: int, ships: Array[ShipState]) -> void:
 	_latest_ships = ships
 
 func _process(_delta: float) -> void:
@@ -194,22 +194,21 @@ func _dump_state() -> Dictionary:
 		"status_label": _status_label_text(),
 		"scene_tree": _dump_scene_tree(),
 	}
-	var own_ship: Variant = _find_own_ship()
+	var own_ship := _find_own_ship()
 	if own_ship != null:
-		state["ship_x"] = float(own_ship.get("x", 0.0))
-		state["ship_y"] = float(own_ship.get("y", 0.0))
-		state["ship_heading"] = float(own_ship.get("heading", 0.0))
-		state["ship_speed"] = Vector2(
-			float(own_ship.get("vx", 0.0)), float(own_ship.get("vy", 0.0))
-		).length()
-		state["ship_docked"] = own_ship.get("docked")
+		state["ship_x"] = own_ship.x
+		state["ship_y"] = own_ship.y
+		state["ship_heading"] = own_ship.heading
+		state["ship_speed"] = own_ship.velocity().length()
+		# null while flying free, matching the wire protocol's `docked` field.
+		state["ship_docked"] = own_ship.docked_at if own_ship.is_docked() else null
 	return state
 
-func _find_own_ship() -> Variant:
+func _find_own_ship() -> ShipState:
 	if NetworkClient.ship_id < 0:
 		return null
-	for ship: Dictionary in _latest_ships:
-		if int(ship.get("id", -1)) == NetworkClient.ship_id:
+	for ship in _latest_ships:
+		if ship.id == NetworkClient.ship_id:
 			return ship
 	return null
 

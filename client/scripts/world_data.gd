@@ -1,0 +1,129 @@
+class_name WorldData
+extends RefCounted
+## Typed view of the wire protocol's world document (schema in
+## m1-shared-context.md), parsed once at welcome (network_client.gd) so the
+## rest of the client never touches raw JSON dictionaries.
+##
+## Rail math mirrors `world.gleam` / `harness/test_m1_flight.py`'s
+## `station_rail_position` exactly:
+##   angle(t) = phase * TAU + TAU * t / period_s
+##   position(t) = parent_position(t) + radius * (cos(angle), sin(angle))
+## Parents chain station -> planet -> star; the star (orbit null) is fixed
+## at the origin.
+
+
+## Circular rail around a parent body.
+class Orbit:
+	var radius: float
+	var period_s: float
+	var phase: float
+
+	static func from_dict(data: Dictionary) -> Orbit:
+		var orbit := Orbit.new()
+		orbit.radius = float(data.get("radius", 0.0))
+		orbit.period_s = float(data.get("period_s", 1.0))
+		orbit.phase = float(data.get("phase", 0.0))
+		return orbit
+
+	## Rail position at sim time `at_t`, given the parent's position then.
+	func position_at(parent_pos: Vector2, at_t: float) -> Vector2:
+		var angle := phase * TAU + TAU * at_t / period_s
+		return parent_pos + Vector2(cos(angle), sin(angle)) * radius
+
+
+## A celestial body: the star (no orbit, fixed at the origin) or a planet
+## on a rail around its parent.
+class Body:
+	var id: String
+	var kind: String  ## "star" | "planet"
+	var radius: float  ## physical radius, world units
+	var parent_id: String  ## "" for the star
+	var orbit: Orbit  ## null for the star
+
+	static func from_dict(data: Dictionary) -> Body:
+		var body := Body.new()
+		body.id = str(data.get("id", ""))
+		body.kind = str(data.get("kind", ""))
+		body.radius = float(data.get("radius", 0.0))
+		var parent: Variant = data.get("parent")
+		body.parent_id = "" if parent == null else str(parent)
+		var orbit: Variant = data.get("orbit")
+		body.orbit = Orbit.from_dict(orbit) if orbit is Dictionary else null
+		return body
+
+
+## A dockable station on a rail around its parent body.
+class Station:
+	var id: String
+	var name: String
+	var parent_id: String
+	var dock_radius: float
+	var orbit: Orbit
+
+	static func from_dict(data: Dictionary) -> Station:
+		var station := Station.new()
+		station.id = str(data.get("id", ""))
+		station.name = str(data.get("name", station.id))
+		station.parent_id = str(data.get("parent", ""))
+		station.dock_radius = float(data.get("dock_radius", 0.0))
+		var orbit: Variant = data.get("orbit")
+		station.orbit = Orbit.from_dict(orbit) if orbit is Dictionary else null
+		return station
+
+
+var bodies: Array[Body] = []
+var stations: Array[Station] = []
+var spawn_station: String = ""
+
+
+static func from_dict(data: Dictionary) -> WorldData:
+	var world := WorldData.new()
+	for body_data: Variant in data.get("bodies", []):
+		if body_data is Dictionary:
+			world.bodies.append(Body.from_dict(body_data))
+	for station_data: Variant in data.get("stations", []):
+		if station_data is Dictionary:
+			world.stations.append(Station.from_dict(station_data))
+	world.spawn_station = str(data.get("spawn_station", ""))
+	return world
+
+
+func find_body(body_id: String) -> Body:
+	for body in bodies:
+		if body.id == body_id:
+			return body
+	return null
+
+
+func find_station(station_id: String) -> Station:
+	for station in stations:
+		if station.id == station_id:
+			return station
+	return null
+
+
+## Display name for a station id, falling back to the id itself.
+func station_name(station_id: String) -> String:
+	var station := find_station(station_id)
+	return station_id if station == null else station.name
+
+
+## Rail position of a body at sim time `at_t`, chaining through its parent.
+## Matches `world.body_position` in world.gleam.
+func body_position(body_id: String, at_t: float) -> Vector2:
+	var body := find_body(body_id)
+	if body == null or body.orbit == null:
+		return Vector2.ZERO
+	var parent_pos := Vector2.ZERO
+	if body.parent_id != "":
+		parent_pos = body_position(body.parent_id, at_t)
+	return body.orbit.position_at(parent_pos, at_t)
+
+
+## Rail position of a station at sim time `at_t`, chaining through its
+## parent body. Matches `world.station_position` in world.gleam.
+func station_position(station_id: String, at_t: float) -> Vector2:
+	var station := find_station(station_id)
+	if station == null or station.orbit == null:
+		return Vector2.ZERO
+	return station.orbit.position_at(body_position(station.parent_id, at_t), at_t)
