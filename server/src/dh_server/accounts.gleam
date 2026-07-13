@@ -6,9 +6,9 @@
 //// TODO(pre-launch): upgrade password hashing to a proper KDF (argon2/bcrypt).
 
 import dh_server/auth.{type AuthError, InvalidCredentials, StorageError}
+import dh_server/sql
 import gleam/bit_array
 import gleam/crypto
-import gleam/dynamic/decode
 import gleam/erlang/process
 import gleam/option.{type Option, None, Some}
 import gleam/result
@@ -103,32 +103,24 @@ fn login_or_register(
 ) -> Result(Int, AuthError) {
   use existing <- result.try(find_account(db, username))
   case existing {
-    Some(#(id, password_hash, salt)) ->
-      case hash_password(password, salt) == password_hash {
-        True -> Ok(id)
+    Some(account) ->
+      case hash_password(password, account.salt) == account.password_hash {
+        True -> Ok(account.id)
         False -> Error(InvalidCredentials)
       }
     None -> register(db, username, password)
   }
 }
 
+// The queries themselves live in `sql/*.sql` and are compiled to typed
+// functions in `dh_server/sql` by squirrel (`gleam run -m squirrel` with
+// DATABASE_URL pointing at a database that has the accounts table).
+
 fn find_account(
   db: pog.Connection,
   username: String,
-) -> Result(Option(#(Int, String, String)), AuthError) {
-  let row_decoder = {
-    use id <- decode.field(0, decode.int)
-    use password_hash <- decode.field(1, decode.string)
-    use salt <- decode.field(2, decode.string)
-    decode.success(#(id, password_hash, salt))
-  }
-  let query =
-    pog.query(
-      "SELECT id, password_hash, salt FROM accounts WHERE username = $1",
-    )
-    |> pog.parameter(pog.text(username))
-    |> pog.returning(row_decoder)
-  case pog.execute(query, on: db) {
+) -> Result(Option(sql.FindAccountRow), AuthError) {
+  case sql.find_account(db, username) {
     Ok(pog.Returned(_, [row])) -> Ok(Some(row))
     Ok(pog.Returned(_, [])) -> Ok(None)
     Ok(pog.Returned(_, _)) ->
@@ -144,20 +136,8 @@ fn register(
 ) -> Result(Int, AuthError) {
   let salt = crypto.strong_random_bytes(16) |> bit_array.base16_encode
   let password_hash = hash_password(password, salt)
-  let row_decoder = {
-    use id <- decode.field(0, decode.int)
-    decode.success(id)
-  }
-  let query =
-    pog.query(
-      "INSERT INTO accounts (username, password_hash, salt) VALUES ($1, $2, $3) RETURNING id",
-    )
-    |> pog.parameter(pog.text(username))
-    |> pog.parameter(pog.text(password_hash))
-    |> pog.parameter(pog.text(salt))
-    |> pog.returning(row_decoder)
-  case pog.execute(query, on: db) {
-    Ok(pog.Returned(_, [id])) -> Ok(id)
+  case sql.insert_account(db, username, password_hash, salt) {
+    Ok(pog.Returned(_, [row])) -> Ok(row.id)
     Ok(_) -> Error(StorageError("insert did not return an id"))
     Error(err) -> Error(StorageError(string.inspect(err)))
   }

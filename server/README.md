@@ -34,6 +34,23 @@ If Postgres is unreachable at startup, the server still boots, but falls
 back to an accept-all authenticator and prints a warning — auth is **not
 persistent** in that mode (every login succeeds and nothing is saved).
 
+### Typed queries (squirrel)
+
+The account queries live as plain SQL in `src/dh_server/sql/*.sql` and are
+compiled into typed Gleam functions (`src/dh_server/sql.gleam`, checked in)
+by [squirrel](https://hexdocs.pm/squirrel/), which type-checks each query
+against a live database at codegen time. After adding or editing a `.sql`
+file, regenerate with:
+
+```powershell
+$env:DATABASE_URL = 'postgres://postgres@127.0.0.1:5432/dh_dev'
+gleam run -m squirrel
+```
+
+The target database must already have the `accounts` table (run the server
+once, or apply `ensure_schema`). DDL stays hand-written in
+`accounts.ensure_schema`; squirrel only handles queries.
+
 Local dev setup (Windows, scoop-installed Postgres with trust auth):
 
 ```sh

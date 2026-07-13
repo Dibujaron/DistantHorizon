@@ -26,3 +26,4 @@ gleam_crypto = ">= 1.6.0 and < 2.0.0"
 
 [dev_dependencies]
 gleeunit = ">= 1.0.0 and < 2.0.0"
+squirrel = ">= 4.7.0 and < 5.0.0"
