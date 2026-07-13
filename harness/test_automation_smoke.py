@@ -67,9 +67,12 @@ def test_automation_smoke(server, tmp_path):
                 and s.get("logged_in") is True
                 and isinstance(s.get("ship_id"), int)
                 and s.get("ship_id") >= 0
+                # ship_id arrives in the welcome; the own ship's row only
+                # exists once a snapshot has landed, so wait for that too.
+                and s.get("ship_docked") is not None
             ),
             STATE_TIMEOUT_S,
-            "client to connect, log in, and receive a ship_id",
+            "client to connect, log in, and see own docked ship in a snapshot",
         )
         assert state["ship_docked"] is not None, "ships spawn docked"
         assert state["status_label"], "status label text should be non-empty once connected"

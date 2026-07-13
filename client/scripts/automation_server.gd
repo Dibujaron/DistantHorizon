@@ -28,7 +28,14 @@ const PORT := 8486
 
 var _server: TCPServer
 var _peer: StreamPeerTCP
-var _recv_buffer: String = ""
+## Raw bytes, split on newline *before* UTF-8 decoding: a multi-byte
+## character split across two TCP reads would be corrupted if each chunk
+## were decoded independently.
+var _recv_buffer: PackedByteArray = PackedByteArray()
+## True while a command handler is in flight. _cmd_screenshot awaits a
+## rendered frame, so without this guard a second buffered command would be
+## handled (and answered) before the pending screenshot's response.
+var _handling: bool = false
 
 ## Latest snapshot's raw ship list, tracked independently of the game
 ## scene so this hook only depends on the NetworkClient autoload's public
@@ -60,31 +67,35 @@ func _process(_delta: float) -> void:
 	if _peer == null:
 		if _server.is_connection_available():
 			_peer = _server.take_connection()
-			_recv_buffer = ""
+			_recv_buffer = PackedByteArray()
 			print("[automation] client connected")
 		return
 	_peer.poll()
 	match _peer.get_status():
 		StreamPeerTCP.STATUS_CONNECTED:
-			_drain_peer()
+			if not _handling:
+				_drain_peer()
 		StreamPeerTCP.STATUS_NONE, StreamPeerTCP.STATUS_ERROR:
 			print("[automation] control connection closed")
 			_peer = null
-			_recv_buffer = ""
+			_recv_buffer = PackedByteArray()
 
 func _drain_peer() -> void:
 	var available := _peer.get_available_bytes()
-	if available <= 0:
-		return
-	_recv_buffer += _peer.get_utf8_string(available)
+	if available > 0:
+		var chunk: Array = _peer.get_data(available)
+		if chunk[0] == OK:
+			_recv_buffer.append_array(chunk[1])
 	while true:
-		var newline_index := _recv_buffer.find("\n")
+		var newline_index := _recv_buffer.find(10)  # "\n"
 		if newline_index < 0:
 			break
-		var line := _recv_buffer.substr(0, newline_index).strip_edges()
-		_recv_buffer = _recv_buffer.substr(newline_index + 1)
+		var line := _recv_buffer.slice(0, newline_index).get_string_from_utf8().strip_edges()
+		_recv_buffer = _recv_buffer.slice(newline_index + 1)
 		if line != "":
-			_handle_line(line)
+			_handling = true
+			await _handle_line(line)
+			_handling = false
 
 func _handle_line(line: String) -> void:
 	var json := JSON.new()
@@ -100,7 +111,7 @@ func _handle_line(line: String) -> void:
 		"ping":
 			_respond({"ok": true, "pong": true})
 		"screenshot":
-			_cmd_screenshot(request)
+			await _cmd_screenshot(request)
 		"dump":
 			_respond({"ok": true, "state": _dump_state()})
 		"action":
