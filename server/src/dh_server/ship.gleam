@@ -121,7 +121,17 @@ pub fn try_dock(ship: Ship, world: World, t: Float) -> Result(Ship, String) {
           let relative_speed = distance(ship.vx, ship.vy, svx, svy)
           case relative_speed >. max_dock_speed {
             True -> Error("too_fast")
-            False -> Ok(Ship(..ship, dock: Docked(station_id)))
+            // Zero the helm on dock: helm input is ignored while docked, so
+            // any controls left set here would silently survive the stay
+            // and fire again on the first step after undock.
+            False ->
+              Ok(
+                Ship(
+                  ..ship,
+                  controls: Controls(rotate: 0.0, thrust: 0.0),
+                  dock: Docked(station_id),
+                ),
+              )
           }
         }
       }

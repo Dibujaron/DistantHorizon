@@ -153,6 +153,18 @@ pub fn try_dock_succeeds_in_range_at_low_speed_test() {
   assert docked.dock == Docked("s1")
 }
 
+pub fn try_dock_zeroes_controls_test() {
+  // Helm input is ignored while docked, so controls held at dock time must
+  // be cleared — otherwise they'd silently fire again on the first step
+  // after a later undock.
+  let w = stationary_dock_world()
+  let ship =
+    flying_ship(50.0, 0.0, 0.0, 0.0)
+    |> ship.set_controls(1.0, 1.0)
+  let assert Ok(docked) = ship.try_dock(ship, w, 0.0)
+  assert docked.controls == Controls(rotate: 0.0, thrust: 0.0)
+}
+
 pub fn try_dock_fails_out_of_range_test() {
   let w = stationary_dock_world()
   let ship = flying_ship(10_000.0, 10_000.0, 0.0, 0.0)
