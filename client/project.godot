@@ -1,6 +1,10 @@
 ; Engine configuration file.
 ; It's best edited using the editor UI and not directly,
 ; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
 
@@ -14,11 +18,7 @@ config/features=PackedStringArray("4.7")
 
 NetworkClient="*res://scripts/network_client.gd"
 ScreenshotHelper="*res://scripts/screenshot_helper.gd"
-
-[display]
-
-window/size/viewport_width=1152
-window/size/viewport_height=648
+AutomationServer="*res://scripts/automation_server.gd"
 
 [input]
 

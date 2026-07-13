@@ -3,9 +3,10 @@
 Python side of the permanent Distant Horizon protocol test harness: a
 reusable async client (`dh_client.py`), the M1 flight-core integration
 tests (`test_m1_flight.py`) driven by a self-managed server fixture
-(`server_fixture.py`), and the load benchmark (`benchmark.py`). Tests and
-the benchmark both talk to the server through `DHClient` so protocol
-changes stay in one place.
+(`server_fixture.py`), the load benchmark (`benchmark.py`), and a sync
+driver for the Godot client's debug automation hook (`automation.py` +
+`test_automation_smoke.py`). Tests and the benchmark both talk to the
+server through `DHClient` so protocol changes stay in one place.
 
 ## Setup
 
@@ -53,6 +54,30 @@ by server `tick` number rather than sleeping — snapshots arrive
 continuously in the background, so sleeping without reading would just
 leave old snapshots queued for the next `recv()`.
 
+## Running the client automation smoke test
+
+`test_automation_smoke.py` drives a real, on-screen Godot client process
+through the debug automation hook (`client/scripts/automation_server.gd` +
+`automation.py`): ping, dump state, undock via a SPACE key event, thrust
+via action injection, screenshot. It's marked `@pytest.mark.automation`
+and **excluded from a plain `pytest` run** (`pytest.ini` sets
+`addopts = -m "not automation"`), because it needs a real display and
+spawns a visible client window, unlike every other test here. Run it
+explicitly:
+
+```powershell
+$env:Path = "$env:USERPROFILE\scoop\shims;$env:Path"   # gleam and godot on PATH
+cd harness
+python -m pytest test_automation_smoke.py -v -m automation
+```
+
+It reuses the same `server` fixture as `test_m1_flight.py` (see above for
+the Postgres/port notes) and additionally needs `godot` on PATH. The
+automation hook only exists in debug builds launched with `--automation`
+as a user arg (`OS.is_debug_build() and "--automation" in
+OS.get_cmdline_user_args()`) -- it never opens a socket in a release
+export or an ordinary debug run.
+
 ## Running the benchmark
 
 ```powershell
@@ -98,4 +123,11 @@ cd harness; python benchmark.py --clients 5 --duration 10
   waits on, and tears down a real `gleam run` server for the test session.
 - `test_m1_flight.py` — the 6 M1 flight-core integration tests.
 - `benchmark.py` — the load/decision-gate benchmark.
+- `automation.py` — `GodotAutomation`: a sync NDJSON client for the
+  client's debug automation hook (ping/screenshot/dump/action/key), plus
+  `launch_client`/`terminate_client` process helpers.
+- `test_automation_smoke.py` — the client automation hook smoke test
+  (`@pytest.mark.automation`, excluded by default; see above).
+- `pytest.ini` — registers the `automation` marker and excludes it by
+  default (`addopts = -m "not automation"`).
 - `requirements.txt` — `websockets`, `pytest`, `pytest-asyncio`.
