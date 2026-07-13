@@ -91,7 +91,9 @@ cd harness; python benchmark.py --clients 5 --duration 10
 - `dh_client.py` — `DHClient`: connect/send/recv plus typed wrappers for
   every v1 message (`login`, `send_helm`, `dock`, `undock`,
   `next_snapshot`, `get_stats`) and `ship_in` for pulling one ship out of
-  a snapshot.
+  a snapshot. Every reply-waiting method has a default 10 s timeout
+  (override per call, `timeout=None` waits forever), so a server that
+  stops replying fails the run fast instead of hanging it.
 - `server_fixture.py` — session-scoped pytest fixture that builds, spawns,
   waits on, and tears down a real `gleam run` server for the test session.
 - `test_m1_flight.py` — the 6 M1 flight-core integration tests.

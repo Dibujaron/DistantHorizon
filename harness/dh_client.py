@@ -10,6 +10,7 @@ and a "type" discriminator (see server/src/dh_server/protocol.gleam).
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any, AsyncIterator, Optional
 
@@ -17,6 +18,12 @@ import websockets
 
 PROTOCOL_VERSION = 1
 DEFAULT_URL = "ws://127.0.0.1:8484/ws"
+
+# Default per-call timeout (seconds) for every reply-waiting API method
+# (login, dock, undock, next_snapshot, get_stats, recv_type). A server
+# regression that stops replying should fail the run fast with a clear
+# error, not hang it forever. Pass timeout=None to wait indefinitely.
+DEFAULT_TIMEOUT = 10.0
 
 
 class ProtocolError(Exception):
@@ -105,53 +112,87 @@ class DHClient:
             except websockets.ConnectionClosed:
                 return
 
-    async def recv_type(self, expected_type: str, skip: int = 1000) -> dict:
+    async def recv_type(
+        self,
+        expected_type: str,
+        skip: int = 1000,
+        timeout: Optional[float] = DEFAULT_TIMEOUT,
+    ) -> dict:
         """Receive messages until one of `expected_type` arrives.
 
         Other message types (e.g. snapshots still streaming in) are skipped,
-        up to `skip` of them.
+        up to `skip` of them. Raises `ProtocolError` if no such message
+        arrives within `timeout` seconds (None waits forever).
         """
-        for _ in range(skip):
-            message = await self.recv()
-            if message["type"] == expected_type:
-                return message
-        raise ProtocolError(f"no '{expected_type}' message within {skip} frames")
+
+        async def drain() -> dict:
+            for _ in range(skip):
+                message = await self.recv()
+                if message["type"] == expected_type:
+                    return message
+            raise ProtocolError(f"no '{expected_type}' message within {skip} frames")
+
+        if timeout is None:
+            return await drain()
+        try:
+            return await asyncio.wait_for(drain(), timeout)
+        except TimeoutError:
+            raise ProtocolError(
+                f"timed out after {timeout}s waiting for '{expected_type}'"
+            ) from None
 
     # --- Convenience wrappers for specific protocol messages ---
 
-    async def login(self, username: str, password: str) -> dict:
+    async def login(
+        self,
+        username: str,
+        password: str,
+        timeout: Optional[float] = DEFAULT_TIMEOUT,
+    ) -> dict:
         """Log in and wait for the `welcome` reply.
 
         Raises `AuthError` if the server sends `error` instead (e.g.
-        `auth_failed`). Other message types (there normally aren't any yet,
-        since the server sends no snapshots pre-login) are skipped.
+        `auth_failed`), and `ProtocolError` if neither reply arrives within
+        `timeout` seconds. Other message types (there normally aren't any
+        yet, since the server sends no snapshots pre-login) are skipped.
         """
         await self.send({"type": "login", "username": username, "password": password})
-        for _ in range(1000):
-            message = await self.recv()
-            if message["type"] == "welcome":
-                return message
-            if message["type"] == "error":
-                raise AuthError(message.get("code"), message.get("message"))
-        raise ProtocolError("no 'welcome'/'error' message within 1000 frames")
+
+        async def drain() -> dict:
+            for _ in range(1000):
+                message = await self.recv()
+                if message["type"] == "welcome":
+                    return message
+                if message["type"] == "error":
+                    raise AuthError(message.get("code"), message.get("message"))
+            raise ProtocolError("no 'welcome'/'error' message within 1000 frames")
+
+        if timeout is None:
+            return await drain()
+        try:
+            return await asyncio.wait_for(drain(), timeout)
+        except TimeoutError:
+            raise ProtocolError(
+                f"timed out after {timeout}s waiting for 'welcome'/'error'"
+            ) from None
 
     async def send_helm(self, rotate: float, thrust: float) -> None:
         """Send helm input. Ignored server-side while docked or pre-login."""
         await self.send({"type": "helm", "rotate": rotate, "thrust": thrust})
 
-    async def dock(self) -> dict:
+    async def dock(self, timeout: Optional[float] = DEFAULT_TIMEOUT) -> dict:
         """Request docking at the nearest station; wait for `dock_result`."""
         await self.send({"type": "dock"})
-        return await self.recv_type("dock_result")
+        return await self.recv_type("dock_result", timeout=timeout)
 
-    async def undock(self) -> dict:
+    async def undock(self, timeout: Optional[float] = DEFAULT_TIMEOUT) -> dict:
         """Request undocking; wait for `dock_result`."""
         await self.send({"type": "undock"})
-        return await self.recv_type("dock_result")
+        return await self.recv_type("dock_result", timeout=timeout)
 
-    async def next_snapshot(self) -> dict:
+    async def next_snapshot(self, timeout: Optional[float] = DEFAULT_TIMEOUT) -> dict:
         """Wait for the next `snapshot` message."""
-        return await self.recv_type("snapshot")
+        return await self.recv_type("snapshot", timeout=timeout)
 
     def ship_in(self, snapshot: dict, ship_id: int) -> Optional[dict]:
         """Find the ship with `ship_id` in a snapshot's ship list, if present."""
@@ -160,10 +201,10 @@ class DHClient:
                 return ship
         return None
 
-    async def get_stats(self) -> dict:
+    async def get_stats(self, timeout: Optional[float] = DEFAULT_TIMEOUT) -> dict:
         """Request server stats and wait for the stats response."""
         await self.send({"type": "get_stats"})
-        return await self.recv_type("stats")
+        return await self.recv_type("stats", timeout=timeout)
 
 
 def validate_snapshot(message: dict, expected_ships: int) -> None:

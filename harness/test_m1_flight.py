@@ -26,6 +26,8 @@ from server_fixture import server  # noqa: F401  (pytest fixture import)
 
 TICK_RATE = 60  # sim Hz
 
+TWO_PI = 6.283185307179586  # matches world.gleam's two_pi constant exactly
+
 
 async def snapshot_after_ticks(client: DHClient, after_tick: int, ticks: int) -> dict:
     """Drain snapshots until one at least `ticks` server ticks past `after_tick`."""
@@ -34,6 +36,64 @@ async def snapshot_after_ticks(client: DHClient, after_tick: int, ticks: int) ->
     while snapshot["tick"] < target:
         snapshot = await client.next_snapshot()
     return snapshot
+
+
+def _orbit_position(px: float, py: float, orbit: dict, t: float) -> tuple[float, float]:
+    """One rail hop: `orbit` around a parent at (px, py), world.gleam semantics."""
+    angle = orbit["phase"] * TWO_PI + TWO_PI * t / orbit["period_s"]
+    return (
+        px + orbit["radius"] * math.cos(angle),
+        py + orbit["radius"] * math.sin(angle),
+    )
+
+
+def station_rail_position(world: dict, station_id: str, t: float) -> tuple[float, float]:
+    """A station's analytic rail position at sim time `t`, computed from the
+    world document exactly as the server (and a real client) computes it:
+    parents chain station -> planet -> star, the star fixed at the origin."""
+    bodies = {body["id"]: body for body in world["bodies"]}
+
+    def body_position(body_id: str) -> tuple[float, float]:
+        body = bodies[body_id]
+        if body["orbit"] is None:
+            return (0.0, 0.0)
+        if body["parent"] is not None:
+            px, py = body_position(body["parent"])
+        else:
+            px, py = (0.0, 0.0)
+        return _orbit_position(px, py, body["orbit"], t)
+
+    station = next(s for s in world["stations"] if s["id"] == station_id)
+    px, py = body_position(station["parent"])
+    return _orbit_position(px, py, station["orbit"], t)
+
+
+def rail_relative_displacement(
+    world: dict,
+    station_id: str,
+    dt: float,
+    ship1: dict,
+    tick1: int,
+    ship2: dict,
+    tick2: int,
+) -> float:
+    """A ship's displacement between two snapshots, measured in the moving
+    station's frame of reference.
+
+    World-frame displacement is the wrong measure for "did the ship fly?"
+    assertions: everything near a station drifts with its rail at
+    13.96-41.89 u/s (phase-dependent), which can constructively add to or
+    destructively cancel a ~20 u thrust delta depending on uncontrolled
+    wall-clock phase at test time. Subtracting the station's analytic
+    position at each snapshot's tick removes the drift entirely, leaving
+    only the ship's own thrust-driven motion (plus negligible differential
+    gravity)."""
+    s1x, s1y = station_rail_position(world, station_id, tick1 * dt)
+    s2x, s2y = station_rail_position(world, station_id, tick2 * dt)
+    return math.hypot(
+        (ship2["x"] - s2x) - (ship1["x"] - s1x),
+        (ship2["y"] - s2y) - (ship1["y"] - s1y),
+    )
 
 
 @pytest.mark.asyncio
@@ -71,16 +131,24 @@ async def test_undock_and_fly(server):
 
         await client.send_helm(0.0, 1.0)
 
+        # Snapshots generated before the undock took effect may still be
+        # queued locally; drain until the ship shows as flying.
         snap1 = await client.next_snapshot()
+        while client.ship_in(snap1, ship_id)["docked"] is not None:
+            snap1 = await client.next_snapshot()
         ship1 = client.ship_in(snap1, ship_id)
-        assert ship1 is not None
         assert ship1["docked"] is None
 
         snap2 = await snapshot_after_ticks(client, snap1["tick"], TICK_RATE)
         ship2 = client.ship_in(snap2, ship_id)
         assert ship2["docked"] is None
 
-        moved = math.hypot(ship2["x"] - ship1["x"], ship2["y"] - ship1["y"])
+        # Displacement in the station's frame (drift removed): ~20 u for
+        # ~1 s of full thrust, regardless of the station's orbital phase.
+        moved = rail_relative_displacement(
+            welcome["world"], "meridian_highport", welcome["dt"],
+            ship1, snap1["tick"], ship2, snap2["tick"],
+        )
         assert moved > 10.0
 
         speed_before_cut = math.hypot(ship2["vx"], ship2["vy"])
@@ -111,26 +179,46 @@ async def test_two_clients_see_each_other_fly(server):
         assert undock_result["ok"] is True
         await client_a.send_helm(0.0, 1.0)
 
-        # Observe A from B's own snapshot stream.
+        # Observe A from B's own snapshot stream. Snapshots generated before
+        # the undock took effect may still be queued locally, so drain until
+        # A shows as flying (the undock reply already confirmed it happened
+        # server-side, so this converges within a couple of frames).
         snap_b1 = await client_b.next_snapshot()
+        while client_b.ship_in(snap_b1, ship_a)["docked"] is not None:
+            snap_b1 = await client_b.next_snapshot()
         a_in_b1 = client_b.ship_in(snap_b1, ship_a)
         b_in_b1 = client_b.ship_in(snap_b1, ship_b)
-        assert a_in_b1 is not None
+        assert a_in_b1["docked"] is None
         assert b_in_b1 is not None
 
         snap_b2 = await snapshot_after_ticks(client_b, snap_b1["tick"], TICK_RATE)
         a_in_b2 = client_b.ship_in(snap_b2, ship_a)
         b_in_b2 = client_b.ship_in(snap_b2, ship_b)
-
         assert a_in_b2["docked"] is None
-        moved_a = math.hypot(a_in_b2["x"] - a_in_b1["x"], a_in_b2["y"] - a_in_b1["y"])
+
+        world = welcome_b["world"]
+        dt = welcome_b["dt"]
+
+        # A flew: displacement in the station's frame (drift removed) is
+        # ~20 u for ~1 s of full thrust, deterministic regardless of where
+        # the station happens to be on its orbit right now.
+        moved_a = rail_relative_displacement(
+            world, "meridian_highport", dt,
+            a_in_b1, snap_b1["tick"], a_in_b2, snap_b2["tick"],
+        )
         assert moved_a > 10.0
 
-        # B never moved its own controls; it should still be docked, its
-        # position pinned to (and only drifting with) the station's rail.
-        assert b_in_b2["docked"] == "meridian_highport"
-        moved_b = math.hypot(b_in_b2["x"] - b_in_b1["x"], b_in_b2["y"] - b_in_b1["y"])
-        assert moved_b < moved_a
+        # B never touched its controls: it must stay docked, its position
+        # pinned exactly to the station's analytic rail position at each
+        # snapshot's tick (not merely "moving less than A", which would race
+        # A's thrust against phase-dependent station drift).
+        for b_ship, snap in ((b_in_b1, snap_b1), (b_in_b2, snap_b2)):
+            assert b_ship["docked"] == "meridian_highport"
+            sx, sy = station_rail_position(
+                world, "meridian_highport", snap["tick"] * dt
+            )
+            assert b_ship["x"] == pytest.approx(sx, abs=1e-3)
+            assert b_ship["y"] == pytest.approx(sy, abs=1e-3)
 
 
 @pytest.mark.asyncio
