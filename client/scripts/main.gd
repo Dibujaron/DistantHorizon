@@ -55,8 +55,8 @@ var _character_id: int = -1
 var _zoom: float = DEFAULT_ZOOM
 var _last_sent_rotate: float = 0.0
 var _last_sent_thrust: float = 0.0
-var _last_sent_dx: int = 0
-var _last_sent_dy: int = 0
+var _last_sent_dx: float = 0.0
+var _last_sent_dy: float = 0.0
 
 var _view_mode: ViewMode = ViewMode.SYSTEM
 var _transitioning: bool = false
@@ -110,11 +110,12 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Composes rotate in {-1,0,1} (turn_left = +1, counter-clockwise, matching
 ## the wire protocol's "rotate positive = counter-clockwise") and thrust in
 ## {0,1}, sending `helm` only when the pair actually changed so we don't
-## spam the server at input-poll rate. Only polled while seated at the
-## helm: WASD double as move intents while standing (M1 flight controls
-## work exactly as before while seated at helm).
+## spam the server at input-poll rate. Gated on *live* seat state, not the
+## animated view mode (which lags a seat change by the transition
+## duration): W/A/D fly the ship the instant the server seats us at the
+## helm, exactly as in M1, and double as move intents the instant we stand.
 func _poll_helm_input() -> void:
-	if not NetworkClient.logged_in or _view_mode != ViewMode.SYSTEM:
+	if not NetworkClient.logged_in or not _seated_at_helm():
 		return
 	var rotate := 0.0
 	if Input.is_action_pressed("turn_left"):
@@ -129,23 +130,26 @@ func _poll_helm_input() -> void:
 
 ## Composes dx,dy in {-1,0,1} (y+ is down, matching tile coords) and sends
 ## `move` only on change. Skipped while seated (move input is ignored
-## server-side while seated, so there's nothing useful to send).
+## server-side while seated, so there's nothing useful to send). dx/dy are
+## floats, like the helm poller's rotate/thrust: the server decodes these
+## fields as floats, and a GDScript int would serialize as a bare JSON int
+## (`1`, not `1.0`) and be rejected.
 func _poll_move_input() -> void:
 	if not NetworkClient.logged_in:
 		return
 	var own_char := _own_character()
 	if own_char == null or own_char.is_seated():
 		return
-	var dx := 0
-	var dy := 0
+	var dx := 0.0
+	var dy := 0.0
 	if Input.is_action_pressed("move_left"):
-		dx -= 1
+		dx -= 1.0
 	if Input.is_action_pressed("move_right"):
-		dx += 1
+		dx += 1.0
 	if Input.is_action_pressed("move_up"):
-		dy -= 1
+		dy -= 1.0
 	if Input.is_action_pressed("move_down"):
-		dy += 1
+		dy += 1.0
 	if dx != _last_sent_dx or dy != _last_sent_dy:
 		NetworkClient.send_message({"type": "move", "dx": dx, "dy": dy})
 		_last_sent_dx = dx
@@ -197,6 +201,20 @@ func _own_character() -> CharacterState:
 		if character.id == _character_id:
 			return character
 	return null
+
+## Live seat truth: is our character currently seated at a helm-kind
+## console? Falls back to the current view mode while we have no character
+## data yet (right after welcome, before the first `interior` message --
+## login spawns us seated at the helm, and welcome sets SYSTEM, so helm
+## controls work immediately, exactly as in M1).
+func _seated_at_helm() -> bool:
+	var own_char := _own_character()
+	if own_char == null:
+		return _view_mode == ViewMode.SYSTEM
+	if not own_char.is_seated():
+		return false
+	var console := _ship_class.find_console(own_char.seat) if _ship_class != null else null
+	return console != null and console.kind == "helm"
 
 ## The first other ship (by snapshot order) docked at the same station as
 ## `own`, or null. `own` must itself be docked.
@@ -278,17 +296,9 @@ func _update_interior_view() -> void:
 ## The view mode driven by our own character's seat: seated at a helm-kind
 ## console is SYSTEM, everything else (standing, or seated at e.g. cargo)
 ## is INTERIOR. Stays at the current mode if we don't have character data
-## yet (right after welcome, before the first `interior` message).
+## yet (`_seated_at_helm()` falls back to the current view mode then).
 func _compute_target_mode() -> ViewMode:
-	var own_char := _own_character()
-	if own_char == null:
-		return _view_mode
-	if own_char.seat == "":
-		return ViewMode.INTERIOR
-	var console := _ship_class.find_console(own_char.seat) if _ship_class != null else null
-	if console != null and console.kind == "helm":
-		return ViewMode.SYSTEM
-	return ViewMode.INTERIOR
+	return ViewMode.SYSTEM if _seated_at_helm() else ViewMode.INTERIOR
 
 ## Advances the INTERIOR<->SYSTEM crossfade/zoom transition, starting a new
 ## one when our seat state implies a different mode than the one currently
@@ -324,23 +334,33 @@ func _apply_transition_visuals(progress: float) -> void:
 	var interior_alpha := eased if to_interior else 1.0 - eased
 	var interior_scale := lerpf(0.85, 1.0, eased) if to_interior else lerpf(1.0, 0.85, eased)
 	var system_scale := lerpf(1.0, 1.15, eased) if to_interior else lerpf(1.15, 1.0, eased)
+	_set_view_zoom(_interior_view, interior_scale)
 	_interior_view.modulate.a = interior_alpha
-	_interior_view.scale = Vector2.ONE * interior_scale
 	_interior_view.visible = interior_alpha > 0.001
+	_set_view_zoom(_world_view, system_scale)
 	_world_view.modulate.a = 1.0 - interior_alpha
-	_world_view.scale = Vector2.ONE * system_scale
 	_world_view.visible = (1.0 - interior_alpha) > 0.001
+
+## Scales a view about the *screen center* rather than the node origin:
+## both views draw in viewport pixel coordinates with (0,0) at the top-left,
+## so a bare `scale` would slide everything toward/away from that corner.
+## Offsetting the node position by `center * (1 - scale)` keeps the point
+## under the screen center fixed, so the transition reads as a camera zoom.
+func _set_view_zoom(view: Node2D, view_scale: float) -> void:
+	var center := get_viewport_rect().size * 0.5
+	view.scale = Vector2.ONE * view_scale
+	view.position = center * (1.0 - view_scale)
 
 ## Snaps both views to the steady-state (non-transitioning) visuals for the
 ## current `_view_mode`: the active view fully opaque at scale 1, the other
 ## hidden.
 func _snap_view_visuals() -> void:
 	var interior_active := _view_mode == ViewMode.INTERIOR
+	_set_view_zoom(_interior_view, 1.0)
 	_interior_view.modulate.a = 1.0 if interior_active else 0.0
-	_interior_view.scale = Vector2.ONE
 	_interior_view.visible = interior_active
+	_set_view_zoom(_world_view, 1.0)
 	_world_view.modulate.a = 0.0 if interior_active else 1.0
-	_world_view.scale = Vector2.ONE
 	_world_view.visible = not interior_active
 
 ## Current view mode as a string for the automation hook's state dump
@@ -361,7 +381,11 @@ func _on_snapshot_received(tick: int, ships: Array[ShipState]) -> void:
 ## the snapshot for extrapolation. Seated characters are left at zero
 ## velocity: the server snaps them to the console tile center, so diffing
 ## across a sit/stand transition would otherwise produce a spurious lurch.
-func _on_interior_received(_tick: int, _ship_id: int, characters: Array[CharacterState]) -> void:
+## Interiors for other ships are ignored: a message serialized just before
+## our `board` landed can still arrive for the ship we just left.
+func _on_interior_received(_tick: int, ship_id: int, characters: Array[CharacterState]) -> void:
+	if ship_id != _ship_id:
+		return
 	var interval := _seconds_since_interior_arrival()
 	if interval > 0.0:
 		for character in characters:
@@ -402,8 +426,8 @@ func _on_welcome_received(ship_id: int, world: WorldData) -> void:
 	# match whatever was last sent to a previous ship/session.
 	_last_sent_rotate = 0.0
 	_last_sent_thrust = 0.0
-	_last_sent_dx = 0
-	_last_sent_dy = 0
+	_last_sent_dx = 0.0
+	_last_sent_dy = 0.0
 	# Login spawns us seated at the helm (spec: M2 ship interior design,
 	# "Login embodiment"): start in SYSTEM view exactly like M1, no
 	# transition animation.
