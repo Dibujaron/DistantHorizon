@@ -1,67 +1,205 @@
 extends Node2D
-## Main M0 scene: renders every ship in the latest snapshot as a small dot.
+## M1 scene: flies one player-controlled ship around the pinned system.
 ##
-## Snapshots arrive at 15 Hz; between snapshots each dot is extrapolated
-## along its server-reported velocity (pos + vel * time_since_snapshot) so
-## motion stays smooth at render framerate. This mirrors the design doc's
-## client-side interpolation plan in its simplest form.
+## Networking/protocol lives in the NetworkClient autoload; rail + ship
+## rendering lives in the WorldView child node (world_view.gd). This script
+## wires the two together: it owns login bookkeeping, helm/dock input,
+## camera follow + zoom, and the status label.
+##
+## Snapshots arrive at 15 Hz; between snapshots ship positions (and rail
+## positions, via sim time `t`) are extrapolated at render framerate the
+## same way M0 did for its dot-cloud, capped so a stalled connection doesn't
+## fling anything off into the void.
 
-const WORLD_EXTENT := 10000.0  # ship coords are within +/- this on both axes
-const SCREEN_MARGIN := 24.0
-const DOT_RADIUS := 2.0
-const DOT_COLOR := Color(0.55, 0.85, 1.0)
 const BACKGROUND_COLOR := Color(0.03, 0.04, 0.08)
-## If snapshots stall (e.g. server hiccup), stop extrapolating after this
-## long so dots don't fly off into the void.
 const MAX_EXTRAPOLATION_SEC := 0.5
+const TICKS_PER_SEC := 60.0
 
-var _ships: Array = []            # latest snapshot's ship dicts {id,x,y,vx,vy}
-var _snapshot_ticks_msec := 0     # Time.get_ticks_msec() when it arrived
+const ZOOM_MIN := 0.02
+const ZOOM_MAX := 2.0
+const ZOOM_STEP := 1.15
+const DEFAULT_ZOOM := 0.2
+
+const TRANSIENT_MESSAGE_SEC := 3.0
+
+var _ships: Array[ShipState] = []    # latest snapshot's ships
+var _snapshot_tick: int = 0
+var _snapshot_ticks_msec: int = 0
+
+var _world: WorldData = null
+var _dt: float = 0.016666666666666666
+var _ship_id: int = -1
+
+var _zoom: float = DEFAULT_ZOOM
+var _last_sent_rotate: float = 0.0
+var _last_sent_thrust: float = 0.0
+
+var _transient_message: String = ""
+var _transient_expire_msec: int = 0
 
 @onready var _status_label: Label = %StatusLabel
+@onready var _world_view: WorldView = %WorldView
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(BACKGROUND_COLOR)
 	NetworkClient.snapshot_received.connect(_on_snapshot_received)
 	NetworkClient.connection_state_changed.connect(_on_connection_state_changed)
+	NetworkClient.welcome_received.connect(_on_welcome_received)
+	NetworkClient.dock_result_received.connect(_on_dock_result_received)
+	NetworkClient.error_received.connect(_on_error_received)
 	_update_status_label()
+
+func _physics_process(_delta: float) -> void:
+	_poll_helm_input()
 
 func _process(_delta: float) -> void:
 	_update_status_label()
-	queue_redraw()
+	_update_world_view()
 
-func _draw() -> void:
-	if _ships.is_empty():
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("toggle_dock"):
+		_toggle_dock()
+	elif event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_zoom = clampf(_zoom * ZOOM_STEP, ZOOM_MIN, ZOOM_MAX)
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_zoom = clampf(_zoom / ZOOM_STEP, ZOOM_MIN, ZOOM_MAX)
+
+## Composes rotate in {-1,0,1} (turn_left = +1, counter-clockwise, matching
+## the wire protocol's "rotate positive = counter-clockwise") and thrust in
+## {0,1}, sending `helm` only when the pair actually changed so we don't
+## spam the server at input-poll rate.
+func _poll_helm_input() -> void:
+	if not NetworkClient.logged_in:
 		return
-	var viewport_size := get_viewport_rect().size
-	# World is a +/-WORLD_EXTENT square; fit it inside the viewport's shorter
-	# axis, centered, with a margin.
-	var view_scale := (minf(viewport_size.x, viewport_size.y) - 2.0 * SCREEN_MARGIN) \
-			/ (2.0 * WORLD_EXTENT)
-	var screen_center := viewport_size * 0.5
-	var dt := minf(
-		float(Time.get_ticks_msec() - _snapshot_ticks_msec) / 1000.0,
-		MAX_EXTRAPOLATION_SEC)
-	for ship: Dictionary in _ships:
-		var world_pos := Vector2(
-			float(ship["x"]) + float(ship["vx"]) * dt,
-			float(ship["y"]) + float(ship["vy"]) * dt)
-		# Negate y: world y-up -> screen y-down.
-		var screen_pos := screen_center + Vector2(world_pos.x, -world_pos.y) * view_scale
-		draw_circle(screen_pos, DOT_RADIUS, DOT_COLOR)
+	var rotate := 0.0
+	if Input.is_action_pressed("turn_left"):
+		rotate += 1.0
+	if Input.is_action_pressed("turn_right"):
+		rotate -= 1.0
+	var thrust := 1.0 if Input.is_action_pressed("thrust") else 0.0
+	if rotate != _last_sent_rotate or thrust != _last_sent_thrust:
+		NetworkClient.send_message({"type": "helm", "rotate": rotate, "thrust": thrust})
+		_last_sent_rotate = rotate
+		_last_sent_thrust = thrust
 
-func _on_snapshot_received(_tick: int, ships: Array) -> void:
+func _toggle_dock() -> void:
+	if not NetworkClient.logged_in:
+		return
+	var own := _own_ship()
+	if own != null and own.is_docked():
+		NetworkClient.send_message({"type": "undock"})
+	else:
+		NetworkClient.send_message({"type": "dock"})
+
+func _own_ship() -> ShipState:
+	for ship in _ships:
+		if ship.id == _ship_id:
+			return ship
+	return null
+
+## Seconds of wall-clock time elapsed since the latest snapshot, capped so a
+## stalled connection can't extrapolate forever.
+func _seconds_since_snapshot() -> float:
+	return minf(float(Time.get_ticks_msec() - _snapshot_ticks_msec) / 1000.0, MAX_EXTRAPOLATION_SEC)
+
+## Sim time for rail math: last snapshot's tick, advanced by the (capped)
+## wall-clock time elapsed since it arrived, converted to seconds via dt.
+func _sim_time() -> float:
+	return (float(_snapshot_tick) + TICKS_PER_SEC * _seconds_since_snapshot()) * _dt
+
+func _update_world_view() -> void:
+	var elapsed := _seconds_since_snapshot()
+	var t := _sim_time()
+	var extrapolated: Array[ShipState] = []
+	var own_pos := Vector2.ZERO
+	var own_found := false
+	var own_undocked := true
+	for ship in _ships:
+		var e := ship.extrapolated(elapsed)
+		extrapolated.append(e)
+		if e.id == _ship_id:
+			own_pos = e.position()
+			own_found = true
+			own_undocked = not e.is_docked()
+	if not own_found and _world != null and _world.spawn_station != "":
+		# No snapshot with our ship yet: center on the spawn station so the
+		# view isn't empty while we wait.
+		own_pos = _world.station_position(_world.spawn_station, t)
+	_world_view.set_frame_data(_world, t, extrapolated, _ship_id, _zoom, own_pos, own_undocked)
+
+func _on_snapshot_received(tick: int, ships: Array[ShipState]) -> void:
 	_ships = ships
+	_snapshot_tick = tick
 	_snapshot_ticks_msec = Time.get_ticks_msec()
 
 func _on_connection_state_changed(_state: NetworkClient.ConnectionState) -> void:
 	_update_status_label()
 
+func _on_welcome_received(ship_id: int, world: WorldData) -> void:
+	_ship_id = ship_id
+	_world = world
+	_dt = NetworkClient.dt
+	# Reset so the next real input still gets sent even if it happens to
+	# match whatever was last sent to a previous ship/session.
+	_last_sent_rotate = 0.0
+	_last_sent_thrust = 0.0
+
+func _on_dock_result_received(ok: bool, reason: Variant) -> void:
+	if not ok:
+		_show_transient_message("dock failed: %s" % str(reason))
+
+func _on_error_received(code: String, message: String) -> void:
+	_show_transient_message("%s: %s" % [code, message])
+
+func _show_transient_message(message: String) -> void:
+	_transient_message = message
+	_transient_expire_msec = Time.get_ticks_msec() + int(TRANSIENT_MESSAGE_SEC * 1000.0)
+
 func _update_status_label() -> void:
+	var lines: PackedStringArray = []
 	match NetworkClient.state:
 		NetworkClient.ConnectionState.CONNECTING:
-			_status_label.text = "connecting…"
+			lines.append("connecting…")
 		NetworkClient.ConnectionState.CONNECTED:
-			_status_label.text = "connected (tick %d)" % NetworkClient.last_tick
+			if NetworkClient.logged_in:
+				lines.append("connected (tick %d)" % NetworkClient.last_tick)
+			else:
+				lines.append("logging in…")
 		NetworkClient.ConnectionState.DISCONNECTED:
-			_status_label.text = "disconnected"
+			lines.append("disconnected")
+
+	var own := _own_ship()
+	if own != null:
+		lines.append("speed %.1f u/s" % own.velocity().length())
+		if own.is_docked():
+			lines.append("docked at %s" % _station_name(own.docked_at))
+		else:
+			var near := _nearest_dockable_station_name()
+			if near != "":
+				lines.append("SPACE: dock at %s" % near)
+
+	if _transient_message != "" and Time.get_ticks_msec() < _transient_expire_msec:
+		lines.append(_transient_message)
+
+	_status_label.text = "\n".join(lines)
+
+func _station_name(station_id: String) -> String:
+	if _world == null:
+		return station_id
+	return _world.station_name(station_id)
+
+## The name of a station whose dock_radius currently contains our (raw,
+## last-snapshot) position, or "" if none. Used only for the status-label
+## prompt; the server is the authority on whether a `dock` actually lands.
+func _nearest_dockable_station_name() -> String:
+	var own := _own_ship()
+	if own == null or own.is_docked() or _world == null:
+		return ""
+	var own_pos := own.position()
+	var t := _sim_time()
+	for station in _world.stations:
+		var pos := _world.station_position(station.id, t)
+		if own_pos.distance_to(pos) <= station.dock_radius:
+			return station.name
+	return ""

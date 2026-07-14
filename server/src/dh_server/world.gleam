@@ -1,0 +1,337 @@
+//// The world document: one star system (star, planets, stations) loaded
+//// from a hand-authored JSON file at startup. Planets and stations sit on
+//// analytic circular-orbit "rails" — their position/velocity at any sim
+//// time `t` is computed from the orbit parameters, never simulated tick by
+//// tick, and they are never sent in snapshots. Clients receive the world
+//// document once (in `welcome`) and recompute rail positions locally.
+////
+//// Orbit semantics (parents chain: station -> planet -> star):
+////   angle(t) = phase * 2*pi + 2*pi * t / period_s
+////   position(t) = parent_position(t) + radius * (cos(angle), sin(angle))
+////   velocity(t) = parent_velocity(t)
+////     + (2*pi*radius/period_s) * (-sin(angle), cos(angle))
+//// The star has no orbit: position (0,0), velocity (0,0).
+////
+//// Gravity: every body (never stations) with mu > 0 pulls ships toward it
+//// along the true unit vector, with magnitude `mu / max(r, body_radius)^2`
+//// — the denominator is clamped at the body's radius so the pull holds
+//// flat (never blows up) inside the body. At the exact centre (r = 0) the
+//// direction is undefined and the body contributes nothing.
+
+import gleam/dynamic/decode
+import gleam/float
+import gleam/json.{type Json}
+import gleam/list
+import gleam/option.{type Option, None, Some}
+import gleam/result
+import gleam/string
+import simplifile
+
+const two_pi = 6.283185307179586
+
+pub type Orbit {
+  Orbit(radius: Float, period_s: Float, phase: Float)
+}
+
+pub type Body {
+  Body(
+    id: String,
+    name: String,
+    kind: String,
+    parent: Option(String),
+    orbit: Option(Orbit),
+    radius: Float,
+    mu: Float,
+  )
+}
+
+pub type Station {
+  Station(
+    id: String,
+    name: String,
+    parent: String,
+    orbit: Orbit,
+    dock_radius: Float,
+  )
+}
+
+pub type World {
+  World(
+    schema: Int,
+    name: String,
+    seed: Int,
+    bodies: List(Body),
+    stations: List(Station),
+    spawn_station: String,
+  )
+}
+
+@external(erlang, "math", "cos")
+fn cos(x: Float) -> Float
+
+@external(erlang, "math", "sin")
+fn sin(x: Float) -> Float
+
+/// Read and decode a world document from a file. `path` is resolved
+/// relative to the process's working directory.
+pub fn load(path: String) -> Result(World, String) {
+  use text <- result.try(
+    simplifile.read(path)
+    |> result.map_error(fn(err) {
+      "failed to read world file " <> path <> ": " <> string.inspect(err)
+    }),
+  )
+  decode(text)
+}
+
+/// Decode a world document from a JSON string, validating that every
+/// `parent` and `spawn_station` reference an id that actually exists.
+pub fn decode(json_text: String) -> Result(World, String) {
+  case json.parse(json_text, world_decoder()) {
+    Ok(world) -> validate(world)
+    Error(err) -> Error("invalid world document: " <> string.inspect(err))
+  }
+}
+
+/// Encode a world document, e.g. for the `welcome` message.
+pub fn encode(world: World) -> Json {
+  json.object([
+    #("schema", json.int(world.schema)),
+    #("name", json.string(world.name)),
+    #("seed", json.int(world.seed)),
+    #("bodies", json.array(world.bodies, encode_body)),
+    #("stations", json.array(world.stations, encode_station)),
+    #("spawn_station", json.string(world.spawn_station)),
+  ])
+}
+
+/// Position of a body (star or planet) at sim time `t`, chaining through
+/// its parent. Panics if `body_id` does not exist in `world`.
+pub fn body_position(
+  world: World,
+  body_id: String,
+  t: Float,
+) -> #(Float, Float) {
+  let assert Ok(body) = find_body(world, body_id)
+  case body.orbit {
+    None -> #(0.0, 0.0)
+    Some(orbit) -> {
+      let #(px, py) = case body.parent {
+        Some(parent_id) -> body_position(world, parent_id, t)
+        None -> #(0.0, 0.0)
+      }
+      let angle = orbit_angle(orbit, t)
+      #(px +. orbit.radius *. cos(angle), py +. orbit.radius *. sin(angle))
+    }
+  }
+}
+
+/// Position of a station at sim time `t`, chaining through its parent
+/// body. Panics if `station_id` does not exist in `world`.
+pub fn station_position(
+  world: World,
+  station_id: String,
+  t: Float,
+) -> #(Float, Float) {
+  let assert Ok(station) = get_station(world, station_id)
+  let #(px, py) = body_position(world, station.parent, t)
+  let angle = orbit_angle(station.orbit, t)
+  #(
+    px +. station.orbit.radius *. cos(angle),
+    py +. station.orbit.radius *. sin(angle),
+  )
+}
+
+/// Velocity of a station at sim time `t`, the analytic derivative of
+/// `station_position`. Panics if `station_id` does not exist in `world`.
+pub fn station_velocity(
+  world: World,
+  station_id: String,
+  t: Float,
+) -> #(Float, Float) {
+  let assert Ok(station) = get_station(world, station_id)
+  let #(pvx, pvy) = body_velocity(world, station.parent, t)
+  let angle = orbit_angle(station.orbit, t)
+  let omega_r = two_pi *. station.orbit.radius /. station.orbit.period_s
+  #(pvx -. omega_r *. sin(angle), pvy +. omega_r *. cos(angle))
+}
+
+/// Look up a station by id.
+pub fn get_station(world: World, station_id: String) -> Result(Station, Nil) {
+  list.find(world.stations, fn(s) { s.id == station_id })
+}
+
+/// Summed gravitational acceleration from every body with `mu > 0` at
+/// point `(x, y)` and sim time `t`.
+pub fn gravity_at(
+  world: World,
+  x: Float,
+  y: Float,
+  t: Float,
+) -> #(Float, Float) {
+  list.fold(world.bodies, #(0.0, 0.0), fn(acc, body) {
+    case body.mu >. 0.0 {
+      False -> acc
+      True -> {
+        let #(ax, ay) = acc
+        let #(bx, by) = body_position(world, body.id, t)
+        let dx = bx -. x
+        let dy = by -. y
+        let assert Ok(r) = float.square_root(dx *. dx +. dy *. dy)
+        case r == 0.0 {
+          // At the exact centre the direction is undefined; no pull.
+          True -> acc
+          False -> {
+            let r_clamped = float.max(r, body.radius)
+            let a_mag = body.mu /. { r_clamped *. r_clamped }
+            #(ax +. a_mag *. dx /. r, ay +. a_mag *. dy /. r)
+          }
+        }
+      }
+    }
+  })
+}
+
+fn orbit_angle(orbit: Orbit, t: Float) -> Float {
+  orbit.phase *. two_pi +. two_pi *. t /. orbit.period_s
+}
+
+/// Velocity of a body (star or planet) at sim time `t`, chaining through
+/// its parent. Panics if `body_id` does not exist in `world`.
+fn body_velocity(world: World, body_id: String, t: Float) -> #(Float, Float) {
+  let assert Ok(body) = find_body(world, body_id)
+  case body.orbit {
+    None -> #(0.0, 0.0)
+    Some(orbit) -> {
+      let #(pvx, pvy) = case body.parent {
+        Some(parent_id) -> body_velocity(world, parent_id, t)
+        None -> #(0.0, 0.0)
+      }
+      let angle = orbit_angle(orbit, t)
+      let omega_r = two_pi *. orbit.radius /. orbit.period_s
+      #(pvx -. omega_r *. sin(angle), pvy +. omega_r *. cos(angle))
+    }
+  }
+}
+
+fn find_body(world: World, body_id: String) -> Result(Body, Nil) {
+  list.find(world.bodies, fn(b) { b.id == body_id })
+}
+
+/// Every `parent` (on bodies and stations) and `spawn_station` must
+/// reference an id that exists in the document.
+fn validate(world: World) -> Result(World, String) {
+  let body_ids = list.map(world.bodies, fn(b) { b.id })
+  let station_ids = list.map(world.stations, fn(s) { s.id })
+
+  let bad_body_parent =
+    list.find(world.bodies, fn(b) {
+      case b.parent {
+        Some(parent_id) -> !list.contains(body_ids, parent_id)
+        None -> False
+      }
+    })
+  let bad_station_parent =
+    list.find(world.stations, fn(s) { !list.contains(body_ids, s.parent) })
+
+  case bad_body_parent, bad_station_parent {
+    Ok(body), _ -> {
+      let assert Some(parent_id) = body.parent
+      Error("unknown parent body id: " <> parent_id)
+    }
+    _, Ok(station) -> Error("unknown parent body id: " <> station.parent)
+    Error(Nil), Error(Nil) ->
+      case list.contains(station_ids, world.spawn_station) {
+        True -> Ok(world)
+        False -> Error("unknown spawn_station id: " <> world.spawn_station)
+      }
+  }
+}
+
+fn orbit_decoder() -> decode.Decoder(Orbit) {
+  use radius <- decode.field("radius", decode.float)
+  use period_s <- decode.field("period_s", decode.float)
+  use phase <- decode.field("phase", decode.float)
+  decode.success(Orbit(radius: radius, period_s: period_s, phase: phase))
+}
+
+fn body_decoder() -> decode.Decoder(Body) {
+  use id <- decode.field("id", decode.string)
+  use name <- decode.field("name", decode.string)
+  use kind <- decode.field("kind", decode.string)
+  use parent <- decode.field("parent", decode.optional(decode.string))
+  use orbit <- decode.field("orbit", decode.optional(orbit_decoder()))
+  use radius <- decode.field("radius", decode.float)
+  use mu <- decode.field("mu", decode.float)
+  decode.success(Body(
+    id: id,
+    name: name,
+    kind: kind,
+    parent: parent,
+    orbit: orbit,
+    radius: radius,
+    mu: mu,
+  ))
+}
+
+fn station_decoder() -> decode.Decoder(Station) {
+  use id <- decode.field("id", decode.string)
+  use name <- decode.field("name", decode.string)
+  use parent <- decode.field("parent", decode.string)
+  use orbit <- decode.field("orbit", orbit_decoder())
+  use dock_radius <- decode.field("dock_radius", decode.float)
+  decode.success(Station(
+    id: id,
+    name: name,
+    parent: parent,
+    orbit: orbit,
+    dock_radius: dock_radius,
+  ))
+}
+
+fn world_decoder() -> decode.Decoder(World) {
+  use schema <- decode.field("schema", decode.int)
+  use name <- decode.field("name", decode.string)
+  use seed <- decode.field("seed", decode.int)
+  use bodies <- decode.field("bodies", decode.list(body_decoder()))
+  use stations <- decode.field("stations", decode.list(station_decoder()))
+  use spawn_station <- decode.field("spawn_station", decode.string)
+  decode.success(World(
+    schema: schema,
+    name: name,
+    seed: seed,
+    bodies: bodies,
+    stations: stations,
+    spawn_station: spawn_station,
+  ))
+}
+
+fn encode_orbit(orbit: Orbit) -> Json {
+  json.object([
+    #("radius", json.float(orbit.radius)),
+    #("period_s", json.float(orbit.period_s)),
+    #("phase", json.float(orbit.phase)),
+  ])
+}
+
+fn encode_body(body: Body) -> Json {
+  json.object([
+    #("id", json.string(body.id)),
+    #("name", json.string(body.name)),
+    #("kind", json.string(body.kind)),
+    #("parent", json.nullable(body.parent, json.string)),
+    #("orbit", json.nullable(body.orbit, encode_orbit)),
+    #("radius", json.float(body.radius)),
+    #("mu", json.float(body.mu)),
+  ])
+}
+
+fn encode_station(station: Station) -> Json {
+  json.object([
+    #("id", json.string(station.id)),
+    #("name", json.string(station.name)),
+    #("parent", json.string(station.parent)),
+    #("orbit", encode_orbit(station.orbit)),
+    #("dock_radius", json.float(station.dock_radius)),
+  ])
+}

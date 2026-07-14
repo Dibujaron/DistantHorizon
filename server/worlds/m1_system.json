@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "name": "Krasny Sector (M1 pinned system)",
+  "seed": 20260712,
+  "bodies": [
+    {"id": "krasny", "name": "Krasny", "kind": "star", "parent": null,
+     "orbit": null, "radius": 500.0, "mu": 20000000.0},
+    {"id": "meridian", "name": "Meridian", "kind": "planet", "parent": "krasny",
+     "orbit": {"radius": 4000.0, "period_s": 900.0, "phase": 0.0},
+     "radius": 150.0, "mu": 250000.0},
+    {"id": "tefiti", "name": "Te Fiti", "kind": "planet", "parent": "krasny",
+     "orbit": {"radius": 8000.0, "period_s": 2400.0, "phase": 0.35},
+     "radius": 200.0, "mu": 400000.0}
+  ],
+  "stations": [
+    {"id": "meridian_highport", "name": "Meridian Highport", "parent": "meridian",
+     "orbit": {"radius": 400.0, "period_s": 180.0, "phase": 0.0}, "dock_radius": 150.0},
+    {"id": "solis_ring", "name": "Solis Ring", "parent": "krasny",
+     "orbit": {"radius": 2000.0, "period_s": 500.0, "phase": 0.6}, "dock_radius": 150.0}
+  ],
+  "spawn_station": "meridian_highport"
+}

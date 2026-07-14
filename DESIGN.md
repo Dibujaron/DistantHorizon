@@ -540,6 +540,7 @@ what makes the game developable by agents rather than merely reviewable.
 - **M1 — Flight core:** one star system loaded from config (a pinned seed); planets on rails;
   flyable ship with Classic feel; two clients see each other fly; station docking; Postgres
   accounts. Protocol test harness and client automation hook land here and are used forever after.
+  **✅ Done 2026-07-13 ([results](docs/M1-RESULTS.md)).**
 - **M2 — The ship is a place:** interior deck plan for one ship class; walkable character; sit at
   helm ↔ walk around; zoom transition between views; two players aboard the same ship, one
   flying while the other walks. *This is the milestone that proves the new game feel.*
