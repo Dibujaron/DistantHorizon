@@ -139,26 +139,16 @@ pub fn try_dock(ship: Ship, world: World, t: Float) -> Result(Ship, String) {
 }
 
 /// Undock: `Error("not_docked")` if already flying, otherwise the ship is
-/// placed at the station's position offset by `(dock_radius, 0)`, given the
-/// station's velocity, heading reset to 0, and set flying.
+/// released in place — at the station's position with the station's rail
+/// velocity, heading unchanged — and set flying. No teleport: the ship
+/// starts inside the dock ring and drifts out on the station's velocity.
 pub fn undock(ship: Ship, world: World, t: Float) -> Result(Ship, String) {
   case ship.dock {
     Flying -> Error("not_docked")
     Docked(station_id) -> {
-      let assert Ok(station) = world.get_station(world, station_id)
       let #(sx, sy) = world.station_position(world, station_id, t)
       let #(svx, svy) = world.station_velocity(world, station_id, t)
-      Ok(
-        Ship(
-          ..ship,
-          x: sx +. station.dock_radius,
-          y: sy,
-          vx: svx,
-          vy: svy,
-          heading: 0.0,
-          dock: Flying,
-        ),
-      )
+      Ok(Ship(..ship, x: sx, y: sy, vx: svx, vy: svy, dock: Flying))
     }
   }
 }

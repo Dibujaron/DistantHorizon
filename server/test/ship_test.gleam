@@ -183,18 +183,20 @@ pub fn try_dock_fails_already_docked_test() {
   assert ship.try_dock(ship, w, 0.0) == Error("already_docked")
 }
 
-pub fn undock_places_ship_at_station_offset_test() {
+pub fn undock_releases_ship_in_place_test() {
   let w = test_world()
   let t = 42.0
-  let ship = ship.spawn_docked(1, w, 0.0)
-  let assert Ok(after) = ship.undock(ship, w, t)
+  let docked = Ship(..ship.spawn_docked(1, w, 0.0), heading: 1.5)
+  let assert Ok(after) = ship.undock(docked, w, t)
   let #(sx, sy) = world.station_position(w, "s1", t)
   let #(svx, svy) = world.station_velocity(w, "s1", t)
-  assert close(after.x, sx +. 150.0, epsilon)
+  // No teleport: released exactly at the station, on its rail velocity,
+  // heading untouched.
+  assert close(after.x, sx, epsilon)
   assert close(after.y, sy, epsilon)
   assert close(after.vx, svx, epsilon)
   assert close(after.vy, svy, epsilon)
-  assert after.heading == 0.0
+  assert after.heading == 1.5
   assert after.dock == Flying
 }
 
