@@ -7,24 +7,35 @@
 ////   {"v":1,"type":"helm","rotate":F,"thrust":F}
 ////   {"v":1,"type":"dock"}
 ////   {"v":1,"type":"undock"}
+////   {"v":1,"type":"move","dx":F,"dy":F}
+////   {"v":1,"type":"sit","console":"..."}
+////   {"v":1,"type":"stand"}
+////   {"v":1,"type":"board","ship_id":N}
 ////   {"v":1,"type":"get_stats"}
 ////
 //// Server -> client:
-////   {"v":1,"type":"welcome","account_id":N,"ship_id":N,"tick_rate":60,
-////    "dt":F,"world":{...}}
+////   {"v":1,"type":"welcome","account_id":N,"ship_id":N,"character_id":N,
+////    "tick_rate":60,"dt":F,"world":{...},"ship_class":{...}}
 ////   {"v":1,"type":"error","code":"auth_failed"|"storage_error","message":S}
 ////   {"v":1,"type":"dock_result","ok":Bool,"reason":null|S}
+////   {"v":1,"type":"seat_result","ok":Bool,"reason":null|S,"seat":null|S}
+////   {"v":1,"type":"board_result","ok":Bool,"reason":null|S,"ship_id":N}
 ////   {"v":1,"type":"snapshot","tick":N,
 ////    "ships":[{"id","x","y","vx","vy","heading","thrust","docked"}...]}
+////   {"v":1,"type":"interior","tick":N,"ship_id":N,
+////    "characters":[{"id","name","x","y","seat"}...]} — sent at 15 Hz, only
+////   to clients aboard `ship_id` (see sim.gleam's interior fan-out)
 ////   {"v":1,"type":"stats",...}
 
+import dh_server/character.{type Character}
 import dh_server/ship.{type Ship}
+import dh_server/shipclass.{type ShipClass}
 import dh_server/stats.{type StatsReply}
 import dh_server/world.{type World}
 import gleam/dynamic/decode
 import gleam/json.{type Json}
 import gleam/list
-import gleam/option.{None, Some}
+import gleam/option.{type Option, None, Some}
 
 pub const version = 1
 
@@ -34,7 +45,23 @@ pub type ClientMessage {
   Helm(rotate: Float, thrust: Float)
   Dock
   Undock
+  Move(dx: Float, dy: Float)
+  Sit(console: String)
+  Stand
+  Board(ship_id: Int)
   GetStats
+}
+
+/// Reply to `sit`/`stand`: whether it succeeded, why not, and the seat the
+/// character is in after the attempt (unchanged on failure).
+pub type SeatResult {
+  SeatResult(ok: Bool, reason: Option(String), seat: Option(String))
+}
+
+/// Reply to `board`: whether it succeeded, why not, and the character's
+/// ship after the attempt (unchanged on failure).
+pub type BoardResult {
+  BoardResult(ok: Bool, reason: Option(String), ship_id: Int)
 }
 
 /// Parse an incoming client text frame. Unknown or malformed messages are
@@ -63,21 +90,43 @@ fn client_message_decoder() -> decode.Decoder(Result(ClientMessage, Nil)) {
     }
     1, "dock" -> decode.success(Ok(Dock))
     1, "undock" -> decode.success(Ok(Undock))
+    1, "move" -> {
+      use dx <- decode.field("dx", decode.float)
+      use dy <- decode.field("dy", decode.float)
+      decode.success(Ok(Move(dx: dx, dy: dy)))
+    }
+    1, "sit" -> {
+      use console <- decode.field("console", decode.string)
+      decode.success(Ok(Sit(console: console)))
+    }
+    1, "stand" -> decode.success(Ok(Stand))
+    1, "board" -> {
+      use ship_id <- decode.field("ship_id", decode.int)
+      decode.success(Ok(Board(ship_id: ship_id)))
+    }
     1, "get_stats" -> decode.success(Ok(GetStats))
     _, _ -> decode.success(Error(Nil))
   }
 }
 
 /// Serialize the `welcome` message sent on successful login.
-pub fn encode_welcome(account_id: Int, ship_id: Int, world: World) -> String {
+pub fn encode_welcome(
+  account_id: Int,
+  ship_id: Int,
+  character_id: Int,
+  world: World,
+  class: ShipClass,
+) -> String {
   json.object([
     #("v", json.int(version)),
     #("type", json.string("welcome")),
     #("account_id", json.int(account_id)),
     #("ship_id", json.int(ship_id)),
+    #("character_id", json.int(character_id)),
     #("tick_rate", json.int(60)),
     #("dt", json.float(ship.dt)),
     #("world", world.encode(world)),
+    #("ship_class", shipclass.encode(class)),
   ])
   |> json.to_string
 }
@@ -108,6 +157,60 @@ pub fn encode_dock_result(result: Result(Nil, String)) -> String {
     #("reason", json.nullable(reason, json.string)),
   ])
   |> json.to_string
+}
+
+/// Serialize a `seat_result` reply to `sit`/`stand`.
+pub fn encode_seat_result(result: SeatResult) -> String {
+  json.object([
+    #("v", json.int(version)),
+    #("type", json.string("seat_result")),
+    #("ok", json.bool(result.ok)),
+    #("reason", json.nullable(result.reason, json.string)),
+    #("seat", json.nullable(result.seat, json.string)),
+  ])
+  |> json.to_string
+}
+
+/// Serialize a `board_result` reply to `board`.
+pub fn encode_board_result(result: BoardResult) -> String {
+  json.object([
+    #("v", json.int(version)),
+    #("type", json.string("board_result")),
+    #("ok", json.bool(result.ok)),
+    #("reason", json.nullable(result.reason, json.string)),
+    #("ship_id", json.int(result.ship_id)),
+  ])
+  |> json.to_string
+}
+
+/// Serialize an `interior` message: the crew of one ship, sent only to
+/// that ship's clients (see sim.gleam's interior fan-out).
+pub fn encode_interior(
+  tick: Int,
+  ship_id: Int,
+  characters: List(Character),
+) -> String {
+  json.object([
+    #("v", json.int(version)),
+    #("type", json.string("interior")),
+    #("tick", json.int(tick)),
+    #("ship_id", json.int(ship_id)),
+    #(
+      "characters",
+      json.preprocessed_array(list.map(characters, encode_character)),
+    ),
+  ])
+  |> json.to_string
+}
+
+fn encode_character(c: Character) -> Json {
+  json.object([
+    #("id", json.int(c.id)),
+    #("name", json.string(c.name)),
+    #("x", json.float(c.x)),
+    #("y", json.float(c.y)),
+    #("seat", json.nullable(c.seat, json.string)),
+  ])
 }
 
 /// Serialize a world snapshot.
