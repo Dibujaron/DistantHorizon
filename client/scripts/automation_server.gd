@@ -41,6 +41,8 @@ var _handling: bool = false
 ## scene so this hook only depends on the NetworkClient autoload's public
 ## signals/fields, not on main.gd's private render-loop state.
 var _latest_ships: Array[ShipState] = []
+## Latest `interior` message's crew (CharacterState), tracked the same way.
+var _latest_characters: Array[CharacterState] = []
 
 func _ready() -> void:
 	if not OS.is_debug_build():
@@ -56,10 +58,14 @@ func _ready() -> void:
 		set_process(false)
 		return
 	NetworkClient.snapshot_received.connect(_on_snapshot_received)
+	NetworkClient.interior_received.connect(_on_interior_received)
 	print("[automation] listening on %s:%d" % [HOST, PORT])
 
 func _on_snapshot_received(_tick: int, ships: Array[ShipState]) -> void:
 	_latest_ships = ships
+
+func _on_interior_received(_tick: int, _ship_id: int, characters: Array[CharacterState]) -> void:
+	_latest_characters = characters
 
 func _process(_delta: float) -> void:
 	if _server == null:
@@ -193,6 +199,8 @@ func _dump_state() -> Dictionary:
 		"camera_zoom": _camera_zoom(),
 		"status_label": _status_label_text(),
 		"scene_tree": _dump_scene_tree(),
+		"view_mode": _view_mode_name(),
+		"character": null,
 	}
 	var own_ship := _find_own_ship()
 	if own_ship != null:
@@ -202,6 +210,15 @@ func _dump_state() -> Dictionary:
 		state["ship_speed"] = own_ship.velocity().length()
 		# null while flying free, matching the wire protocol's `docked` field.
 		state["ship_docked"] = own_ship.docked_at if own_ship.is_docked() else null
+	var own_character := _find_own_character()
+	if own_character != null:
+		state["character"] = {
+			"id": own_character.id,
+			"x": own_character.x,
+			"y": own_character.y,
+			# null while standing, matching the wire protocol's `seat` field.
+			"seat": own_character.seat if own_character.is_seated() else null,
+		}
 	return state
 
 func _find_own_ship() -> ShipState:
@@ -211,6 +228,24 @@ func _find_own_ship() -> ShipState:
 		if ship.id == NetworkClient.ship_id:
 			return ship
 	return null
+
+func _find_own_character() -> CharacterState:
+	if NetworkClient.character_id < 0:
+		return null
+	for character in _latest_characters:
+		if character.id == NetworkClient.character_id:
+			return character
+	return null
+
+## main.gd's view mode is otherwise private render-loop state; it exposes
+## one small public method, view_mode_name(), so this hook can read the
+## mode as a plain string without knowing the ViewMode enum's internal
+## representation.
+func _view_mode_name() -> String:
+	var main_node := get_tree().current_scene
+	if main_node == null or not main_node.has_method("view_mode_name"):
+		return ""
+	return str(main_node.call("view_mode_name"))
 
 ## main.gd's zoom is a private render-loop var (`_zoom`), not exposed via
 ## the NetworkClient autoload. GDScript has no real property privacy --
