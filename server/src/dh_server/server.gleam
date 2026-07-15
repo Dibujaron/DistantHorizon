@@ -259,6 +259,14 @@ fn handle_client_text(
         }
       }
 
+    // disembark/buy/sell/get_market are parsed but not yet dispatched —
+    // sim wiring lands in a later task. Ignored for now, same as an
+    // unhandled message.
+    Ok(protocol.Disembark) -> session
+    Ok(protocol.Buy(_, _)) -> session
+    Ok(protocol.Sell(_, _)) -> session
+    Ok(protocol.GetMarket) -> session
+
     // get_stats works in both states.
     Ok(protocol.GetStats) -> {
       let reply = sim.get_stats(sim_subject, 1000)

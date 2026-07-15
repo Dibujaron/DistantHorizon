@@ -11,31 +11,56 @@
 ////   {"v":1,"type":"sit","console":"..."}
 ////   {"v":1,"type":"stand"}
 ////   {"v":1,"type":"board","ship_id":N}
+////   {"v":1,"type":"disembark"}
+////   {"v":1,"type":"buy","commodity":S,"quantity":N}
+////   {"v":1,"type":"sell","commodity":S,"quantity":N}
+////   {"v":1,"type":"get_market"}
 ////   {"v":1,"type":"get_stats"}
 ////
 //// Server -> client:
 ////   {"v":1,"type":"welcome","account_id":N,"ship_id":N,"character_id":N,
 ////    "tick_rate":60,"dt":F,"world":{...},"ship_class":{...}}
 ////   {"v":1,"type":"error","code":"auth_failed"|"storage_error","message":S}
-////   {"v":1,"type":"dock_result","ok":Bool,"reason":null|S}
+////   {"v":1,"type":"dock_result","ok":Bool,"reason":null|S} — reasons
+////   include "transfer_in_progress"
 ////   {"v":1,"type":"seat_result","ok":Bool,"reason":null|S,"seat":null|S}
-////   {"v":1,"type":"board_result","ok":Bool,"reason":null|S,"ship_id":N}
+////   {"v":1,"type":"board_result","ok":Bool,"reason":null|S,"ship_id":N} —
+////   reasons include "not_docked_here"
+////   {"v":1,"type":"disembark_result","ok":Bool,
+////    "reason":null|"not_aboard"|"not_docked"|"no_concourse",
+////    "station_id":S|null}
+////   {"v":1,"type":"trade_result","ok":Bool,"reason":null|S,"commodity":S,
+////    "quantity":N,"price":N} — reasons: not_at_broker | ship_not_docked |
+////   no_crane | not_sold_here | insufficient_stock | invalid_quantity |
+////   insufficient_hold | insufficient_funds | insufficient_cargo |
+////   no_market
+////   {"v":1,"type":"market","station_id":S,
+////    "stores":[{"commodity","name","price","quantity"}...]}
+////   {"v":1,"type":"cargo","ship_id":N,"wallet":N,"capacity":N,
+////    "hold":[{"commodity","quantity"}...],
+////    "transfers":[{"commodity","direction","remaining"}...]}
 ////   {"v":1,"type":"snapshot","tick":N,
 ////    "ships":[{"id","x","y","vx","vy","heading","thrust","docked"}...]}
 ////   {"v":1,"type":"interior","tick":N,"ship_id":N,
 ////    "characters":[{"id","name","x","y","seat"}...]} — sent at 15 Hz, only
 ////   to clients aboard `ship_id` (see sim.gleam's interior fan-out)
+////   {"v":1,"type":"concourse","tick":N,"station_id":S,
+////    "characters":[{"id","name","x","y","seat"}...]} — sent at 15 Hz, only
+////   to clients standing in that station's concourse
 ////   {"v":1,"type":"stats",...}
 
 import dh_server/character.{type Character}
+import dh_server/market
 import dh_server/ship.{type Ship}
 import dh_server/shipclass.{type ShipClass}
 import dh_server/stats.{type StatsReply}
 import dh_server/world.{type World}
+import gleam/dict
 import gleam/dynamic/decode
 import gleam/json.{type Json}
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/string
 
 pub const version = 1
 
@@ -49,6 +74,10 @@ pub type ClientMessage {
   Sit(console: String)
   Stand
   Board(ship_id: Int)
+  Disembark
+  Buy(commodity: String, quantity: Int)
+  Sell(commodity: String, quantity: Int)
+  GetMarket
   GetStats
 }
 
@@ -62,6 +91,24 @@ pub type SeatResult {
 /// ship after the attempt (unchanged on failure).
 pub type BoardResult {
   BoardResult(ok: Bool, reason: Option(String), ship_id: Int)
+}
+
+/// Reply to `disembark`: whether it succeeded, why not, and the station
+/// whose concourse the character is now standing in.
+pub type DisembarkResult {
+  DisembarkResult(ok: Bool, reason: Option(String), station_id: Option(String))
+}
+
+/// Reply to `buy`/`sell`. `price` is the locked unit price on success,
+/// 0 on failure; `commodity`/`quantity` echo the request.
+pub type TradeResult {
+  TradeResult(
+    ok: Bool,
+    reason: Option(String),
+    commodity: String,
+    quantity: Int,
+    price: Int,
+  )
 }
 
 /// Parse an incoming client text frame. Unknown or malformed messages are
@@ -104,6 +151,18 @@ fn client_message_decoder() -> decode.Decoder(Result(ClientMessage, Nil)) {
       use ship_id <- decode.field("ship_id", decode.int)
       decode.success(Ok(Board(ship_id: ship_id)))
     }
+    1, "disembark" -> decode.success(Ok(Disembark))
+    1, "buy" -> {
+      use commodity <- decode.field("commodity", decode.string)
+      use quantity <- decode.field("quantity", decode.int)
+      decode.success(Ok(Buy(commodity: commodity, quantity: quantity)))
+    }
+    1, "sell" -> {
+      use commodity <- decode.field("commodity", decode.string)
+      use quantity <- decode.field("quantity", decode.int)
+      decode.success(Ok(Sell(commodity: commodity, quantity: quantity)))
+    }
+    1, "get_market" -> decode.success(Ok(GetMarket))
     1, "get_stats" -> decode.success(Ok(GetStats))
     _, _ -> decode.success(Error(Nil))
   }
@@ -179,6 +238,117 @@ pub fn encode_board_result(result: BoardResult) -> String {
     #("ok", json.bool(result.ok)),
     #("reason", json.nullable(result.reason, json.string)),
     #("ship_id", json.int(result.ship_id)),
+  ])
+  |> json.to_string
+}
+
+/// Serialize a `disembark_result` reply to `disembark`.
+pub fn encode_disembark_result(result: DisembarkResult) -> String {
+  json.object([
+    #("v", json.int(version)),
+    #("type", json.string("disembark_result")),
+    #("ok", json.bool(result.ok)),
+    #("reason", json.nullable(result.reason, json.string)),
+    #("station_id", json.nullable(result.station_id, json.string)),
+  ])
+  |> json.to_string
+}
+
+/// Serialize a `trade_result` reply to `buy`/`sell`.
+pub fn encode_trade_result(result: TradeResult) -> String {
+  json.object([
+    #("v", json.int(version)),
+    #("type", json.string("trade_result")),
+    #("ok", json.bool(result.ok)),
+    #("reason", json.nullable(result.reason, json.string)),
+    #("commodity", json.string(result.commodity)),
+    #("quantity", json.int(result.quantity)),
+    #("price", json.int(result.price)),
+  ])
+  |> json.to_string
+}
+
+/// Serialize a station's market: current prices and stock. Sent as the
+/// reply to `get_market` and pushed at 15 Hz to that station's concourse
+/// occupants.
+pub fn encode_market(m: market.Market) -> String {
+  json.object([
+    #("v", json.int(version)),
+    #("type", json.string("market")),
+    #("station_id", json.string(m.station_id)),
+    #("stores", json.preprocessed_array(list.map(m.stores, encode_store))),
+  ])
+  |> json.to_string
+}
+
+fn encode_store(store: market.Store) -> Json {
+  json.object([
+    #("commodity", json.string(store.commodity)),
+    #("name", json.string(store.name)),
+    #("price", json.int(store.price)),
+    #("quantity", json.int(store.quantity)),
+  ])
+}
+
+/// Serialize one ship's cargo state (wallet, hold, running transfers).
+/// Sent at 15 Hz to the ship's *crew* wherever their bodies are — a
+/// quartermaster at a station broker still watches their ship fill up.
+/// Hold entries are sorted by commodity for stable output.
+pub fn encode_cargo(s: Ship, capacity: Int) -> String {
+  let hold =
+    dict.to_list(s.hold)
+    |> list.sort(fn(a, b) { string.compare(a.0, b.0) })
+    |> list.map(fn(entry) {
+      json.object([
+        #("commodity", json.string(entry.0)),
+        #("quantity", json.int(entry.1)),
+      ])
+    })
+  json.object([
+    #("v", json.int(version)),
+    #("type", json.string("cargo")),
+    #("ship_id", json.int(s.id)),
+    #("wallet", json.int(s.wallet)),
+    #("capacity", json.int(capacity)),
+    #("hold", json.preprocessed_array(hold)),
+    #(
+      "transfers",
+      json.preprocessed_array(list.map(s.transfers, encode_transfer)),
+    ),
+  ])
+  |> json.to_string
+}
+
+fn encode_transfer(transfer: ship.Transfer) -> Json {
+  let direction = case transfer.direction {
+    ship.ToShip -> "to_ship"
+    ship.ToStation -> "to_station"
+  }
+  json.object([
+    #("commodity", json.string(transfer.commodity)),
+    #("direction", json.string(direction)),
+    #("remaining", json.int(transfer.remaining)),
+  ])
+}
+
+/// Serialize a `concourse` message: the characters standing in one
+/// station's concourse, sent only to that concourse's occupants — the same
+/// interest-management shape as `interior`, keyed by station instead of
+/// ship.
+pub fn encode_concourse(
+  tick: Int,
+  station_id: String,
+  characters: List(Character),
+) -> String {
+  json.object([
+    #("v", json.int(version)),
+    #("type", json.string("concourse")),
+    #("tick", json.int(tick)),
+    #("station_id", json.string(station_id)),
+    #(
+      "characters",
+      json.preprocessed_array(list.map(characters, encode_character)),
+    ),
   ])
   |> json.to_string
 }

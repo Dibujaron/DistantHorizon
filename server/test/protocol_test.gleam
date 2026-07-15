@@ -1,4 +1,5 @@
 import dh_server/character
+import dh_server/market
 import dh_server/protocol
 import dh_server/ship
 import dh_server/shipclass
@@ -324,4 +325,106 @@ pub fn encode_interior_round_trip_test() {
   assert decoded_walker.seat == None
   assert decoded_walker.x == walker.x
   assert decoded_walker.y == walker.y
+}
+
+pub fn parse_disembark_test() {
+  assert protocol.parse_client_message("{\"v\":1,\"type\":\"disembark\"}")
+    == Ok(protocol.Disembark)
+}
+
+pub fn parse_buy_and_sell_test() {
+  assert protocol.parse_client_message(
+      "{\"v\":1,\"type\":\"buy\",\"commodity\":\"machinery\",\"quantity\":5}",
+    )
+    == Ok(protocol.Buy(commodity: "machinery", quantity: 5))
+  assert protocol.parse_client_message(
+      "{\"v\":1,\"type\":\"sell\",\"commodity\":\"water\",\"quantity\":1}",
+    )
+    == Ok(protocol.Sell(commodity: "water", quantity: 1))
+}
+
+pub fn parse_buy_rejects_float_quantity_test() {
+  // decode.int rejects floats — the inverse of the move/helm rule.
+  let assert Error(Nil) =
+    protocol.parse_client_message(
+      "{\"v\":1,\"type\":\"buy\",\"commodity\":\"water\",\"quantity\":1.0}",
+    )
+}
+
+pub fn parse_get_market_test() {
+  assert protocol.parse_client_message("{\"v\":1,\"type\":\"get_market\"}")
+    == Ok(protocol.GetMarket)
+}
+
+pub fn encode_disembark_result_test() {
+  let text =
+    protocol.encode_disembark_result(protocol.DisembarkResult(
+      ok: True,
+      reason: None,
+      station_id: Some("meridian_highport"),
+    ))
+  assert text
+    == "{\"v\":1,\"type\":\"disembark_result\",\"ok\":true,\"reason\":null,\"station_id\":\"meridian_highport\"}"
+}
+
+pub fn encode_trade_result_test() {
+  let text =
+    protocol.encode_trade_result(protocol.TradeResult(
+      ok: False,
+      reason: Some("insufficient_funds"),
+      commodity: "machinery",
+      quantity: 38,
+      price: 0,
+    ))
+  assert text
+    == "{\"v\":1,\"type\":\"trade_result\",\"ok\":false,\"reason\":\"insufficient_funds\",\"commodity\":\"machinery\",\"quantity\":38,\"price\":0}"
+}
+
+pub fn encode_market_test() {
+  let m =
+    market.Market(station_id: "solis_ring", stores: [
+      market.Store(
+        commodity: "machinery",
+        name: "Machinery",
+        initial: 30,
+        quantity: 28,
+        base_price: 75,
+        elasticity: 6,
+        price: 77,
+      ),
+    ])
+  assert protocol.encode_market(m)
+    == "{\"v\":1,\"type\":\"market\",\"station_id\":\"solis_ring\",\"stores\":[{\"commodity\":\"machinery\",\"name\":\"Machinery\",\"price\":77,\"quantity\":28}]}"
+}
+
+pub fn encode_cargo_sorts_hold_and_lists_transfers_test() {
+  let assert Ok(w) = world.load("worlds/m1_system.json")
+  let s = ship.spawn_docked(7, w, 0.0)
+  let s =
+    ship.Ship(
+      ..s,
+      wallet: 1725,
+      hold: dict.from_list([#("water", 3), #("machinery", 5)]),
+      transfers: [
+        ship.Transfer(
+          commodity: "food",
+          direction: ship.ToShip,
+          remaining: 4,
+          progress: 0.5,
+          price_each: 10,
+          rate: 1.0,
+        ),
+      ],
+    )
+  assert protocol.encode_cargo(s, 40)
+    == "{\"v\":1,\"type\":\"cargo\",\"ship_id\":7,\"wallet\":1725,\"capacity\":40,\"hold\":[{\"commodity\":\"machinery\",\"quantity\":5},{\"commodity\":\"water\",\"quantity\":3}],\"transfers\":[{\"commodity\":\"food\",\"direction\":\"to_ship\",\"remaining\":4}]}"
+}
+
+pub fn encode_concourse_test() {
+  let assert Ok(class) = shipclass.load("classes/sparrow.json")
+  let c = character.spawn_at_spawn_tile(3, "ada", 1, class.plan)
+  let c = character.disembark_to(c, class.plan, "meridian_highport")
+  let text = protocol.encode_concourse(120, "meridian_highport", [c])
+  assert text
+    == "{\"v\":1,\"type\":\"concourse\",\"tick\":120,\"station_id\":\"meridian_highport\",\"characters\":[{\"id\":3,\"name\":\"ada\",\"x\":5.5,\"y\":4.5,\"seat\":null}]}"
 }
