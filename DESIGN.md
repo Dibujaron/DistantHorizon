@@ -574,6 +574,16 @@ what makes the game developable by agents rather than merely reviewable.
 - ~~**How much ship-system depth at M2:**~~ **Decided in M2: consoles first.** Helm console is
   functional; the cargo console exists on the deck but binds nothing until M3. No
   power/repair/fires — per the seat test, that busywork doesn't earn a crew role anyway.
+- **The world outside the window (must-do, milestone TBD):** the interior view currently
+  renders the deck against a void, but the simulation isn't the constraint — the client already
+  knows the ship's exterior position/heading and every rail, so compositing the system view
+  under/around the deck plan is a pure rendering feature. Walking the cargo hold while a
+  station slides past "outside" is a huge embodiment win and cheap relative to its payoff.
+  Open design choice: how much you see — everything nearby ("sensors/radar" handwave, simplest
+  and probably right for our tone), windows-only with occlusion Barotrauma-style (narrow FoV;
+  reads creepy/tense, which isn't our default register), or a hybrid (full view dimmed, crisp
+  through windows — windows become a deck-plan feature hull authors place). Decide when we
+  schedule it; deck-plan schema may want a `windows` layer either way.
 - **Run tuning:** target length vs. crew size — does the debt clock scale with number of
   players? (Pause rules are settled: solo universes resume freely, shared universes never
   pause.)
