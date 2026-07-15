@@ -18,6 +18,7 @@ fn test_world() -> World {
     schema: 1,
     name: "ship test world",
     seed: 1,
+    commodities: [],
     bodies: [
       Body(
         id: "anchor",
@@ -36,6 +37,9 @@ fn test_world() -> World {
         parent: "anchor",
         orbit: Orbit(radius: 400.0, period_s: 180.0, phase: 0.0),
         dock_radius: 150.0,
+        crane: False,
+        concourse: None,
+        market: [],
       ),
     ],
     spawn_station: "s1",
@@ -50,6 +54,7 @@ fn stationary_dock_world() -> World {
     schema: 1,
     name: "stationary dock world",
     seed: 1,
+    commodities: [],
     bodies: [
       Body(
         id: "anchor",
@@ -68,6 +73,9 @@ fn stationary_dock_world() -> World {
         parent: "anchor",
         orbit: Orbit(radius: 0.0, period_s: 180.0, phase: 0.0),
         dock_radius: 150.0,
+        crane: False,
+        concourse: None,
+        market: [],
       ),
     ],
     spawn_station: "s1",

@@ -18,6 +18,7 @@
 //// flat (never blows up) inside the body. At the exact centre (r = 0) the
 //// direction is undefined and the body contributes nothing.
 
+import dh_server/deckplan
 import gleam/dynamic/decode
 import gleam/float
 import gleam/json.{type Json}
@@ -45,6 +46,17 @@ pub type Body {
   )
 }
 
+pub type Commodity {
+  Commodity(id: String, name: String)
+}
+
+/// A station's dealing terms for one commodity: starting stock, base
+/// price, and how far the noise walk may swing the price (Classic's
+/// initial/price/elasticity triple from Stn_*.properties).
+pub type MarketEntry {
+  MarketEntry(commodity: String, initial: Int, price: Int, elasticity: Int)
+}
+
 pub type Station {
   Station(
     id: String,
@@ -52,6 +64,12 @@ pub type Station {
     parent: String,
     orbit: Orbit,
     dock_radius: Float,
+    /// Container-crane berths (the fast handling path; container hulls can
+    /// only trade where this is True).
+    crane: Bool,
+    /// Walkable concourse interior; None means crews cannot go ashore.
+    concourse: Option(deckplan.DeckPlan),
+    market: List(MarketEntry),
   )
 }
 
@@ -60,6 +78,7 @@ pub type World {
     schema: Int,
     name: String,
     seed: Int,
+    commodities: List(Commodity),
     bodies: List(Body),
     stations: List(Station),
     spawn_station: String,
@@ -99,6 +118,7 @@ pub fn encode(world: World) -> Json {
     #("schema", json.int(world.schema)),
     #("name", json.string(world.name)),
     #("seed", json.int(world.seed)),
+    #("commodities", json.array(world.commodities, encode_commodity)),
     #("bodies", json.array(world.bodies, encode_body)),
     #("stations", json.array(world.stations, encode_station)),
     #("spawn_station", json.string(world.spawn_station)),
@@ -242,10 +262,58 @@ fn validate(world: World) -> Result(World, String) {
     _, Ok(station) -> Error("unknown parent body id: " <> station.parent)
     Error(Nil), Error(Nil) ->
       case list.contains(station_ids, world.spawn_station) {
-        True -> Ok(world)
+        True -> validate_trade(world)
         False -> Error("unknown spawn_station id: " <> world.spawn_station)
       }
   }
+}
+
+/// Trade-layer validation: markets reference declared commodities; every
+/// concourse is geometrically valid; a station that trades has somewhere
+/// to trade (a concourse with a broker-kind console).
+fn validate_trade(world: World) -> Result(World, String) {
+  let commodity_ids = list.map(world.commodities, fn(c) { c.id })
+  list.fold(world.stations, Ok(world), fn(acc, station) {
+    use _ <- result.try(acc)
+    use _ <- result.try(case station.concourse {
+      None -> Ok(world)
+      Some(plan) ->
+        deckplan.validate(plan)
+        |> result.map_error(fn(e) {
+          "station " <> station.id <> " concourse: " <> e
+        })
+        |> result.map(fn(_) { world })
+    })
+    use _ <- result.try(
+      case
+        list.find(station.market, fn(entry) {
+          !list.contains(commodity_ids, entry.commodity)
+        })
+      {
+        Ok(entry) ->
+          Error(
+            "station "
+            <> station.id
+            <> " trades unknown commodity: "
+            <> entry.commodity,
+          )
+        Error(Nil) -> Ok(world)
+      },
+    )
+    case station.market, station.concourse {
+      [], _ -> Ok(world)
+      [_, ..], None ->
+        Error("station " <> station.id <> " has a market but no concourse")
+      [_, ..], Some(plan) ->
+        case deckplan.find_console_of_kind(plan, "broker") {
+          Ok(_) -> Ok(world)
+          Error(Nil) ->
+            Error(
+              "station " <> station.id <> " has a market but no broker console",
+            )
+        }
+    }
+  })
 }
 
 fn orbit_decoder() -> decode.Decoder(Orbit) {
@@ -274,18 +342,51 @@ fn body_decoder() -> decode.Decoder(Body) {
   ))
 }
 
+fn commodity_decoder() -> decode.Decoder(Commodity) {
+  use id <- decode.field("id", decode.string)
+  use name <- decode.field("name", decode.string)
+  decode.success(Commodity(id: id, name: name))
+}
+
+fn market_entry_decoder() -> decode.Decoder(MarketEntry) {
+  use commodity <- decode.field("commodity", decode.string)
+  use initial <- decode.field("initial", decode.int)
+  use price <- decode.field("price", decode.int)
+  use elasticity <- decode.field("elasticity", decode.int)
+  decode.success(MarketEntry(
+    commodity: commodity,
+    initial: initial,
+    price: price,
+    elasticity: elasticity,
+  ))
+}
+
 fn station_decoder() -> decode.Decoder(Station) {
   use id <- decode.field("id", decode.string)
   use name <- decode.field("name", decode.string)
   use parent <- decode.field("parent", decode.string)
   use orbit <- decode.field("orbit", orbit_decoder())
   use dock_radius <- decode.field("dock_radius", decode.float)
+  use crane <- decode.optional_field("crane", False, decode.bool)
+  use concourse <- decode.optional_field(
+    "concourse",
+    None,
+    decode.optional(deckplan.decoder()),
+  )
+  use market <- decode.optional_field(
+    "market",
+    [],
+    decode.list(market_entry_decoder()),
+  )
   decode.success(Station(
     id: id,
     name: name,
     parent: parent,
     orbit: orbit,
     dock_radius: dock_radius,
+    crane: crane,
+    concourse: concourse,
+    market: market,
   ))
 }
 
@@ -293,6 +394,11 @@ fn world_decoder() -> decode.Decoder(World) {
   use schema <- decode.field("schema", decode.int)
   use name <- decode.field("name", decode.string)
   use seed <- decode.field("seed", decode.int)
+  use commodities <- decode.optional_field(
+    "commodities",
+    [],
+    decode.list(commodity_decoder()),
+  )
   use bodies <- decode.field("bodies", decode.list(body_decoder()))
   use stations <- decode.field("stations", decode.list(station_decoder()))
   use spawn_station <- decode.field("spawn_station", decode.string)
@@ -300,6 +406,7 @@ fn world_decoder() -> decode.Decoder(World) {
     schema: schema,
     name: name,
     seed: seed,
+    commodities: commodities,
     bodies: bodies,
     stations: stations,
     spawn_station: spawn_station,
@@ -326,6 +433,22 @@ fn encode_body(body: Body) -> Json {
   ])
 }
 
+fn encode_commodity(commodity: Commodity) -> Json {
+  json.object([
+    #("id", json.string(commodity.id)),
+    #("name", json.string(commodity.name)),
+  ])
+}
+
+fn encode_market_entry(entry: MarketEntry) -> Json {
+  json.object([
+    #("commodity", json.string(entry.commodity)),
+    #("initial", json.int(entry.initial)),
+    #("price", json.int(entry.price)),
+    #("elasticity", json.int(entry.elasticity)),
+  ])
+}
+
 fn encode_station(station: Station) -> Json {
   json.object([
     #("id", json.string(station.id)),
@@ -333,5 +456,8 @@ fn encode_station(station: Station) -> Json {
     #("parent", json.string(station.parent)),
     #("orbit", encode_orbit(station.orbit)),
     #("dock_radius", json.float(station.dock_radius)),
+    #("crane", json.bool(station.crane)),
+    #("concourse", json.nullable(station.concourse, deckplan.encode)),
+    #("market", json.array(station.market, encode_market_entry)),
   ])
 }

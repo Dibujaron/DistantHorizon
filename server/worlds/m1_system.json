@@ -1,7 +1,13 @@
 {
-  "schema": 1,
+  "schema": 2,
   "name": "Krasny Sector (M1 pinned system)",
   "seed": 20260712,
+  "commodities": [
+    {"id": "water", "name": "Water"},
+    {"id": "food", "name": "Foodstuffs"},
+    {"id": "machinery", "name": "Machinery"},
+    {"id": "luxuries", "name": "Luxuries"}
+  ],
   "bodies": [
     {"id": "krasny", "name": "Krasny", "kind": "star", "parent": null,
      "orbit": null, "radius": 500.0, "mu": 20000000.0},
@@ -14,9 +20,61 @@
   ],
   "stations": [
     {"id": "meridian_highport", "name": "Meridian Highport", "parent": "meridian",
-     "orbit": {"radius": 400.0, "period_s": 180.0, "phase": 0.0}, "dock_radius": 150.0},
+     "orbit": {"radius": 400.0, "period_s": 180.0, "phase": 0.0}, "dock_radius": 150.0,
+     "crane": true,
+     "concourse": {
+       "grid": {"width": 10, "height": 6},
+       "walkable": [
+         "..........",
+         ".########.",
+         ".########.",
+         ".########.",
+         "....#.....",
+         ".........."
+       ],
+       "rooms": [
+         {"id": "concourse", "name": "Concourse", "x": 1, "y": 1, "w": 8, "h": 3},
+         {"id": "airlock",   "name": "Airlock",   "x": 4, "y": 4, "w": 1, "h": 1}
+       ],
+       "consoles": [
+         {"id": "broker_main", "kind": "broker", "x": 4, "y": 3},
+         {"id": "broker_east", "kind": "broker", "x": 7, "y": 2}
+       ],
+       "spawn_tile": [4, 4]
+     },
+     "market": [
+       {"commodity": "water",     "initial": 120, "price": 4,  "elasticity": 1},
+       {"commodity": "food",      "initial": 80,  "price": 10, "elasticity": 2},
+       {"commodity": "machinery", "initial": 60,  "price": 55, "elasticity": 4},
+       {"commodity": "luxuries",  "initial": 20,  "price": 78, "elasticity": 5}
+     ]},
     {"id": "solis_ring", "name": "Solis Ring", "parent": "krasny",
-     "orbit": {"radius": 2000.0, "period_s": 500.0, "phase": 0.6}, "dock_radius": 150.0}
+     "orbit": {"radius": 2000.0, "period_s": 500.0, "phase": 0.6}, "dock_radius": 150.0,
+     "crane": false,
+     "concourse": {
+       "grid": {"width": 8, "height": 5},
+       "walkable": [
+         "........",
+         ".######.",
+         ".######.",
+         "...#....",
+         "........"
+       ],
+       "rooms": [
+         {"id": "concourse", "name": "Concourse", "x": 1, "y": 1, "w": 6, "h": 2},
+         {"id": "airlock",   "name": "Airlock",   "x": 3, "y": 3, "w": 1, "h": 1}
+       ],
+       "consoles": [
+         {"id": "broker_main", "kind": "broker", "x": 3, "y": 2}
+       ],
+       "spawn_tile": [3, 3]
+     },
+     "market": [
+       {"commodity": "water",     "initial": 100, "price": 3,  "elasticity": 1},
+       {"commodity": "food",      "initial": 50,  "price": 14, "elasticity": 2},
+       {"commodity": "machinery", "initial": 30,  "price": 75, "elasticity": 6},
+       {"commodity": "luxuries",  "initial": 40,  "price": 60, "elasticity": 6}
+     ]}
   ],
   "spawn_station": "meridian_highport"
 }
