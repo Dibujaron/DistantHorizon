@@ -1,5 +1,5 @@
 {
-  "schema": 1, "id": "sparrow", "name": "CV-7 Sparrow",
+  "schema": 2, "id": "sparrow", "name": "CV-7 Sparrow",
   "grid": {"width": 10, "height": 6},
   "walkable": [
     "..........",
@@ -19,5 +19,6 @@
     {"id": "helm_main",  "kind": "helm",  "x": 1, "y": 2},
     {"id": "cargo_main", "kind": "cargo", "x": 6, "y": 1}
   ],
-  "spawn_tile": [5, 4]
+  "spawn_tile": [5, 4],
+  "cargo": {"capacity": 40, "handling": "breakbulk"}
 }

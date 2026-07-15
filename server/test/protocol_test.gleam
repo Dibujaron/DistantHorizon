@@ -298,8 +298,8 @@ fn interior_decoder() -> decode.Decoder(#(Int, Int, List(DecodedCharacter))) {
 
 pub fn encode_interior_round_trip_test() {
   let class = test_class()
-  let pilot = character.spawn_seated_at_helm(1, "ada", 9, class)
-  let walker = character.spawn_at_spawn_tile(2, "grace", 9, class)
+  let pilot = character.spawn_seated_at_helm(1, "ada", 9, class.plan)
+  let walker = character.spawn_at_spawn_tile(2, "grace", 9, class.plan)
   let text = protocol.encode_interior(90, 9, [pilot, walker])
   assert string.contains(text, "\"type\":\"interior\"")
   assert string.contains(text, "\"tick\":90")

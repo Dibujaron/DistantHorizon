@@ -272,7 +272,7 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
               state.next_character_id,
               name,
               new_ship.id,
-              state.class,
+              state.class.plan,
             )
           let state =
             State(
@@ -309,7 +309,7 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
       case find_character(state.characters, character_id) {
         Error(Nil) -> actor.continue(state)
         Ok(char) ->
-          case character.is_at_helm(char, state.class) {
+          case character.is_at_helm(char, state.class.plan) {
             False -> actor.continue(state)
             True -> {
               let ships =
@@ -388,7 +388,7 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
             list.any(state.characters, fn(c) {
               c.ship_id == char.ship_id && c.seat == Some(console)
             })
-          case character.try_sit(char, state.class, console, occupied) {
+          case character.try_sit(char, state.class.plan, console, occupied) {
             Ok(updated) -> {
               process.send(
                 reply,
@@ -522,7 +522,7 @@ fn with_helm_ship(
       actor.continue(state)
     }
     Ok(char) ->
-      case character.is_at_helm(char, state.class) {
+      case character.is_at_helm(char, state.class.plan) {
         False -> {
           process.send(reply, Error("not_at_helm"))
           actor.continue(state)
@@ -586,7 +586,7 @@ fn handle_board(
             }
             True -> {
               let old_ship_id = char.ship_id
-              let #(sx, sy) = character.spawn_position(state.class)
+              let #(sx, sy) = character.spawn_position(state.class.plan)
               // Move input is cleared, not just the seat (mirroring
               // character.gleam's try_sit/stand): input held at the moment
               // of boarding was buffered against the old ship's deck, and
@@ -672,7 +672,7 @@ fn run_tick(state: State) -> actor.Next(State, Msg) {
   let t = int.to_float(tick) *. ship.dt
   let ships = list.map(state.ships, fn(s) { ship.step(s, state.world, t) })
   let characters =
-    list.map(state.characters, fn(c) { character.step(c, state.class) })
+    list.map(state.characters, fn(c) { character.step(c, state.class.plan) })
 
   // 2. Broadcast at 15 Hz (skip serialization with no listeners): one
   // shared exterior snapshot to everyone, plus one interior message per

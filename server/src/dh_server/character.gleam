@@ -5,8 +5,8 @@
 //// handwave): walking never cares whether the ship is docked, thrusting,
 //// or tumbling.
 
+import dh_server/deckplan.{type DeckPlan}
 import dh_server/ship
-import dh_server/shipclass.{type ShipClass}
 import gleam/float
 import gleam/int
 import gleam/option.{type Option, None, Some}
@@ -35,16 +35,16 @@ pub type Character {
   )
 }
 
-/// A new character standing at `class`'s helm console, seated at it. Used
+/// A new character standing at `plan`'s helm console, seated at it. Used
 /// for login: every M1 flow (helm/dock/undock) keeps working immediately,
 /// since the character spawns already seated at the helm.
 pub fn spawn_seated_at_helm(
   id: Int,
   name: String,
   ship_id: Int,
-  class: ShipClass,
+  plan: DeckPlan,
 ) -> Character {
-  let assert Ok(console) = shipclass.helm_console(class)
+  let assert Ok(console) = deckplan.find_console_of_kind(plan, "helm")
   let #(x, y) = tile_center(console.x, console.y)
   Character(
     id: id,
@@ -58,15 +58,15 @@ pub fn spawn_seated_at_helm(
   )
 }
 
-/// A new character standing at `class`'s spawn tile, unseated. Used when a
+/// A new character standing at `plan`'s spawn tile, unseated. Used when a
 /// character boards a ship.
 pub fn spawn_at_spawn_tile(
   id: Int,
   name: String,
   ship_id: Int,
-  class: ShipClass,
+  plan: DeckPlan,
 ) -> Character {
-  let #(x, y) = spawn_position(class)
+  let #(x, y) = spawn_position(plan)
   Character(
     id: id,
     name: name,
@@ -79,9 +79,9 @@ pub fn spawn_at_spawn_tile(
   )
 }
 
-/// The tile center of `class`'s spawn tile.
-pub fn spawn_position(class: ShipClass) -> #(Float, Float) {
-  let #(x, y) = class.spawn_tile
+/// The tile center of `plan`'s spawn tile.
+pub fn spawn_position(plan: DeckPlan) -> #(Float, Float) {
+  let #(x, y) = plan.spawn_tile
   tile_center(x, y)
 }
 
@@ -104,18 +104,18 @@ pub fn set_move(character: Character, dx: Float, dy: Float) -> Character {
 /// collision circle at the candidate position overlaps a non-walkable
 /// tile — classic per-axis tile collision, so a character sliding into a
 /// wall at an angle keeps moving along it instead of stopping dead.
-pub fn step(character: Character, class: ShipClass) -> Character {
+pub fn step(character: Character, plan: DeckPlan) -> Character {
   case character.seat {
     Some(_) -> character
     None -> {
       let #(ndx, ndy) = normalize(character.move_dx, character.move_dy)
       let candidate_x = character.x +. ndx *. walk_speed *. ship.dt
-      let x = case circle_walkable(class, candidate_x, character.y) {
+      let x = case circle_walkable(plan, candidate_x, character.y) {
         True -> candidate_x
         False -> character.x
       }
       let candidate_y = character.y +. ndy *. walk_speed *. ship.dt
-      let y = case circle_walkable(class, x, candidate_y) {
+      let y = case circle_walkable(plan, x, candidate_y) {
         True -> candidate_y
         False -> character.y
       }
@@ -135,14 +135,14 @@ pub fn step(character: Character, class: ShipClass) -> Character {
 /// and fire again on the first tick after a later stand.
 pub fn try_sit(
   character: Character,
-  class: ShipClass,
+  plan: DeckPlan,
   console_id: String,
   occupied: Bool,
 ) -> Result(Character, String) {
   case character.seat {
     Some(_) -> Error("already_seated")
     None ->
-      case shipclass.find_console(class, console_id) {
+      case deckplan.find_console(plan, console_id) {
         Error(Nil) -> Error("unknown_console")
         Ok(console) ->
           case occupied {
@@ -181,13 +181,13 @@ pub fn stand(character: Character) -> Result(Character, String) {
   }
 }
 
-/// Whether `character` is seated at a `"helm"`-kind console of `class`.
+/// Whether `character` is seated at a `"helm"`-kind console of `plan`.
 /// Helm/dock/undock take effect only when this holds.
-pub fn is_at_helm(character: Character, class: ShipClass) -> Bool {
+pub fn is_at_helm(character: Character, plan: DeckPlan) -> Bool {
   case character.seat {
     None -> False
     Some(console_id) ->
-      case shipclass.find_console(class, console_id) {
+      case deckplan.find_console(plan, console_id) {
         Error(Nil) -> False
         Ok(console) -> console.kind == "helm"
       }
@@ -214,7 +214,7 @@ fn normalize(dx: Float, dy: Float) -> #(Float, Float) {
 
 /// Whether every tile overlapped by the character collision circle
 /// centered at `(cx, cy)` is walkable.
-fn circle_walkable(class: ShipClass, cx: Float, cy: Float) -> Bool {
+fn circle_walkable(plan: DeckPlan, cx: Float, cy: Float) -> Bool {
   let tx0 = tile_index(cx -. radius)
   let tx1 = tile_index(cx +. radius)
   let ty0 = tile_index(cy -. radius)
@@ -223,7 +223,7 @@ fn circle_walkable(class: ShipClass, cx: Float, cy: Float) -> Bool {
     all_tiles(ty0, ty1, fn(ty) {
       case tile_overlaps_circle(tx, ty, cx, cy) {
         False -> True
-        True -> shipclass.is_walkable(class, tx, ty)
+        True -> deckplan.is_walkable(plan, tx, ty)
       }
     })
   })
