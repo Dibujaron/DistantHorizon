@@ -587,6 +587,11 @@ fn handle_board(
             True -> {
               let old_ship_id = char.ship_id
               let #(sx, sy) = character.spawn_position(state.class)
+              // Move input is cleared, not just the seat (mirroring
+              // character.gleam's try_sit/stand): input held at the moment
+              // of boarding was buffered against the old ship's deck, and
+              // without the reset it would resume walking the character
+              // away from the new ship's spawn tile on the very next tick.
               let boarded =
                 character.Character(
                   ..char,
@@ -594,6 +599,8 @@ fn handle_board(
                   x: sx,
                   y: sy,
                   seat: None,
+                  move_dx: 0.0,
+                  move_dy: 0.0,
                 )
               let characters = replace_character(state.characters, boarded)
               // A ship left with zero characters aboard despawns

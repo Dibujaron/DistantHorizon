@@ -445,10 +445,17 @@ func _on_seat_result_received(ok: bool, reason: Variant, _seat: Variant) -> void
 
 ## On `ok`, NetworkClient.ship_id has already been updated (it's the wire
 ## authority); mirror it into our local copy so status-label/board logic
-## sees the new ship immediately.
+## sees the new ship immediately. Also clear the old ship's crew and the
+## interior-arrival timestamp (same reset `_on_welcome_received` does),
+## since board keeps them stale otherwise: the old crew would render on the
+## new deck for a frame, and `_on_interior_received`'s velocity estimator
+## would diff the new spawn-tile position against the old seated position
+## and produce a lurch/streak.
 func _on_board_result_received(ok: bool, reason: Variant, ship_id: int) -> void:
 	if ok:
 		_ship_id = ship_id
+		_characters = []
+		_interior_ticks_msec = 0
 	else:
 		_show_transient_message("board failed: %s" % str(reason))
 

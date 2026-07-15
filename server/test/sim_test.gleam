@@ -174,6 +174,70 @@ pub fn board_success_arrives_standing_at_spawn_tile_test() {
   assert_ship_leaves_snapshots(client_b, ship_b, 10)
 }
 
+/// Standing, walking input buffered on the old ship must not survive a
+/// board: without clearing `move_dx`/`move_dy` alongside the seat (the fix
+/// this test pins), the boarded character would resume walking away from
+/// the new ship's spawn tile on the very next tick.
+pub fn board_while_walking_arrives_and_stays_at_spawn_tile_test() {
+  let s = start_sim()
+  let client_a = process.new_subject()
+  let client_b = process.new_subject()
+  let #(ship_a, _char_a) = sim.add_player(s, "ada", client_a, 1000)
+  let #(_ship_b, char_b) = sim.add_player(s, "grace", client_b, 1000)
+
+  // b stands and sets nonzero walk input on their own ship, then boards a.
+  let assert protocol.SeatResult(ok: True, ..) =
+    sim.request_stand(s, char_b, 1000)
+  sim.set_move(s, char_b, 1.0, 0.0)
+
+  assert sim.request_board(s, char_b, ship_a, 1000)
+    == protocol.BoardResult(ok: True, reason: None, ship_id: ship_a)
+
+  // b lands at the spawn tile center and, since the buffered input was
+  // cleared, stays there across several interiors rather than walking off
+  // toward the engine room.
+  assert_stays_at_spawn_tile(client_b, ship_a, char_b, 10)
+}
+
+/// Assert `char_id` is at the spawn tile center ([5, 4] -> (5.5, 4.5)) in
+/// `count` consecutive interiors for `ship_id`.
+fn assert_stays_at_spawn_tile(
+  client: process.Subject(sim.ClientMsg),
+  ship_id: Int,
+  char_id: Int,
+  count: Int,
+) -> Nil {
+  case count {
+    0 -> Nil
+    _ -> {
+      let characters = receive_interior_for_ship(client, ship_id)
+      let assert Ok(#(_, x, y, _)) =
+        list.find(characters, fn(c) { c.0 == char_id })
+      assert x == 5.5
+      assert y == 4.5
+      assert_stays_at_spawn_tile(client, ship_id, char_id, count - 1)
+    }
+  }
+}
+
+/// `RequestSit`'s occupied check is scoped to the character's *current*
+/// ship (`c.ship_id == char.ship_id`) — nothing else end-to-end exercises
+/// that scoping. b boards a's ship (landing standing, per `handle_board`)
+/// and tries to take a's seat at the helm.
+pub fn request_sit_occupied_is_scoped_to_current_ship_test() {
+  let s = start_sim()
+  let client_a = process.new_subject()
+  let client_b = process.new_subject()
+  let #(ship_a, _char_a) = sim.add_player(s, "ada", client_a, 1000)
+  let #(_ship_b, char_b) = sim.add_player(s, "grace", client_b, 1000)
+
+  let assert protocol.BoardResult(ok: True, ..) =
+    sim.request_board(s, char_b, ship_a, 1000)
+
+  assert sim.request_sit(s, char_b, "helm_main", 1000)
+    == protocol.SeatResult(ok: False, reason: Some("occupied"), seat: None)
+}
+
 pub fn board_unknown_ship_test() {
   let s = start_sim()
   let client = process.new_subject()

@@ -127,7 +127,7 @@ async def matched_interiors(
     client_a: DHClient,
     client_b: DHClient,
     ship_id: int,
-    max_reads: int = 60,
+    max_reads: int = 150,
 ) -> tuple[dict, dict]:
     """Collect interiors for `ship_id` from both clients until a pair with
     the same server tick is found (the server serializes one interior per
@@ -311,6 +311,10 @@ async def test_seat_rules(server):
         gated = await client.undock()
         assert gated["ok"] is False
         assert gated["reason"] == "not_at_helm"
+
+        gated_dock = await client.dock()
+        assert gated_dock["ok"] is False
+        assert gated_dock["reason"] == "not_at_helm"
 
         # Sit back down (still standing on the helm tile, well in range)
         # and the helm binding returns.

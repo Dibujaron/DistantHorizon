@@ -64,7 +64,12 @@ func _ready() -> void:
 func _on_snapshot_received(_tick: int, ships: Array[ShipState]) -> void:
 	_latest_ships = ships
 
-func _on_interior_received(_tick: int, _ship_id: int, characters: Array[CharacterState]) -> void:
+## Interiors for other ships are ignored, mirroring main.gd's
+## `_on_interior_received` guard: a message serialized just before our
+## `board` landed can still arrive for the ship we just left.
+func _on_interior_received(_tick: int, ship_id: int, characters: Array[CharacterState]) -> void:
+	if ship_id != NetworkClient.ship_id:
+		return
 	_latest_characters = characters
 
 func _process(_delta: float) -> void:
