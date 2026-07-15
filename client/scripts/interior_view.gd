@@ -118,11 +118,11 @@ func _draw_characters(origin: Vector2) -> void:
 	var radius_px := CHARACTER_RADIUS_TILES * TILE_PIXELS
 	for character in characters:
 		var screen_pos := _tile_to_screen(character.position(), origin)
-		var is_own := character.id == own_character_id
+		var is_own: bool = character.id == own_character_id
 		var color := OWN_CHARACTER_COLOR if is_own else OTHER_CHARACTER_COLOR
 		draw_circle(screen_pos, radius_px, color)
 		if _font != null:
-			var label := "you" if is_own else character.name
+			var label: String = "you" if is_own else character.name
 			draw_string(
 				_font, screen_pos + Vector2(radius_px + 3.0, 4.0), label,
 				HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, CHARACTER_LABEL_COLOR)
