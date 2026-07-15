@@ -14,11 +14,24 @@ signal connection_state_changed(state: ConnectionState)
 ## parsed into typed objects.
 signal welcome_received(ship_id: int, world: WorldData)
 ## Reply to a `dock`/`undock` request. `reason` is null when `ok`, otherwise
-## one of "out_of_range" | "too_fast" | "already_docked" | "not_docked".
+## one of "out_of_range" | "too_fast" | "already_docked" | "not_docked" |
+## "not_at_helm".
 signal dock_result_received(ok: bool, reason: Variant)
 ## Login rejected (or a storage error). Connection stays open; caller may
 ## retry login.
 signal error_received(code: String, message: String)
+## `characters` is an Array[CharacterState] parsed off the wire. Sent at
+## 15 Hz, only to clients aboard `ship_id` -- the M2 interest-management
+## boundary; interiors never ride the shared `snapshot` broadcast.
+signal interior_received(tick: int, ship_id: int, characters: Array[CharacterState])
+## Reply to a `sit`/`stand` request. `reason` is null when `ok`, otherwise
+## one of "unknown_console" | "occupied" | "too_far" | "already_seated" |
+## "not_seated". `seat` is the console id (or null) after the attempt.
+signal seat_result_received(ok: bool, reason: Variant, seat: Variant)
+## Reply to a `board` request. `reason` is null when `ok`, otherwise one of
+## "unknown_ship" | "not_docked_together" | "same_ship". `ship_id` is your
+## ship after the attempt (unchanged from before the attempt if not `ok`).
+signal board_result_received(ok: bool, reason: Variant, ship_id: int)
 
 enum ConnectionState { CONNECTING, CONNECTED, DISCONNECTED }
 
@@ -42,6 +55,10 @@ var tick_rate: int = 60
 var dt: float = 0.016666666666666666
 var world: WorldData = null
 var logged_in: bool = false
+## Stable across boarding, unlike ship_id (which changes when you board
+## another ship).
+var character_id: int = -1
+var ship_class: ShipClassData = null
 
 var _socket: WebSocketPeer
 var _reconnect_timer := 0.0
@@ -119,6 +136,12 @@ func _handle_packet(packet: PackedByteArray) -> void:
 			_handle_error(message)
 		"dock_result":
 			_handle_dock_result(message)
+		"interior":
+			_handle_interior(message)
+		"seat_result":
+			_handle_seat_result(message)
+		"board_result":
+			_handle_board_result(message)
 		_:
 			# Other message types (e.g. stats) are fine to ignore.
 			pass
@@ -149,8 +172,12 @@ func _handle_welcome(message: Dictionary) -> void:
 	var w: Variant = message.get("world")
 	if w is Dictionary:
 		world = WorldData.from_dict(w)
+	character_id = int(message.get("character_id", -1))
+	var class_doc: Variant = message.get("ship_class")
+	if class_doc is Dictionary:
+		ship_class = ShipClassData.from_dict(class_doc)
 	logged_in = true
-	print("[net] welcome: ship_id=%d account_id=%d" % [ship_id, account_id])
+	print("[net] welcome: ship_id=%d account_id=%d character_id=%d" % [ship_id, account_id, character_id])
 	welcome_received.emit(ship_id, world)
 
 func _handle_error(message: Dictionary) -> void:
@@ -163,6 +190,37 @@ func _handle_dock_result(message: Dictionary) -> void:
 	var ok := bool(message.get("ok", false))
 	var reason: Variant = message.get("reason")
 	dock_result_received.emit(ok, reason)
+
+func _handle_interior(message: Dictionary) -> void:
+	var raw_characters: Variant = message.get("characters")
+	if not raw_characters is Array:
+		push_warning("[net] interior without characters array, ignoring")
+		return
+	var characters: Array[CharacterState] = []
+	for character_data: Variant in raw_characters:
+		if character_data is Dictionary:
+			characters.append(CharacterState.from_dict(character_data))
+	var tick := int(message.get("tick", -1))
+	var msg_ship_id := int(message.get("ship_id", -1))
+	interior_received.emit(tick, msg_ship_id, characters)
+
+func _handle_seat_result(message: Dictionary) -> void:
+	var ok := bool(message.get("ok", false))
+	var reason: Variant = message.get("reason")
+	var seat: Variant = message.get("seat")
+	seat_result_received.emit(ok, reason, seat)
+
+## On `ok`, our ship changes (boarding moves the character to another
+## ship's crew) -- update `ship_id` here so every consumer of the autoload's
+## public state (including automation_server.gd's state dump) sees it
+## immediately, same as `welcome` does.
+func _handle_board_result(message: Dictionary) -> void:
+	var ok := bool(message.get("ok", false))
+	var reason: Variant = message.get("reason")
+	var new_ship_id := int(message.get("ship_id", ship_id))
+	if ok:
+		ship_id = new_ship_id
+	board_result_received.emit(ok, reason, new_ship_id)
 
 func _handle_snapshot(message: Dictionary) -> void:
 	var raw_ships: Variant = message.get("ships")
