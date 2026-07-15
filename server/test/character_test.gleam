@@ -20,6 +20,7 @@ fn standing_at(x: Float, y: Float) -> Character {
     id: 1,
     name: "ada",
     ship_id: 1,
+    place: character.Aboard,
     x: x,
     y: y,
     seat: None,
@@ -243,4 +244,53 @@ pub fn sit_clears_stale_move_input_test() {
   let assert Ok(seated) = character.try_sit(c, plan, "helm_main", False)
   assert seated.move_dx == 0.0
   assert seated.move_dy == 0.0
+}
+
+pub fn spawns_are_aboard_test() {
+  let plan = sparrow()
+  let c = character.spawn_seated_at_helm(1, "ada", 1, plan)
+  assert c.place == character.Aboard
+  let c2 = character.spawn_at_spawn_tile(2, "grace", 1, plan)
+  assert c2.place == character.Aboard
+}
+
+pub fn disembark_to_moves_ashore_standing_at_spawn_test() {
+  let plan = sparrow()
+  let c =
+    character.spawn_seated_at_helm(1, "ada", 1, plan)
+    |> character.set_move(1.0, 0.0)
+  // Use the ship plan as a stand-in concourse plan: spawn tile [5, 4].
+  let ashore = character.disembark_to(c, plan, "meridian_highport")
+  assert ashore.place == character.OnStation("meridian_highport")
+  assert ashore.x == 5.5
+  assert ashore.y == 4.5
+  assert ashore.seat == None
+  assert ashore.move_dx == 0.0
+  assert ashore.move_dy == 0.0
+  // Crew membership survives going ashore.
+  assert ashore.ship_id == 1
+}
+
+pub fn seated_at_kind_matches_console_kind_test() {
+  let plan = sparrow()
+  let c = character.spawn_seated_at_helm(1, "ada", 1, plan)
+  assert character.seated_at_kind(c, plan, "helm")
+  assert !character.seated_at_kind(c, plan, "broker")
+  let assert Ok(standing) = character.stand(c)
+  assert !character.seated_at_kind(standing, plan, "helm")
+}
+
+pub fn same_place_scopes_by_ship_and_station_test() {
+  let plan = sparrow()
+  let aboard_1 = character.spawn_at_spawn_tile(1, "a", 1, plan)
+  let aboard_1b = character.spawn_at_spawn_tile(2, "b", 1, plan)
+  let aboard_2 = character.spawn_at_spawn_tile(3, "c", 2, plan)
+  let ashore_m = character.disembark_to(aboard_1, plan, "meridian_highport")
+  let ashore_m2 = character.disembark_to(aboard_2, plan, "meridian_highport")
+  let ashore_s = character.disembark_to(aboard_1b, plan, "solis_ring")
+  assert character.same_place(aboard_1, aboard_1b)
+  assert !character.same_place(aboard_1, aboard_2)
+  assert character.same_place(ashore_m, ashore_m2)
+  assert !character.same_place(ashore_m, ashore_s)
+  assert !character.same_place(aboard_1, ashore_m)
 }

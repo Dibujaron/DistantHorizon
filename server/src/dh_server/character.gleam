@@ -21,11 +21,20 @@ pub const radius = 0.3
 /// tiles.
 pub const sit_range = 1.2
 
+/// Where a character's body is: aboard their crew ship, or ashore on a
+/// station concourse. Crew membership is `ship_id` either way — going
+/// ashore does not stop you being crew (or keeping your ship alive).
+pub type Place {
+  Aboard
+  OnStation(station_id: String)
+}
+
 pub type Character {
   Character(
     id: Int,
     name: String,
     ship_id: Int,
+    place: Place,
     x: Float,
     y: Float,
     /// The console id this character is seated at, if any.
@@ -50,6 +59,7 @@ pub fn spawn_seated_at_helm(
     id: id,
     name: name,
     ship_id: ship_id,
+    place: Aboard,
     x: x,
     y: y,
     seat: Some(console.id),
@@ -71,6 +81,7 @@ pub fn spawn_at_spawn_tile(
     id: id,
     name: name,
     ship_id: ship_id,
+    place: Aboard,
     x: x,
     y: y,
     seat: None,
@@ -181,17 +192,58 @@ pub fn stand(character: Character) -> Result(Character, String) {
   }
 }
 
-/// Whether `character` is seated at a `"helm"`-kind console of `plan`.
-/// Helm/dock/undock take effect only when this holds.
-pub fn is_at_helm(character: Character, plan: DeckPlan) -> Bool {
+/// Step ashore: standing at `plan`'s spawn tile on `station_id`'s
+/// concourse, seat and buffered move input cleared (same reasoning as
+/// boarding: input held at the moment of transition was aimed at the old
+/// deck and must not fire on the new one).
+pub fn disembark_to(
+  character: Character,
+  plan: DeckPlan,
+  station_id: String,
+) -> Character {
+  let #(x, y) = spawn_position(plan)
+  Character(
+    ..character,
+    place: OnStation(station_id),
+    x: x,
+    y: y,
+    seat: None,
+    move_dx: 0.0,
+    move_dy: 0.0,
+  )
+}
+
+/// Whether `character` is seated at a console of `kind` on `plan`.
+pub fn seated_at_kind(
+  character: Character,
+  plan: DeckPlan,
+  kind: String,
+) -> Bool {
   case character.seat {
     None -> False
     Some(console_id) ->
       case deckplan.find_console(plan, console_id) {
         Error(Nil) -> False
-        Ok(console) -> console.kind == "helm"
+        Ok(console) -> console.kind == kind
       }
   }
+}
+
+/// Whether two characters share an interior (same ship deck, or the same
+/// station concourse) — the scope for seat occupancy and interior fan-out.
+pub fn same_place(a: Character, b: Character) -> Bool {
+  case a.place, b.place {
+    Aboard, Aboard -> a.ship_id == b.ship_id
+    OnStation(station_a), OnStation(station_b) -> station_a == station_b
+    Aboard, OnStation(_) | OnStation(_), Aboard -> False
+  }
+}
+
+/// Whether `character` is seated at a `"helm"`-kind console of `plan`.
+/// Helm/dock/undock take effect only when this holds (and only aboard —
+/// the sim checks `place` before consulting the ship plan).
+pub fn is_at_helm(character: Character, plan: DeckPlan) -> Bool {
+  seated_at_kind(character, plan, "helm")
 }
 
 fn tile_center(x: Int, y: Int) -> #(Float, Float) {
