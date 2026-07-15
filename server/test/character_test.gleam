@@ -189,6 +189,15 @@ pub fn try_sit_occupied_test() {
   assert character.try_sit(c, class, "helm_main", True) == Error("occupied")
 }
 
+pub fn try_sit_occupied_beats_too_far_test() {
+  let class = sparrow()
+  // BOTH occupied and out of range (helm at (1.5, 2.5), character across
+  // the ship): the reply must be `occupied`, proving occupancy is checked
+  // before range — this would fail under the reversed ordering.
+  let c = standing_at(8.5, 2.5)
+  assert character.try_sit(c, class, "helm_main", True) == Error("occupied")
+}
+
 pub fn try_sit_already_seated_test() {
   let class = sparrow()
   let c = Character(..standing_at(1.5, 2.5), seat: Some("helm_main"))
@@ -207,4 +216,30 @@ pub fn stand_leaves_seat_in_place_test() {
 pub fn stand_not_seated_test() {
   let c = standing_at(1.5, 2.5)
   assert character.stand(c) == Error("not_seated")
+}
+
+pub fn stand_clears_stale_move_input_test() {
+  let class = sparrow()
+  // Move input sent while seated is ignored by `step`, but without a reset
+  // it would still be buffered — and resume walking the character the tick
+  // after standing. Standing must clear it.
+  let c =
+    Character(..standing_at(1.5, 2.5), seat: Some("helm_main"))
+    |> character.set_move(1.0, 0.0)
+  let assert Ok(standing) = character.stand(c)
+  assert standing.move_dx == 0.0
+  assert standing.move_dy == 0.0
+  let after = character.step(standing, class)
+  assert after.x == standing.x
+  assert after.y == standing.y
+}
+
+pub fn sit_clears_stale_move_input_test() {
+  let class = sparrow()
+  // Same defence on sitting down: input held at the moment of sitting must
+  // not survive the stay and fire again on the first tick after standing.
+  let c = standing_at(1.5, 2.5) |> character.set_move(0.0, 1.0)
+  let assert Ok(seated) = character.try_sit(c, class, "helm_main", False)
+  assert seated.move_dx == 0.0
+  assert seated.move_dy == 0.0
 }

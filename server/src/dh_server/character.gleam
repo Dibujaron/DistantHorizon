@@ -129,7 +129,10 @@ pub fn step(character: Character, class: ShipClass) -> Character {
 /// unoccupied (`"occupied"`, decided by the caller since occupancy depends
 /// on every other character aboard) and the character's center to be
 /// within `sit_range` of the console's tile center (`"too_far"`). On
-/// success the character snaps to the console's tile center and is seated.
+/// success the character snaps to the console's tile center, is seated,
+/// and its move input is cleared (mirroring `ship.try_dock` zeroing the
+/// helm): input held at the moment of sitting must not survive the stay
+/// and fire again on the first tick after a later stand.
 pub fn try_sit(
   character: Character,
   class: ShipClass,
@@ -150,7 +153,14 @@ pub fn try_sit(
                 False -> Error("too_far")
                 True ->
                   Ok(
-                    Character(..character, x: cx, y: cy, seat: Some(console_id)),
+                    Character(
+                      ..character,
+                      x: cx,
+                      y: cy,
+                      seat: Some(console_id),
+                      move_dx: 0.0,
+                      move_dy: 0.0,
+                    ),
                   )
               }
             }
@@ -160,11 +170,14 @@ pub fn try_sit(
 }
 
 /// Leave the current seat. `"not_seated"` if already standing. The
-/// character stays at the console's tile center.
+/// character stays at the console's tile center, with move input cleared —
+/// `move` sent while seated is ignored but still buffered, and without the
+/// reset it would resume walking the character the tick after standing.
 pub fn stand(character: Character) -> Result(Character, String) {
   case character.seat {
     None -> Error("not_seated")
-    Some(_) -> Ok(Character(..character, seat: None))
+    Some(_) ->
+      Ok(Character(..character, seat: None, move_dx: 0.0, move_dy: 0.0))
   }
 }
 
