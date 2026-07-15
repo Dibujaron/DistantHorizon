@@ -1,11 +1,18 @@
+import dh_server/character
 import dh_server/protocol
 import dh_server/ship
+import dh_server/shipclass
 import dh_server/world
 import gleam/dynamic/decode
 import gleam/json
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/string
+
+fn test_class() -> shipclass.ShipClass {
+  let assert Ok(c) = shipclass.load("classes/sparrow.json")
+  c
+}
 
 pub fn parse_login_test() {
   assert protocol.parse_client_message(
@@ -40,6 +47,32 @@ pub fn parse_undock_test() {
     == Ok(protocol.Undock)
 }
 
+pub fn parse_move_test() {
+  assert protocol.parse_client_message(
+      "{\"v\":1,\"type\":\"move\",\"dx\":0.5,\"dy\":-1.0}",
+    )
+    == Ok(protocol.Move(dx: 0.5, dy: -1.0))
+}
+
+pub fn parse_sit_test() {
+  assert protocol.parse_client_message(
+      "{\"v\":1,\"type\":\"sit\",\"console\":\"helm_main\"}",
+    )
+    == Ok(protocol.Sit(console: "helm_main"))
+}
+
+pub fn parse_stand_test() {
+  assert protocol.parse_client_message("{\"v\":1,\"type\":\"stand\"}")
+    == Ok(protocol.Stand)
+}
+
+pub fn parse_board_test() {
+  assert protocol.parse_client_message(
+      "{\"v\":1,\"type\":\"board\",\"ship_id\":7}",
+    )
+    == Ok(protocol.Board(ship_id: 7))
+}
+
 pub fn parse_get_stats_test() {
   assert protocol.parse_client_message("{\"v\":1,\"type\":\"get_stats\"}")
     == Ok(protocol.GetStats)
@@ -66,13 +99,24 @@ pub fn parse_garbage_test() {
 
 pub fn encode_welcome_contains_world_name_and_stations_test() {
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  let text = protocol.encode_welcome(0, 1, w)
+  let text = protocol.encode_welcome(0, 1, 1, w, test_class())
   assert string.contains(text, "\"type\":\"welcome\"")
   assert string.contains(text, "\"account_id\":0")
   assert string.contains(text, "\"ship_id\":1")
   assert string.contains(text, "Krasny Sector (M1 pinned system)")
   assert string.contains(text, "meridian_highport")
   assert string.contains(text, "solis_ring")
+}
+
+pub fn encode_welcome_contains_character_id_and_ship_class_test() {
+  let assert Ok(w) = world.load("worlds/m1_system.json")
+  let text = protocol.encode_welcome(0, 1, 42, w, test_class())
+  assert string.contains(text, "\"character_id\":42")
+  assert string.contains(text, "\"ship_class\":")
+  assert string.contains(text, "\"id\":\"sparrow\"")
+  assert string.contains(text, "\"spawn_tile\":[5,4]")
+  assert string.contains(text, "\"consoles\":")
+  assert string.contains(text, "helm_main")
 }
 
 pub fn encode_error_test() {
@@ -172,4 +216,105 @@ pub fn encode_snapshot_round_trip_test() {
 
   assert decoded_docked.vy == 13.9
   assert decoded_docked.docked == Some("meridian_highport")
+}
+
+pub fn encode_seat_result_ok_test() {
+  let text =
+    protocol.encode_seat_result(protocol.SeatResult(
+      ok: True,
+      reason: None,
+      seat: Some("helm_main"),
+    ))
+  assert string.contains(text, "\"type\":\"seat_result\"")
+  assert string.contains(text, "\"ok\":true")
+  assert string.contains(text, "\"reason\":null")
+  assert string.contains(text, "\"seat\":\"helm_main\"")
+}
+
+pub fn encode_seat_result_error_test() {
+  let text =
+    protocol.encode_seat_result(protocol.SeatResult(
+      ok: False,
+      reason: Some("too_far"),
+      seat: None,
+    ))
+  assert string.contains(text, "\"ok\":false")
+  assert string.contains(text, "\"reason\":\"too_far\"")
+  assert string.contains(text, "\"seat\":null")
+}
+
+pub fn encode_board_result_ok_test() {
+  let text =
+    protocol.encode_board_result(protocol.BoardResult(
+      ok: True,
+      reason: None,
+      ship_id: 2,
+    ))
+  assert string.contains(text, "\"type\":\"board_result\"")
+  assert string.contains(text, "\"ok\":true")
+  assert string.contains(text, "\"reason\":null")
+  assert string.contains(text, "\"ship_id\":2")
+}
+
+pub fn encode_board_result_error_test() {
+  let text =
+    protocol.encode_board_result(protocol.BoardResult(
+      ok: False,
+      reason: Some("not_docked_together"),
+      ship_id: 1,
+    ))
+  assert string.contains(text, "\"ok\":false")
+  assert string.contains(text, "\"reason\":\"not_docked_together\"")
+}
+
+type DecodedCharacter {
+  DecodedCharacter(
+    id: Int,
+    name: String,
+    x: Float,
+    y: Float,
+    seat: option.Option(String),
+  )
+}
+
+fn decoded_character_decoder() -> decode.Decoder(DecodedCharacter) {
+  use id <- decode.field("id", decode.int)
+  use name <- decode.field("name", decode.string)
+  use x <- decode.field("x", decode.float)
+  use y <- decode.field("y", decode.float)
+  use seat <- decode.field("seat", decode.optional(decode.string))
+  decode.success(DecodedCharacter(id: id, name: name, x: x, y: y, seat: seat))
+}
+
+fn interior_decoder() -> decode.Decoder(#(Int, Int, List(DecodedCharacter))) {
+  use tick <- decode.field("tick", decode.int)
+  use ship_id <- decode.field("ship_id", decode.int)
+  use characters <- decode.field(
+    "characters",
+    decode.list(decoded_character_decoder()),
+  )
+  decode.success(#(tick, ship_id, characters))
+}
+
+pub fn encode_interior_round_trip_test() {
+  let class = test_class()
+  let pilot = character.spawn_seated_at_helm(1, "ada", 9, class)
+  let walker = character.spawn_at_spawn_tile(2, "grace", 9, class)
+  let text = protocol.encode_interior(90, 9, [pilot, walker])
+  assert string.contains(text, "\"type\":\"interior\"")
+  assert string.contains(text, "\"tick\":90")
+  assert string.contains(text, "\"ship_id\":9")
+
+  let assert Ok(#(tick, ship_id, characters)) =
+    json.parse(text, interior_decoder())
+  assert tick == 90
+  assert ship_id == 9
+  let assert Ok(decoded_pilot) = list.find(characters, fn(c) { c.id == 1 })
+  let assert Ok(decoded_walker) = list.find(characters, fn(c) { c.id == 2 })
+  assert decoded_pilot.name == "ada"
+  assert decoded_pilot.seat == Some("helm_main")
+  assert decoded_walker.name == "grace"
+  assert decoded_walker.seat == None
+  assert decoded_walker.x == walker.x
+  assert decoded_walker.y == walker.y
 }

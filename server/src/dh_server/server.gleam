@@ -2,13 +2,19 @@
 ////
 //// Each connection starts `PreLogin` and sends no snapshots until it sends
 //// a valid `login`; the given `Authenticator` decides success/failure. On
-//// success the connection's ship is spawned via `sim.add_ship` and it
-//// moves to `LoggedIn`, at which point `helm`/`dock`/`undock` take effect.
-//// `get_stats` works in both states. The sim pushes serialized snapshots
-//// as `SendText` messages, which the handler forwards down the socket.
+//// success the connection's ship and character are spawned via
+//// `sim.add_player` and it moves to `LoggedIn`, at which point
+//// `helm`/`dock`/`undock`/`move`/`sit`/`stand`/`board` take effect.
+//// `get_stats` works in both states. `LoggedIn.ship_id` tracks the
+//// character's current ship and is updated after every `board` attempt
+//// (even a failed one, to the character's unchanged current ship) so that
+//// `helm`/`dock`/`undock` always resolve against a session-local ship id.
+//// The sim pushes serialized snapshots/interiors as `SendText` messages,
+//// which the handler forwards down the socket.
 
 import dh_server/auth.{type Authenticator}
 import dh_server/protocol
+import dh_server/shipclass.{type ShipClass}
 import dh_server/sim
 import dh_server/world.{type World}
 import gleam/bytes_tree
@@ -25,18 +31,19 @@ pub const port = 8484
 pub const bind_address = "127.0.0.1"
 
 /// A connection's session state: not yet logged in (holding the subject
-/// the sim uses to reach it), or logged in and owning a ship.
+/// the sim uses to reach it), or logged in and owning a ship and character.
 pub type Session {
   PreLogin(client: Subject(sim.ClientMsg))
-  LoggedIn(client: Subject(sim.ClientMsg), ship_id: Int)
+  LoggedIn(client: Subject(sim.ClientMsg), ship_id: Int, character_id: Int)
 }
 
 pub fn start(
   sim_subject: Subject(sim.Msg),
   world: World,
+  class: ShipClass,
   authenticator: Authenticator,
 ) -> Result(actor.Started(static_supervisor.Supervisor), actor.StartError) {
-  mist.new(fn(req) { route(req, sim_subject, world, authenticator) })
+  mist.new(fn(req) { route(req, sim_subject, world, class, authenticator) })
   |> mist.port(port)
   |> mist.bind(bind_address)
   |> mist.start
@@ -46,6 +53,7 @@ fn route(
   req: Request(Connection),
   sim_subject: Subject(sim.Msg),
   world: World,
+  class: ShipClass,
   authenticator: Authenticator,
 ) -> Response(ResponseData) {
   case request.path_segments(req) {
@@ -53,12 +61,20 @@ fn route(
       mist.websocket(
         request: req,
         handler: fn(state, message, conn) {
-          handle_ws(state, message, conn, sim_subject, world, authenticator)
+          handle_ws(
+            state,
+            message,
+            conn,
+            sim_subject,
+            world,
+            class,
+            authenticator,
+          )
         },
         on_init: fn(_conn) { ws_init() },
         // No explicit unregister: the sim monitors this handler process and
-        // drops the subscription (and ship) when it exits, clean close or
-        // crash alike.
+        // drops the subscription (and character/ship) when it exits, clean
+        // close or crash alike.
         on_close: fn(_state) { Nil },
       )
     _ ->
@@ -81,10 +97,11 @@ fn handle_ws(
   conn: mist.WebsocketConnection,
   sim_subject: Subject(sim.Msg),
   world: World,
+  class: ShipClass,
   authenticator: Authenticator,
 ) -> mist.Next(Session, sim.ClientMsg) {
   case message {
-    // Snapshot (or other outbound text) pushed by the sim actor.
+    // Snapshot/interior (or other outbound text) pushed by the sim actor.
     mist.Custom(sim.SendText(text)) ->
       case mist.send_text_frame(conn, text) {
         Ok(_) -> mist.continue(session)
@@ -99,6 +116,7 @@ fn handle_ws(
         conn,
         sim_subject,
         world,
+        class,
         authenticator,
       ))
 
@@ -113,6 +131,7 @@ fn handle_client_text(
   conn: mist.WebsocketConnection,
   sim_subject: Subject(sim.Msg),
   world: World,
+  class: ShipClass,
   authenticator: Authenticator,
 ) -> Session {
   case protocol.parse_client_message(text) {
@@ -122,17 +141,24 @@ fn handle_client_text(
     Ok(protocol.Login(username, password)) ->
       case session {
         // Login while already logged in is ignored.
-        LoggedIn(_, _) -> session
+        LoggedIn(_, _, _) -> session
         PreLogin(client) ->
           case authenticator(username, password) {
             Ok(account_id) -> {
-              let ship_id = sim.add_ship(sim_subject, client, 1000)
+              let #(ship_id, character_id) =
+                sim.add_player(sim_subject, username, client, 1000)
               let _ =
                 mist.send_text_frame(
                   conn,
-                  protocol.encode_welcome(account_id, ship_id, world),
+                  protocol.encode_welcome(
+                    account_id,
+                    ship_id,
+                    character_id,
+                    world,
+                    class,
+                  ),
                 )
-              LoggedIn(client, ship_id)
+              LoggedIn(client, ship_id, character_id)
             }
             Error(auth.InvalidCredentials) -> {
               let _ =
@@ -156,12 +182,12 @@ fn handle_client_text(
           }
       }
 
-    // Helm/dock/undock are ignored until logged in.
+    // Helm/dock/undock/move/sit/stand/board are ignored until logged in.
     Ok(protocol.Helm(rotate, thrust)) ->
       case session {
         PreLogin(_) -> session
-        LoggedIn(_, ship_id) -> {
-          sim.set_controls(sim_subject, ship_id, rotate, thrust)
+        LoggedIn(_, _, character_id) -> {
+          sim.set_controls(sim_subject, character_id, rotate, thrust)
           session
         }
       }
@@ -169,8 +195,8 @@ fn handle_client_text(
     Ok(protocol.Dock) ->
       case session {
         PreLogin(_) -> session
-        LoggedIn(_, ship_id) -> {
-          let result = sim.request_dock(sim_subject, ship_id, 1000)
+        LoggedIn(_, _, character_id) -> {
+          let result = sim.request_dock(sim_subject, character_id, 1000)
           let _ =
             mist.send_text_frame(conn, protocol.encode_dock_result(result))
           session
@@ -180,11 +206,56 @@ fn handle_client_text(
     Ok(protocol.Undock) ->
       case session {
         PreLogin(_) -> session
-        LoggedIn(_, ship_id) -> {
-          let result = sim.request_undock(sim_subject, ship_id, 1000)
+        LoggedIn(_, _, character_id) -> {
+          let result = sim.request_undock(sim_subject, character_id, 1000)
           let _ =
             mist.send_text_frame(conn, protocol.encode_dock_result(result))
           session
+        }
+      }
+
+    Ok(protocol.Move(dx, dy)) ->
+      case session {
+        PreLogin(_) -> session
+        LoggedIn(_, _, character_id) -> {
+          sim.set_move(sim_subject, character_id, dx, dy)
+          session
+        }
+      }
+
+    Ok(protocol.Sit(console)) ->
+      case session {
+        PreLogin(_) -> session
+        LoggedIn(_, _, character_id) -> {
+          let result = sim.request_sit(sim_subject, character_id, console, 1000)
+          let _ =
+            mist.send_text_frame(conn, protocol.encode_seat_result(result))
+          session
+        }
+      }
+
+    Ok(protocol.Stand) ->
+      case session {
+        PreLogin(_) -> session
+        LoggedIn(_, _, character_id) -> {
+          let result = sim.request_stand(sim_subject, character_id, 1000)
+          let _ =
+            mist.send_text_frame(conn, protocol.encode_seat_result(result))
+          session
+        }
+      }
+
+    Ok(protocol.Board(target_ship_id)) ->
+      case session {
+        PreLogin(_) -> session
+        LoggedIn(client, _, character_id) -> {
+          let result =
+            sim.request_board(sim_subject, character_id, target_ship_id, 1000)
+          let _ =
+            mist.send_text_frame(conn, protocol.encode_board_result(result))
+          // `ship_id` is "your ship after the attempt": updated whether the
+          // board succeeded or not (a failed attempt leaves it unchanged).
+          LoggedIn(client, result.ship_id, character_id)
         }
       }
 

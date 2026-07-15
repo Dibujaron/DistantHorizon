@@ -544,6 +544,7 @@ what makes the game developable by agents rather than merely reviewable.
 - **M2 — The ship is a place:** interior deck plan for one ship class; walkable character; sit at
   helm ↔ walk around; zoom transition between views; two players aboard the same ship, one
   flying while the other walks. *This is the milestone that proves the new game feel.*
+  **✅ Done 2026-07-14 ([results](docs/M2-RESULTS.md)).**
 - **M3 — Trade on foot:** station concourse (reusing interior tech); walk off the ship; buy and
   sell at a broker; cargo transfer with handling times (cranes vs. robots); dynamic prices ported
   from Classic. Playable sandbox from here on.
@@ -567,14 +568,22 @@ what makes the game developable by agents rather than merely reviewable.
 - **Auth:** with the balancer gone, what's the login story? Simplest viable: server-issued
   accounts with username/password over TLS; or lean on itch.io/Steam identity later.
 - **Godot minor version:** take latest stable 4.x at project start and pin it.
-- **Interior movement:** layout is settled (a grid of largeish FTL-scale tiles), but do
-  characters move tile-to-tile or freely within rooms? (Leaning free movement over tile-based
-  layout — feels less board-gamey — but FTL-style pathfinding simplicity is tempting. Decide
-  in M2.)
-- **How much ship-system depth at M2:** power distribution / repair / fires FTL-style, or just
-  helm + cargo consoles first? (Leaning strongly to consoles first — interiors are valuable for
-  *embodiment* even before they're a systems game, and per the seat test, FTL-style systems
-  busywork doesn't earn a crew role anyway.)
+- ~~**Interior movement:**~~ **Decided in M2: free movement** within walkable tiles
+  (server-integrated at a fixed walk speed, circle-vs-tile collision) — less board-gamey, and
+  the walkable grid keeps FTL-style layout simplicity without tile-hop movement.
+- ~~**How much ship-system depth at M2:**~~ **Decided in M2: consoles first.** Helm console is
+  functional; the cargo console exists on the deck but binds nothing until M3. No
+  power/repair/fires — per the seat test, that busywork doesn't earn a crew role anyway.
+- **The world outside the window (must-do, milestone TBD):** the interior view currently
+  renders the deck against a void, but the simulation isn't the constraint — the client already
+  knows the ship's exterior position/heading and every rail, so compositing the system view
+  under/around the deck plan is a pure rendering feature. Walking the cargo hold while a
+  station slides past "outside" is a huge embodiment win and cheap relative to its payoff.
+  Open design choice: how much you see — everything nearby ("sensors/radar" handwave, simplest
+  and probably right for our tone), windows-only with occlusion Barotrauma-style (narrow FoV;
+  reads creepy/tense, which isn't our default register), or a hybrid (full view dimmed, crisp
+  through windows — windows become a deck-plan feature hull authors place). Decide when we
+  schedule it; deck-plan schema may want a `windows` layer either way.
 - **Run tuning:** target length vs. crew size — does the debt clock scale with number of
   players? (Pause rules are settled: solo universes resume freely, shared universes never
   pause.)

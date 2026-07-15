@@ -1,5 +1,6 @@
 import dh_server/auth
 import dh_server/protocol
+import dh_server/shipclass
 import dh_server/sim
 import dh_server/stats
 import dh_server/world
@@ -43,8 +44,13 @@ fn test_world() -> world.World {
   w
 }
 
+fn test_class() -> shipclass.ShipClass {
+  let assert Ok(c) = shipclass.load("classes/sparrow.json")
+  c
+}
+
 pub fn dead_client_is_unregistered_test() {
-  let assert Ok(started) = sim.start(test_world())
+  let assert Ok(started) = sim.start(test_world(), test_class())
   let sim_subject = started.data
 
   // A fake client handler process: creates its subject (the owner must be
@@ -57,7 +63,7 @@ pub fn dead_client_is_unregistered_test() {
     })
   let assert Ok(client) = process.receive(handoff, 1000)
 
-  let _ship_id = sim.add_ship(sim_subject, client, 1000)
+  let _ = sim.add_player(sim_subject, "pilot", client, 1000)
   assert sim.get_stats(sim_subject, 1000).clients == 1
 
   // Crash the client without any goodbye; the monitor must clean it up.
@@ -89,23 +95,24 @@ pub fn snapshot_shape_test() {
   assert string.contains(json, "\"tick\":42")
 }
 
-pub fn add_ship_returns_incrementing_ids_test() {
-  let assert Ok(started) = sim.start(test_world())
+pub fn add_player_returns_incrementing_ids_test() {
+  let assert Ok(started) = sim.start(test_world(), test_class())
   let sim_subject = started.data
 
   let client1 = process.new_subject()
   let client2 = process.new_subject()
 
-  assert sim.add_ship(sim_subject, client1, 1000) == 1
-  assert sim.add_ship(sim_subject, client2, 1000) == 2
+  assert sim.add_player(sim_subject, "ada", client1, 1000) == #(1, 1)
+  assert sim.add_player(sim_subject, "grace", client2, 1000) == #(2, 2)
 }
 
-pub fn add_ship_snapshot_contains_docked_ship_test() {
-  let assert Ok(started) = sim.start(test_world())
+pub fn add_player_snapshot_contains_docked_ship_test() {
+  let assert Ok(started) = sim.start(test_world(), test_class())
   let sim_subject = started.data
 
   let client = process.new_subject()
-  let ship_id = sim.add_ship(sim_subject, client, 1000)
+  let #(ship_id, _character_id) =
+    sim.add_player(sim_subject, "pilot", client, 1000)
 
   let #(_tick, x) = receive_snapshot_at_or_after(client, ship_id, 0)
   // Docked at meridian_highport (radius 400 from meridian, itself at radius
@@ -114,20 +121,27 @@ pub fn add_ship_snapshot_contains_docked_ship_test() {
 }
 
 pub fn set_controls_and_undock_advances_x_test() {
-  let assert Ok(started) = sim.start(test_world())
+  let assert Ok(started) = sim.start(test_world(), test_class())
   let sim_subject = started.data
 
   let client = process.new_subject()
-  let ship_id = sim.add_ship(sim_subject, client, 1000)
+  let #(ship_id, character_id) =
+    sim.add_player(sim_subject, "pilot", client, 1000)
 
-  let assert Ok(Nil) = sim.request_undock(sim_subject, ship_id, 1000)
-  sim.set_controls(sim_subject, ship_id, 0.0, 1.0)
+  // Login spawns the character seated at the helm, so undock/helm work
+  // immediately — this is the M1 flow, unchanged by M2.
+  let assert Ok(Nil) = sim.request_undock(sim_subject, character_id, 1000)
+  sim.set_controls(sim_subject, character_id, 0.0, 1.0)
 
   let #(first_tick, first_x) = receive_snapshot_at_or_after(client, ship_id, 0)
   let #(_last_tick, last_x) =
     receive_snapshot_at_or_after(client, ship_id, first_tick + 30)
 
   assert last_x >. first_x
+}
+
+fn message_type_decoder() -> decode.Decoder(String) {
+  decode.field("type", decode.string, decode.success)
 }
 
 fn snapshot_decoder() -> decode.Decoder(#(Int, List(#(Int, Float)))) {
@@ -144,13 +158,29 @@ fn snapshot_decoder() -> decode.Decoder(#(Int, List(#(Int, Float)))) {
 }
 
 /// Receive snapshots on `client` until one with `tick >= min_tick` arrives,
-/// returning that snapshot's tick and the x of `ship_id` within it.
+/// returning that snapshot's tick and the x of `ship_id` within it. Every
+/// crewed ship also gets an `interior` message on the same subject at the
+/// same 15 Hz cadence (this test's client is seated at the helm of its own
+/// solo ship, so it receives one); those are skipped here.
 fn receive_snapshot_at_or_after(
   client: process.Subject(sim.ClientMsg),
   ship_id: Int,
   min_tick: Int,
 ) -> #(Int, Float) {
   let assert Ok(sim.SendText(text)) = process.receive(client, 2000)
+  let assert Ok(msg_type) = json.parse(text, message_type_decoder())
+  case msg_type {
+    "snapshot" -> receive_decoded_snapshot(client, text, ship_id, min_tick)
+    _ -> receive_snapshot_at_or_after(client, ship_id, min_tick)
+  }
+}
+
+fn receive_decoded_snapshot(
+  client: process.Subject(sim.ClientMsg),
+  text: String,
+  ship_id: Int,
+  min_tick: Int,
+) -> #(Int, Float) {
   let assert Ok(#(tick, ships)) = json.parse(text, snapshot_decoder())
   case tick >= min_tick {
     True -> {

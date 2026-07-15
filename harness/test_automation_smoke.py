@@ -24,7 +24,6 @@ import time
 import pytest
 
 from automation import GodotAutomation, launch_client, terminate_client
-from server_fixture import server  # noqa: F401  (pytest fixture import)
 
 # Godot cold boot (plus, on this dev machine, a possible
 # global_script_class_cache.cfg rescan) can be slow.

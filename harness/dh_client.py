@@ -58,6 +58,10 @@ class DHClient:
         self.url = url
         self.name = name
         self._ws: Optional[websockets.ClientConnection] = None
+        # Populated by login(): the M2 character embodiment for this
+        # connection and the (whole-document) ship class it spawned into.
+        self.character_id: Optional[int] = None
+        self.ship_class: Optional[dict] = None
 
     async def connect(self) -> None:
         self._ws = await websockets.connect(
@@ -155,6 +159,10 @@ class DHClient:
         `auth_failed`), and `ProtocolError` if neither reply arrives within
         `timeout` seconds. Other message types (there normally aren't any
         yet, since the server sends no snapshots pre-login) are skipped.
+
+        On success, also stashes `character_id` and `ship_class` (the M2
+        embodiment spawned at login) as attributes on the client for
+        convenience, alongside returning the full `welcome` dict.
         """
         await self.send({"type": "login", "username": username, "password": password})
 
@@ -168,13 +176,18 @@ class DHClient:
             raise ProtocolError("no 'welcome'/'error' message within 1000 frames")
 
         if timeout is None:
-            return await drain()
-        try:
-            return await asyncio.wait_for(drain(), timeout)
-        except TimeoutError:
-            raise ProtocolError(
-                f"timed out after {timeout}s waiting for 'welcome'/'error'"
-            ) from None
+            welcome = await drain()
+        else:
+            try:
+                welcome = await asyncio.wait_for(drain(), timeout)
+            except TimeoutError:
+                raise ProtocolError(
+                    f"timed out after {timeout}s waiting for 'welcome'/'error'"
+                ) from None
+
+        self.character_id = welcome.get("character_id")
+        self.ship_class = welcome.get("ship_class")
+        return welcome
 
     async def send_helm(self, rotate: float, thrust: float) -> None:
         """Send helm input. Ignored server-side while docked or pre-login."""
@@ -190,15 +203,59 @@ class DHClient:
         await self.send({"type": "undock"})
         return await self.recv_type("dock_result", timeout=timeout)
 
+    async def move(self, dx: float, dy: float) -> None:
+        """Send walk intent (M2). Ignored server-side while seated.
+
+        `dx`/`dy` are sent as JSON floats even for whole-number input (e.g.
+        `1` becomes `1.0`): the Gleam decoder requires a float and rejects
+        a bare int.
+        """
+        await self.send({"type": "move", "dx": float(dx), "dy": float(dy)})
+
+    async def sit(
+        self, console_id: str, timeout: Optional[float] = DEFAULT_TIMEOUT
+    ) -> dict:
+        """Request to sit at `console_id` (M2); wait for `seat_result`."""
+        await self.send({"type": "sit", "console": console_id})
+        return await self.recv_type("seat_result", timeout=timeout)
+
+    async def stand(self, timeout: Optional[float] = DEFAULT_TIMEOUT) -> dict:
+        """Leave the current seat (M2); wait for `seat_result`."""
+        await self.send({"type": "stand"})
+        return await self.recv_type("seat_result", timeout=timeout)
+
+    async def board(
+        self, ship_id: int, timeout: Optional[float] = DEFAULT_TIMEOUT
+    ) -> dict:
+        """Request to board `ship_id` (M2); wait for `board_result`."""
+        await self.send({"type": "board", "ship_id": ship_id})
+        return await self.recv_type("board_result", timeout=timeout)
+
     async def next_snapshot(self, timeout: Optional[float] = DEFAULT_TIMEOUT) -> dict:
         """Wait for the next `snapshot` message."""
         return await self.recv_type("snapshot", timeout=timeout)
+
+    async def next_interior(self, timeout: Optional[float] = DEFAULT_TIMEOUT) -> dict:
+        """Wait for the next `interior` message (M2).
+
+        Only arrives for a ship the caller's character is currently aboard,
+        at the same 15 Hz cadence as `snapshot`.
+        """
+        return await self.recv_type("interior", timeout=timeout)
 
     def ship_in(self, snapshot: dict, ship_id: int) -> Optional[dict]:
         """Find the ship with `ship_id` in a snapshot's ship list, if present."""
         for ship in snapshot.get("ships", []):
             if ship.get("id") == ship_id:
                 return ship
+        return None
+
+    def character_in(self, interior: dict, character_id: int) -> Optional[dict]:
+        """Find the character with `character_id` in an interior message's
+        crew list, if present."""
+        for character in interior.get("characters", []):
+            if character.get("id") == character_id:
+                return character
         return None
 
     async def get_stats(self, timeout: Optional[float] = DEFAULT_TIMEOUT) -> dict:
