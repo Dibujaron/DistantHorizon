@@ -22,7 +22,6 @@ import math
 import pytest
 
 from dh_client import AuthError, DHClient
-from server_fixture import server  # noqa: F401  (pytest fixture import)
 
 TICK_RATE = 60  # sim Hz
 
