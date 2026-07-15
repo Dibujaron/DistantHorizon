@@ -34,6 +34,29 @@ const ZOOM_TRANSITION_SEC := 0.6
 ## on whether a `sit` actually lands (spec: character sim, "Sit").
 const SIT_RANGE_TILES := 1.2
 
+## Client-side prediction of the OWN character only (fixes the stop
+## snap-back: walkers halt instantly server-side on key release, but the old
+## velocity-extrapolation render lagged behind at the stale speed until the
+## next `interior` corrected it). Each physics tick the predicted position
+## is advanced with ShipClassData.step_walk using the currently-held input,
+## then softly pulled toward each accepted `interior`'s reported position by
+## this fraction, or hard-snapped if it has drifted more than
+## OWN_PREDICTION_SNAP_TILES away.
+const OWN_PREDICTION_CORRECTION := 0.15
+const OWN_PREDICTION_SNAP_TILES := 1.0
+
+## Every OTHER character (not our own) is rendered via delayed
+## interpolation between buffered `interior` messages rather than velocity
+## extrapolation: their true (server) velocity also changes instantly on
+## stop/turn, so extrapolating a stale one would produce the same
+## snap-back the own-character prediction above fixes. Interpolating
+## between two known positions instead never overshoots -- it only needs
+## the render time held a little behind the newest message so there's
+## (usually) a bracketing pair to interpolate between. ~100ms of headroom
+## comfortably covers the ~66ms interior interval (15 Hz) plus jitter.
+const OTHER_CHAR_INTERP_DELAY_SEC := 0.1
+const INTERIOR_HISTORY_SIZE := 3
+
 ## Driven by seat state: SYSTEM is seated at a helm-kind console (the M1
 ## view); INTERIOR is everything else (standing, or seated elsewhere, e.g.
 ## the cargo console).
@@ -44,7 +67,15 @@ var _snapshot_tick: int = 0
 var _snapshot_ticks_msec: int = 0
 
 var _characters: Array[CharacterState] = []  # latest interior message's crew
-var _interior_ticks_msec: int = 0
+
+## Recent `interior` messages for our own ship, each tagged with the
+## wall-clock time it arrived: `{"arrival_msec": int, "characters":
+## Array[CharacterState]}`, oldest first, capped to INTERIOR_HISTORY_SIZE.
+## Feeds _interpolated_other_position, which renders every character but
+## our own at a small render delay, interpolated between the two buffered
+## messages that bracket it -- see that function's docstring for why (the
+## snap-back fix for characters other than the local player).
+var _interior_history: Array[Dictionary] = []
 
 var _world: WorldData = null
 var _ship_class: ShipClassData = null
@@ -67,6 +98,14 @@ var _transition_elapsed: float = 0.0
 var _transient_message: String = ""
 var _transient_expire_msec: int = 0
 
+## Predicted position of the own character while standing (tile units,
+## ship-local -- same frame as CharacterState.position()). Valid only while
+## _predicting is true; reset to the server position outright whenever
+## prediction (re)starts, e.g. right after login/board/stand, since there's
+## no continuity to build on then.
+var _predicted_pos: Vector2 = Vector2.ZERO
+var _predicting: bool = false
+
 @onready var _status_label: Label = %StatusLabel
 @onready var _world_view: WorldView = %WorldView
 @onready var _interior_view: InteriorView = %InteriorView
@@ -84,9 +123,10 @@ func _ready() -> void:
 	_snap_view_visuals()
 	_update_status_label()
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	_poll_helm_input()
-	_poll_move_input()
+	var move_input := _poll_move_input()
+	_update_own_prediction(move_input, delta)
 
 func _process(delta: float) -> void:
 	_update_view_mode(delta)
@@ -128,18 +168,20 @@ func _poll_helm_input() -> void:
 		_last_sent_rotate = rotate
 		_last_sent_thrust = thrust
 
-## Composes dx,dy in {-1,0,1} (y+ is down, matching tile coords) and sends
-## `move` only on change. Skipped while seated (move input is ignored
-## server-side while seated, so there's nothing useful to send). dx/dy are
-## floats, like the helm poller's rotate/thrust: the server decodes these
-## fields as floats, and a GDScript int would serialize as a bare JSON int
-## (`1`, not `1.0`) and be rejected.
-func _poll_move_input() -> void:
+## Composes dx,dy in {-1,0,1} (y+ is down, matching tile coords), sends
+## `move` only on change, and returns the currently-held input (regardless
+## of whether it changed) for _update_own_prediction to integrate every
+## tick. Skipped while seated (move input is ignored server-side while
+## seated, so there's nothing useful to send or predict). dx/dy are floats,
+## like the helm poller's rotate/thrust: the server decodes these fields as
+## floats, and a GDScript int would serialize as a bare JSON int (`1`, not
+## `1.0`) and be rejected.
+func _poll_move_input() -> Vector2:
 	if not NetworkClient.logged_in:
-		return
+		return Vector2.ZERO
 	var own_char := _own_character()
 	if own_char == null or own_char.is_seated():
-		return
+		return Vector2.ZERO
 	var dx := 0.0
 	var dy := 0.0
 	if Input.is_action_pressed("move_left"):
@@ -154,6 +196,26 @@ func _poll_move_input() -> void:
 		NetworkClient.send_message({"type": "move", "dx": dx, "dy": dy})
 		_last_sent_dx = dx
 		_last_sent_dy = dy
+	return Vector2(dx, dy)
+
+## Advances _predicted_pos by one tick of local prediction (60 Hz, delta-
+## based -- decoupled from when `move` messages are actually sent) using
+## ShipClassData.step_walk, the same per-axis circle-vs-tile math the server
+## runs. Only the own character while standing is predicted; seated (move
+## input is ignored server-side, and the seated position is a server snap
+## to the console tile center anyway) or without character/class data yet,
+## prediction is paused and restarts from the server position outright the
+## next time it's needed (no continuity across a sit/stand/board gap).
+func _update_own_prediction(move_input: Vector2, delta: float) -> void:
+	var own_char := _own_character()
+	if own_char == null or own_char.is_seated() or _ship_class == null:
+		_predicting = false
+		return
+	if not _predicting:
+		_predicted_pos = own_char.position()
+		_predicting = true
+	_predicted_pos = ShipClassData.step_walk(
+		_ship_class, _predicted_pos.x, _predicted_pos.y, move_input.x, move_input.y, delta)
 
 func _toggle_dock() -> void:
 	if not NetworkClient.logged_in:
@@ -261,11 +323,6 @@ func _seconds_since_snapshot() -> float:
 func _sim_time() -> float:
 	return (float(_snapshot_tick) + TICKS_PER_SEC * _seconds_since_snapshot()) * _dt
 
-## Seconds of wall-clock time elapsed since the latest `interior` message,
-## capped the same way as ship snapshots.
-func _seconds_since_interior() -> float:
-	return minf(float(Time.get_ticks_msec() - _interior_ticks_msec) / 1000.0, MAX_EXTRAPOLATION_SEC)
-
 func _update_world_view() -> void:
 	var elapsed := _seconds_since_snapshot()
 	var t := _sim_time()
@@ -286,12 +343,84 @@ func _update_world_view() -> void:
 		own_pos = _world.station_position(_world.spawn_station, t)
 	_world_view.set_frame_data(_world, t, extrapolated, _ship_id, _zoom, own_pos, own_undocked)
 
+## Own character (while _predicting, i.e. standing) draws at the locally-
+## predicted position; while seated (or before prediction has (re)started)
+## it draws at the server position directly, which is exactly right then
+## since a seated character doesn't move. Every other character draws at a
+## delayed, interpolated position from _interior_history. Neither path
+## velocity-extrapolates -- that was the snap-back bug (walkers stop/turn
+## instantly server-side, but a stale velocity kept extrapolating until the
+## next `interior` corrected it).
 func _update_interior_view() -> void:
-	var elapsed := _seconds_since_interior()
-	var extrapolated: Array[CharacterState] = []
+	var render_msec := Time.get_ticks_msec() - int(OTHER_CHAR_INTERP_DELAY_SEC * 1000.0)
+	var rendered: Array[CharacterState] = []
 	for character in _characters:
-		extrapolated.append(character.extrapolated(elapsed))
-	_interior_view.set_frame_data(_ship_class, extrapolated, _character_id)
+		if character.id == _character_id:
+			rendered.append(_predicted_character_state(character) if _predicting else character)
+		else:
+			rendered.append(_interpolated_character_state(character, render_msec))
+	_interior_view.set_frame_data(_ship_class, rendered, _character_id)
+
+## Copy of `server_char` with position replaced by the locally-predicted
+## position.
+func _predicted_character_state(server_char: CharacterState) -> CharacterState:
+	var out := CharacterState.new()
+	out.id = server_char.id
+	out.name = server_char.name
+	out.seat = server_char.seat
+	out.x = _predicted_pos.x
+	out.y = _predicted_pos.y
+	return out
+
+## Copy of `server_char` (latest known name/seat) with position replaced by
+## its delayed-interpolated position at `render_msec` -- see
+## _interpolated_other_position for the interpolation itself.
+func _interpolated_character_state(server_char: CharacterState, render_msec: int) -> CharacterState:
+	var out := CharacterState.new()
+	out.id = server_char.id
+	out.name = server_char.name
+	out.seat = server_char.seat
+	var pos := _interpolated_other_position(server_char.id, render_msec)
+	out.x = pos.x
+	out.y = pos.y
+	return out
+
+## Interpolated position for `character_id` at `render_msec`, from
+## _interior_history: finds the two buffered messages bracketing
+## render_msec (the last one at or before it, and the first one after) and
+## linearly interpolates the character's position between them -- but only
+## when both share the character at the same seat state. A sit/stand
+## transition snaps to the console tile server-side, so if the seat differs
+## between the bracketing pair there was no continuous walk to interpolate;
+## that (and a character present in only one side of the bracket -- buffer
+## too short, or a fresh board/disconnect) falls through to holding the
+## single known position instead of interpolating or extrapolating past it.
+func _interpolated_other_position(character_id: int, render_msec: int) -> Vector2:
+	var before: Dictionary = {}
+	var after: Dictionary = {}
+	for entry in _interior_history:
+		if int(entry["arrival_msec"]) <= render_msec:
+			before = entry
+		elif after.is_empty():
+			after = entry
+	var before_char: CharacterState = (
+		_find_character(before["characters"], character_id) if not before.is_empty() else null)
+	var after_char: CharacterState = (
+		_find_character(after["characters"], character_id) if not after.is_empty() else null)
+	if before_char != null and after_char != null and before_char.seat == after_char.seat:
+		var before_msec := int(before["arrival_msec"])
+		var after_msec := int(after["arrival_msec"])
+		var span := float(after_msec - before_msec)
+		var t := 1.0 if span <= 0.0 else clampf(float(render_msec - before_msec) / span, 0.0, 1.0)
+		return before_char.position().lerp(after_char.position(), t)
+	if after_char != null:
+		return after_char.position()
+	if before_char != null:
+		return before_char.position()
+	# Not buffered yet (e.g. the very first interior for a new ship, mid-
+	# processing) -- fall back to whatever _characters currently has.
+	var current := _find_character(_characters, character_id)
+	return current.position() if current != null else Vector2.ZERO
 
 ## The view mode driven by our own character's seat: seated at a helm-kind
 ## console is SYSTEM, everything else (standing, or seated at e.g. cargo)
@@ -376,34 +505,42 @@ func _on_snapshot_received(tick: int, ships: Array[ShipState]) -> void:
 	_snapshot_tick = tick
 	_snapshot_ticks_msec = Time.get_ticks_msec()
 
-## Estimates each incoming character's velocity by diffing against its
-## previous position (the wire message carries position only), then stores
-## the snapshot for extrapolation. Seated characters are left at zero
-## velocity: the server snaps them to the console tile center, so diffing
-## across a sit/stand transition would otherwise produce a spurious lurch.
-## Interiors for other ships are ignored: a message serialized just before
-## our `board` landed can still arrive for the ship we just left.
+## Stores the latest crew list and buffers it (with wall-clock arrival
+## time) into _interior_history for _interpolated_other_position, then
+## reconciles the own-character prediction against the freshly-reported
+## server position. Interiors for other ships are ignored: a message
+## serialized just before our `board` landed can still arrive for the ship
+## we just left.
 func _on_interior_received(_tick: int, ship_id: int, characters: Array[CharacterState]) -> void:
 	if ship_id != _ship_id:
 		return
-	var interval := _seconds_since_interior_arrival()
-	if interval > 0.0:
-		for character in characters:
-			if character.is_seated():
-				continue
-			var prev := _find_character(_characters, character.id)
-			if prev != null:
-				character.vx = (character.x - prev.x) / interval
-				character.vy = (character.y - prev.y) / interval
 	_characters = characters
-	_interior_ticks_msec = Time.get_ticks_msec()
+	_interior_history.append({"arrival_msec": Time.get_ticks_msec(), "characters": characters})
+	while _interior_history.size() > INTERIOR_HISTORY_SIZE:
+		_interior_history.pop_front()
+	_reconcile_own_prediction()
 
-## Wall-clock seconds since the previous `interior` message arrived (not
-## capped -- used only to turn a position delta into a velocity estimate).
-func _seconds_since_interior_arrival() -> float:
-	if _interior_ticks_msec == 0:
-		return 0.0
-	return float(Time.get_ticks_msec() - _interior_ticks_msec) / 1000.0
+## Softly pulls the predicted own-character position toward the position
+## this `interior` message just reported for it (correction =
+## (server - predicted) * OWN_PREDICTION_CORRECTION), or hard-snaps to the
+## server position if prediction has drifted more than
+## OWN_PREDICTION_SNAP_TILES away -- e.g. a `move` that raced a wall the
+## server saw slightly differently. A no-op while prediction isn't running
+## (seated, or not yet (re)started after a stand/board): _update_own_prediction
+## resets outright from the server position in that case instead, so there's
+## nothing to correct.
+func _reconcile_own_prediction() -> void:
+	if not _predicting:
+		return
+	var own_char := _own_character()
+	if own_char == null or own_char.is_seated():
+		return
+	var server_pos := own_char.position()
+	var diff := server_pos - _predicted_pos
+	if diff.length() > OWN_PREDICTION_SNAP_TILES:
+		_predicted_pos = server_pos
+	else:
+		_predicted_pos += diff * OWN_PREDICTION_CORRECTION
 
 func _find_character(list: Array[CharacterState], id: int) -> CharacterState:
 	for character in list:
@@ -421,7 +558,10 @@ func _on_welcome_received(ship_id: int, world: WorldData) -> void:
 	_character_id = NetworkClient.character_id
 	_ship_class = NetworkClient.ship_class
 	_characters = []
-	_interior_ticks_msec = 0
+	_interior_history = []
+	# No continuity across a fresh login: prediction restarts from the
+	# server position outright the next time _update_own_prediction runs.
+	_predicting = false
 	# Reset so the next real input still gets sent even if it happens to
 	# match whatever was last sent to a previous ship/session.
 	_last_sent_rotate = 0.0
@@ -445,17 +585,20 @@ func _on_seat_result_received(ok: bool, reason: Variant, _seat: Variant) -> void
 
 ## On `ok`, NetworkClient.ship_id has already been updated (it's the wire
 ## authority); mirror it into our local copy so status-label/board logic
-## sees the new ship immediately. Also clear the old ship's crew and the
-## interior-arrival timestamp (same reset `_on_welcome_received` does),
-## since board keeps them stale otherwise: the old crew would render on the
-## new deck for a frame, and `_on_interior_received`'s velocity estimator
-## would diff the new spawn-tile position against the old seated position
-## and produce a lurch/streak.
+## sees the new ship immediately. Also clear the old ship's crew and
+## interior history (same reset `_on_welcome_received` does), since board
+## keeps them stale otherwise: the old crew would render on the new deck
+## for a frame, and _interpolated_other_position could bracket across the
+## ship change and interpolate a spurious lurch between the old seated
+## position and the new spawn-tile one.
 func _on_board_result_received(ok: bool, reason: Variant, ship_id: int) -> void:
 	if ok:
 		_ship_id = ship_id
 		_characters = []
-		_interior_ticks_msec = 0
+		_interior_history = []
+		# No continuity across a ship change: prediction restarts from the
+		# server position outright the next time _update_own_prediction runs.
+		_predicting = false
 	else:
 		_show_transient_message("board failed: %s" % str(reason))
 

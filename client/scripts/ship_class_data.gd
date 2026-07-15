@@ -54,6 +54,15 @@ class Console:
 		return Vector2(x + 0.5, y + 0.5)
 
 
+## Walk speed, tiles/s -- mirrors `walk_speed` in
+## server/src/dh_server/character.gleam exactly (client-side prediction of
+## the own character must match the server's math bit-for-bit or the
+## reconciliation drift becomes visible).
+const WALK_SPEED := 3.0
+
+## Character collision radius, tiles -- mirrors `radius` in character.gleam.
+const CHARACTER_RADIUS := 0.3
+
 var schema: int = 1
 var id: String = ""
 var name: String = ""
@@ -113,3 +122,59 @@ func find_console(console_id: String) -> Console:
 		if console.id == console_id:
 			return console
 	return null
+
+
+## Advances a standing character one tick of client-side prediction from
+## `(x, y)` with move input `(dx, dy)` over `delta` seconds. Mirrors `step`
+## in server/src/dh_server/character.gleam exactly: normalize input if its
+## magnitude exceeds 1, then step x then y independently, rejecting an axis
+## step (leaving that axis unchanged) if the character's collision circle at
+## the candidate position overlaps a non-walkable tile of `cls` -- classic
+## per-axis tile collision, so sliding into a wall at an angle keeps moving
+## along it instead of stopping dead. Used only to predict the OWN
+## character locally between server `interior` messages; other characters
+## stay server-driven.
+static func step_walk(cls: ShipClassData, x: float, y: float, dx: float, dy: float, delta: float) -> Vector2:
+	var input := _normalize_input(dx, dy)
+	var candidate_x := x + input.x * WALK_SPEED * delta
+	var out_x := candidate_x if _circle_walkable(cls, candidate_x, y) else x
+	var candidate_y := y + input.y * WALK_SPEED * delta
+	var out_y := candidate_y if _circle_walkable(cls, out_x, candidate_y) else y
+	return Vector2(out_x, out_y)
+
+
+## Scales `(dx, dy)` down to magnitude 1 if it exceeds 1, leaving it
+## unchanged otherwise -- mirrors `normalize` in character.gleam.
+static func _normalize_input(dx: float, dy: float) -> Vector2:
+	var magnitude_sq := dx * dx + dy * dy
+	if magnitude_sq > 1.0:
+		var magnitude := sqrt(magnitude_sq)
+		return Vector2(dx / magnitude, dy / magnitude)
+	return Vector2(dx, dy)
+
+
+## Whether every tile overlapped by the character collision circle centered
+## at `(cx, cy)` is walkable in `cls` -- mirrors `circle_walkable` in
+## character.gleam (out-of-bounds tiles are non-walkable, via
+## ShipClassData.is_walkable).
+static func _circle_walkable(cls: ShipClassData, cx: float, cy: float) -> bool:
+	var tx0 := int(floor(cx - CHARACTER_RADIUS))
+	var tx1 := int(floor(cx + CHARACTER_RADIUS))
+	var ty0 := int(floor(cy - CHARACTER_RADIUS))
+	var ty1 := int(floor(cy + CHARACTER_RADIUS))
+	for tx in range(tx0, tx1 + 1):
+		for ty in range(ty0, ty1 + 1):
+			if _tile_overlaps_circle(tx, ty, cx, cy) and not cls.is_walkable(tx, ty):
+				return false
+	return true
+
+
+## Closest-point-on-AABB circle overlap test for tile `(tx, ty)` (spanning
+## `[tx, tx+1) x [ty, ty+1)`) against the character circle centered at
+## `(cx, cy)` -- mirrors `tile_overlaps_circle` in character.gleam.
+static func _tile_overlaps_circle(tx: int, ty: int, cx: float, cy: float) -> bool:
+	var closest_x := clampf(cx, float(tx), float(tx) + 1.0)
+	var closest_y := clampf(cy, float(ty), float(ty) + 1.0)
+	var dx := cx - closest_x
+	var dy := cy - closest_y
+	return dx * dx + dy * dy <= CHARACTER_RADIUS * CHARACTER_RADIUS
