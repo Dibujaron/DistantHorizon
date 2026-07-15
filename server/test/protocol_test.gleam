@@ -3,6 +3,7 @@ import dh_server/protocol
 import dh_server/ship
 import dh_server/shipclass
 import dh_server/world
+import gleam/dict
 import gleam/dynamic/decode
 import gleam/json
 import gleam/list
@@ -188,6 +189,9 @@ pub fn encode_snapshot_round_trip_test() {
       heading: 0.5,
       controls: ship.Controls(rotate: 0.0, thrust: 0.75),
       dock: ship.Flying,
+      wallet: ship.starting_wallet,
+      hold: dict.new(),
+      transfers: [],
     )
   let docked =
     ship.Ship(
@@ -199,6 +203,9 @@ pub fn encode_snapshot_round_trip_test() {
       heading: 0.0,
       controls: ship.Controls(rotate: 0.0, thrust: 0.0),
       dock: ship.Docked("meridian_highport"),
+      wallet: ship.starting_wallet,
+      hold: dict.new(),
+      transfers: [],
     )
 
   let text = protocol.encode_snapshot(42, [flying, docked])
