@@ -600,6 +600,10 @@ func view_mode_name() -> String:
 		return "transition"
 	return "interior" if _view_mode == ViewMode.INTERIOR else "system"
 
+## Public for the automation hook, like view_mode_name().
+func trade_panel_open() -> bool:
+	return _trade_panel_open()
+
 func _on_snapshot_received(tick: int, ships: Array[ShipState]) -> void:
 	_ships = ships
 	_snapshot_tick = tick
