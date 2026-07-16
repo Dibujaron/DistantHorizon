@@ -66,6 +66,18 @@ ownership locks, no anti-betrayal systems inside the airlock.
 The airlock is the boundary. In shared universes, other crews are outsiders — docking rights, boarding, and (eventually) piracy need
 real permissions, for their sake and ours. Trust is a gift you give your crew, not a default the universe extends to strangers.
 
+## Weirdos
+
+The people you meet each day are not typical; they're typical only of your immediate surroundings. I love to tell people: how many
+Americans have a four-year college degree? About 40%. How many people do you personally know who don't? Invariably zero. How many
+people do you know who are functionally illiterate? The game literalizes this bubble: spacers are a self-selected fringe — every
+race's outliers, exiles, and edge cases (see lore.md, Population) — so everyone a crew meets is weird, and the actual majorities
+stay planetside, offscreen, glimpsed only in flavor text.
+
+The design rule that falls out: there is no generic NPC. Everyone standing on a concourse is an exception with an implied story —
+the Selkie in the dry suit, the paper captain, the Wake pilgrim — and their oddness should gesture at the homeworld full of
+ordinary people you will never meet. (The other player crews are weirdos too, definitionally: they also chose the void.)
+
 ## Moral Ambiguity
 
 Fights that initially appear morally obvious should often turn out to have two sides — and the interesting ones are where both sides

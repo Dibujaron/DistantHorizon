@@ -164,8 +164,8 @@ unmodified body as a moral achievement; it is actually a purchase, made generati
 The water worlds' answer to the Choice: an ocean world barely needs terraforming if you stop insisting on land. Gene-adapted for
 depth and cold, Selkies build drowned habitats and flooded station districts, and surface among the dry-worlders in close-fitting
 wet-suits, unhurried and slightly too graceful. The name was an insult once — sailor-folklore seal-people — and got worn with
-pride instead. Their shipyards' hulls handle like nothing else; ask a Selkie pilot why and you'll get a shrug: *you fly a ship,
-we swim it.*
+pride instead. Selkie yards build amphibious oddities — hulls meant to land on open water and dock at drowned habitats — a niche
+no dry yard bothers to serve.
 
 Most Selkies never leave the water, and a people who prize fluid motion do not queue for jobs in stiff suits on dry decks. A
 Selkie aboard a ship is rare enough to be a story in themselves — and they know it.
