@@ -20,7 +20,7 @@ not the *map*. FTL is the precedent: the Federation and the Engi are canon; the 
 - **Canonical (exists in every universe):** the factions below, the races, the Wake, the ship manufacturers, and the signatory law.
 - **Per-seed:** the map itself — which stars and worlds exist, who holds them, where the profitable routes are.
 - If named-place attachment ever feels missing, the middle path is *anchor institutions* that exist in every seed (there's always a
-  UCE core, always Anchorline, maybe always one named cathedral station) — just arranged differently.
+  UCE core, always the Company, maybe always one named cathedral station) — just arranged differently.
 
 # History
 
@@ -29,7 +29,8 @@ All dates rough and adjustable; what matters is the order and the spacing.
 **The Crossing (~350 years ago).** The system was settled from Earth by generation ships. There is no FTL; every crossing is one-way,
 and the ships were crewed by generations who boarded, lived, and died aboard so that their descendants could arrive. The arrival
 worlds were mostly barren — few or none were naturally habitable — and the first century was spent in habitats, burning the ships
-for parts.
+for parts. The ships themselves were a business: the Honourable Passage Company sold the berths, built the hulls, and held the
+notes — and it has never stopped holding notes since.
 
 **The Choice (the first two centuries).** Terraforming works, but it is slow, imperfect, and ruinously expensive — decades and
 fortunes per world. Changing people is cheap. Every settled world faced the same ledger: change the world, or change yourselves.
@@ -44,7 +45,7 @@ barely-habitable border, where the Choice is still being made one settler at a t
 core welcomed in and priced out.
 
 **Senti personhood (~40 years ago).** Within living memory, human-parity AI won legal personhood. The law has not caught up, and in
-some rooms it is not trying to (see the signatory law, under Anchorline).
+some rooms it is not trying to (see the signatory law, under the Honourable Passage Company).
 
 # Geography
 
@@ -85,15 +86,21 @@ coordinates defense, standards, and grudges. Freeholders agree on very little ex
 Where the UCE is rich and smug, the Freeholds are poor and proud, and per themes.md (Governance) both get painted honestly: the
 Compact's freedom includes the freedom to starve.
 
-## Anchorline
+## The Honourable Passage Company
 
-*"The Line holds."* The UCE-chartered Bank of Settlement — in every spacer's mouth, just **the Line**. Anchorline's lending *is*
-colonization policy: the UCE cannot garrison the border, so it knits the border to itself with subsidized tramp shipping, handing
-cheap ship mortgages to anyone with a pulse. That's you. A player crew isn't an adventuring party; it's the instrument of someone
-else's infrastructure program, working out about as well as such programs do. The Line is genuinely both things at once:
-predatory, and the only reason people like you get ships at all.
+Older than the government. The Company financed the Crossing itself — sold the berths, built the hulls, held the notes — and its
+charter predates the UCE by more than a century; it claims that charter was issued on Earth, a document no court here can verify
+and none has dared void. Spacers just say **the Company**. Its business is everything that moves: settlement finance, ship
+mortgages, station concessions, the border's only system-wide credit. The UCE needs the Company to knit the border together —
+cheap tramp-ship mortgages to anyone with a pulse are cheaper than garrisons — and hates every minute of the dependency.
 
-- **The signatory law (Decided):** Anchorline's charter — and most charters, licenses, and courts of consequence — requires a
+That's you, by the way. A player crew isn't an adventuring party; it's line seventeen of a Company ledger, the instrument of
+someone else's empire, working out about as well as such instruments do. The Company is the setting's great villain and earns the
+role the honest way, per themes.md: it is genuinely both things at once — predatory, and the only reason people like you get ships
+at all. Without the Company there is no border, only core. (DESIGN.md's "the bank" is, in the fiction, the Company's lending arm;
+its **factors** work the larger concourses — part broker, part debt collector, part political officer.)
+
+- **The signatory law (Decided):** the Company's charter — and most charters, licenses, and courts of consequence — requires a
   *natural-born human* signatory. Senti personhood is legally real but economically hollow: a Senti can be a person in court and
   still be unable to hold a ship's note. Everyone knows it's prejudice with a legal veneer, but per themes.md (Moral Ambiguity)
   its defenders have real arguments: a signatory who can die is a hostage to fortune, while a mind that can port to a new hull the
@@ -158,8 +165,8 @@ would make them the only people in the system who understand the player's mortga
 
 Human-parity AI with legal personhood — the Choice's limit case: minds that skipped bodies entirely, the cheapest adaptation of all.
 
-- Personhood is real but economically hollow — see the signatory law under Anchorline. A person in court, and still unable to hold
-  a ship's note.
+- Personhood is real but economically hollow — see the signatory law under the Honourable Passage Company. A person in court, and
+  still unable to hold a ship's note.
 - Mortality and hull-independence both fall out of the no-cloning rule under Technology: minds port but never copy, so no backups
   (mortal) and no single fixed hull.
 - How they won personhood is still open — bought their freedom? A court case? Something uglier?
