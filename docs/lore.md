@@ -6,7 +6,7 @@ not canon — where it conflicts with this document, this document wins.
 
 # Inspirations
 
-- FTL for gameplay
+- FTL for gameplay — specifically the base game; the Advanced Edition expansion's balance is a cautionary tale, not a model
 - Firefly and The Expanse for world
 - Skyrim for race-vibes
 - The Culture for forward-looking tech; too far in the future to copy directly, but an influence
@@ -150,8 +150,10 @@ world-specific lineages that don't consider themselves one people, lumped togeth
 distinguish them. Categories are what prejudice looks like from inside a census. Second, spacers are a selected population: bodies
 adapted to one world tend to stay on it, so the people a crew actually meets on ships and concourses are every race's outliers,
 exiles, and edge cases. Whole planetary cultures exist that a trading crew only ever glimpses in flavor text (per themes.md,
-Loneliness: the worlds hold you at a distance). And a guardrail from themes.md (Competence, Not Power): race and lineage are
-texture and reputation, never stats — every body walks the same decks at the same speed.
+Loneliness: the worlds hold you at a distance). Races and lineages are mechanically **different but balanced**, FTL-base-game
+style: simple, legible tradeoffs, never tiers (per themes.md, Competence, Not Power — the theme forbids *better*, not
+*different*). Many simple axes of variation — race, lineage, hull, loadout, faction — multiplying against each other is where
+emergent depth comes from; no single axis needs to be deep if the combinations are.
 
 ## Baselines
 

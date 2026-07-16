@@ -451,7 +451,11 @@ The world-authoring rule (see Database) generalizes into a project-wide principl
 classes, modules, stations, commodities, factions — as much of everything as possible is
 declarative config files**, and adding content never means touching the sim. The engine
 implements module and object *types*; content multiplies within those types via data. New code
-is only written for genuinely new *behavior*.
+is only written for genuinely new *behavior*. Variety should also *compose*: prefer many
+simple, orthogonal axes of difference (hulls, modules, races, factions, commodities) over a
+few deep ones — combinatorial explosion between simple axes is where emergent depth comes
+from, and simple axes are far easier to keep balanced (FTL's base game is the model here;
+its expansion is the cautionary tale).
 
 The core pattern is **provides/requires matching**:
 
@@ -610,6 +614,10 @@ what makes the game developable by agents rather than merely reviewable.
   leaderboard enough at launch?
 - **Module catalog:** what's the actual module list, tier structure, and per-module config
   surface — and how do we tune for "taste over solvedness" (see Ship customization) in practice?
+- **Race/lineage mechanics:** races are different-but-balanced, FTL-base-game style — simple,
+  legible tradeoffs, never tiers (see docs/lore.md, Population). What are the actual axes
+  (walk speed? EVA tolerance? console affinities?), and how do they interact with the seat
+  test and Competence-Not-Power?
 - **Event & contract vocabulary:** which events exist at M6 (embargo, accident, strike, boom,
   …), how contracts are generated and priced from run state so they're tempting but fair, and
   how event frequency scales with run length.
