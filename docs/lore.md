@@ -2,6 +2,10 @@
 
 none of this is set in stone, vibes only, suggestions welcome
 
+# Original DH CLassic Lore
+
+https://github.com/Dibujaron/DistantHorizonClassic/blob/main/balancer/About.html
+
 # Inspirations
 
 - FTL for gameplay
