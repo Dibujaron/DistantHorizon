@@ -166,8 +166,8 @@ unmodified body as a moral achievement; it is actually a purchase, made generati
 The water worlds' answer to the Choice: an ocean world barely needs terraforming if you stop insisting on land. Gene-adapted for
 depth and cold, Selkies build drowned habitats and flooded station districts, and surface among the dry-worlders in close-fitting
 wet-suits, unhurried and slightly too graceful. The name was an insult once — sailor-folklore seal-people — and got worn with
-pride instead. Selkie yards build amphibious oddities — hulls meant to land on open water and dock at drowned habitats — a niche
-no dry yard bothers to serve.
+pride instead. Selkie yards — Deepwright above all (see Manufacturers) — build amphibious oddities: hulls meant to land on open
+water and dock at drowned habitats, a niche no dry yard bothers to serve.
 
 Most Selkies never leave the water, and a people who prize fluid motion do not queue for jobs in stiff suits on dry decks. A
 Selkie aboard a ship is rare enough to be a story in themselves — and they know it.
@@ -228,10 +228,15 @@ configurations exist but are rarer, as with aircraft.
 
 Roughly equivalent to car companies — and load-bearing lore: in a game where the map changes every run, "who built your ship" is
 one of the few identities always with you. Manufacturers-as-cultures can carry as much of the world's character as governments do.
+They're also a class ladder, and everyone on a concourse can read it at a glance: a Daesun means the Company still owns you; a
+Theseus means you scraped one together; a Harrow means you built it yourself; a Rijay means you made it; an Aratori means you
+never had to worry; a Bureau hull means people will tell the story of having seen it.
 
 ### Rijay Drive Yards
 
 Ubiquitous, everyday, nonetheless respected; does a bit of everything, from very basic craft to sportier high-end models.
+Rijay's real product is dignity: it's the ship a spacer buys outright the day the note is paid off — reliability as self-respect,
+the visible difference between flying your own hull and flying the Company's. Space Toyota, and proud of it.
 Real-world equivalent: Toyota. Star Citizen equivalent: RSI.
 
 - The Mockingbird
@@ -257,9 +262,60 @@ Drake.
 
 ### Aratori Royal Design Institute
 
-Luxury space vehicles: yachts, liners, cruise ships — the fastest ships around, and they can carry real weapons for a high price.
-Good for VIP passenger work. Real-world equivalents: Porsche, BMW, yachts generally. Star Citizen equivalent: Origin.
+Luxury as insulation: Aratori sells **the void, abolished**. Their hulls hold a glassy 1G from undock to touchdown — you could
+cross the whole system and never once feel space — and per themes.md (Awe), that's both the product and the joke: their passengers
+pay fortunes *not* to experience the thing the game thinks is beautiful. The fastest ships around, weapons-capable for a steep
+price, and the natural yard for the passenger career (see ../DESIGN.md, Careers): VIP contracts, hard deadlines, harder burns.
+Real-world equivalents: Porsche, BMW, yachts generally. Star Citizen equivalent: Origin.
 
 - Kx series (Kx3, Kx6, Kx9)
     - Sleek VIP transports, ~6 up to ~30 passengers; the Kx9 is Mockingbird-sized with far fewer souls aboard
     - Capable of atmospheric landing without wings, on thrust alone
+
+### Theseus Refit
+
+Not a yard so much as a question. Theseus buys wrecks, foreclosures, and hulks, and rebuilds them until what ship it *was*
+becomes philosophical — spacers make the joke constantly, which is free advertising. There is no model lineup: **every Theseus
+hull is a model of one.** Most secondhand starter ships trace back here eventually. Visual language: everyone else's,
+recombined — a Rijay neck on a Porter frame with one Aratori engine that has a story behind it. Real-world equivalent: certified
+pre-owned meets rat rod.
+
+### Daesun Orbital
+
+The Company's in-house yard, and a fossil brand: one of the amalgamated Earth chaebols, surviving inside the Honourable Passage
+Company the way a logo survives on a sunken container. Daesun builds the standardized hulls the Company mortgages to crews like
+yours — brutally cheap at scale, aggressively unlovable, and designed for repossession: standard fittings, standard locks, nothing
+bespoke enough to complicate a foreclosure auction. Everyone can tell a Daesun at a glance, which means everyone can tell you're
+in debt. Visual language: container-grade, Company livery. Real-world equivalent: fleet-spec rental cars.
+
+- The Tenor
+    - The default mortgage hull. A loan's *tenor* is its repayment term; yes, that is the joke, and no, the Company has never
+      acknowledged it.
+
+### Deepwright
+
+The Selkie yard (see Population). Amphibious oddities: hulls that land on open water, ballast bulges, gasketed everything, rated
+for drowned-dock pressure — a niche no dry yard bothers to serve, with a cult following among dry-worlders who want something
+nobody else has, and baffling resale value. Visual language: rounded, sealed, whale-smooth, no sharp edges anywhere. Real-world
+equivalent: specialist marine builders.
+
+- The Grebe
+    - Signature hull, named honestly: dives, surfaces, shakes itself off, flies.
+
+### Harrow Kitworks
+
+Freehold engineering from the opposite end of the spectrum to Porter: flat-pack kit ships, shipped as containers — a kit ship is
+*cargo*, delivered by crews like yours — assembled in a barn, field-repairable with hand tools, infinitely bodged. Per themes.md
+(Self-Sufficiency): rickety shoestring contraptions, first-party. Visual language: exposed frames, visible fasteners, modules
+bolted at angles the manual advised against. Real-world equivalents: tractor kits, the AK-47, IKEA.
+
+- The Mule
+    - The kit. There is functionally one, in sizes.
+
+### The Bureau
+
+A Senti design collective, legally chartered through a board of salaried humans — paper captains at corporate scale (see the
+signatory law). Their ships are brilliant and slightly wrong: windowless, because a mind that doesn't look out of eyes doesn't
+think to add them; interiors an afterthought; geometry optimized past human intuition. Hulls carry catalog numbers; spacers
+assign the real names. **Bureau hulls are lore-event drops:** never on the open market, vanishingly rare in any universe.
+Encountering one is the kind of thing a run gets remembered for; flying one is the kind of thing a *player* gets remembered for.
