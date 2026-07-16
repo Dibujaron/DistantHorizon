@@ -83,6 +83,15 @@ var _dt: float = 0.016666666666666666
 var _ship_id: int = -1
 var _character_id: int = -1
 
+## Station whose concourse we're standing in, "" while aboard (mirror of
+## NetworkClient.station_id, kept locally like _ship_id).
+var _station_id: String = ""
+## Latest cargo state for our ship (wallet/hold/transfers), null pre-M3
+## server or before the first message.
+var _cargo: CargoState = null
+## Latest market for the station we're at (null until one arrives).
+var _market: MarketData = null
+
 var _zoom: float = DEFAULT_ZOOM
 var _last_sent_rotate: float = 0.0
 var _last_sent_thrust: float = 0.0
@@ -120,6 +129,11 @@ func _ready() -> void:
 	NetworkClient.interior_received.connect(_on_interior_received)
 	NetworkClient.seat_result_received.connect(_on_seat_result_received)
 	NetworkClient.board_result_received.connect(_on_board_result_received)
+	NetworkClient.disembark_result_received.connect(_on_disembark_result_received)
+	NetworkClient.concourse_received.connect(_on_concourse_received)
+	NetworkClient.cargo_received.connect(_on_cargo_received)
+	NetworkClient.market_received.connect(_on_market_received)
+	NetworkClient.trade_result_received.connect(_on_trade_result_received)
 	_snap_view_visuals()
 	_update_status_label()
 
@@ -141,6 +155,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_handle_interact()
 	elif event.is_action_pressed("board"):
 		_handle_board()
+	elif event.is_action_pressed("disembark"):
+		_handle_disembark_toggle()
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_zoom = clampf(_zoom * ZOOM_STEP, ZOOM_MIN, ZOOM_MAX)
@@ -208,14 +224,15 @@ func _poll_move_input() -> Vector2:
 ## next time it's needed (no continuity across a sit/stand/board gap).
 func _update_own_prediction(move_input: Vector2, delta: float) -> void:
 	var own_char := _own_character()
-	if own_char == null or own_char.is_seated() or _ship_class == null:
+	var plan := _current_plan()
+	if own_char == null or own_char.is_seated() or plan == null:
 		_predicting = false
 		return
 	if not _predicting:
 		_predicted_pos = own_char.position()
 		_predicting = true
 	_predicted_pos = ShipClassData.step_walk(
-		_ship_class, _predicted_pos.x, _predicted_pos.y, move_input.x, move_input.y, delta)
+		plan, _predicted_pos.x, _predicted_pos.y, move_input.x, move_input.y, delta)
 
 func _toggle_dock() -> void:
 	if not NetworkClient.logged_in:
@@ -252,6 +269,18 @@ func _handle_board() -> void:
 	if target != null:
 		NetworkClient.send_message({"type": "board", "ship_id": target.id})
 
+## `X`: aboard and docked -> step onto the concourse; ashore -> board our
+## own ship back. The server re-validates everything.
+func _handle_disembark_toggle() -> void:
+	if not NetworkClient.logged_in:
+		return
+	if _station_id != "":
+		NetworkClient.send_message({"type": "board", "ship_id": _ship_id})
+		return
+	var own := _own_ship()
+	if own != null and own.is_docked():
+		NetworkClient.send_message({"type": "disembark"})
+
 func _own_ship() -> ShipState:
 	for ship in _ships:
 		if ship.id == _ship_id:
@@ -264,6 +293,17 @@ func _own_character() -> CharacterState:
 			return character
 	return null
 
+## The deck plan under our feet: the station concourse while ashore, the
+## ship class otherwise. Null until welcome (and for a concourse the
+## server would never have let us disembark to).
+func _current_plan() -> ShipClassData:
+	if _station_id != "" and _world != null:
+		var station := _world.find_station(_station_id)
+		if station != null and station.concourse != null:
+			return station.concourse
+		return null
+	return _ship_class
+
 ## Live seat truth: is our character currently seated at a helm-kind
 ## console? Falls back to the current view mode while we have no character
 ## data yet (right after welcome, before the first `interior` message --
@@ -275,7 +315,8 @@ func _seated_at_helm() -> bool:
 		return _view_mode == ViewMode.SYSTEM
 	if not own_char.is_seated():
 		return false
-	var console := _ship_class.find_console(own_char.seat) if _ship_class != null else null
+	var plan := _current_plan()
+	var console := plan.find_console(own_char.seat) if plan != null else null
 	return console != null and console.kind == "helm"
 
 ## The first other ship (by snapshot order) docked at the same station as
@@ -292,12 +333,13 @@ func _first_boardable_ship(own: ShipState) -> ShipState:
 ## both to decide what `E` sits at and to show the sit prompt; the server
 ## re-checks range authoritatively.
 func _nearest_console_in_range(own_char: CharacterState) -> ShipClassData.Console:
-	if _ship_class == null:
+	var plan := _current_plan()
+	if plan == null:
 		return null
 	var pos := own_char.position()
 	var nearest: ShipClassData.Console = null
 	var nearest_dist := SIT_RANGE_TILES
-	for console in _ship_class.consoles:
+	for console in plan.consoles:
 		var dist := pos.distance_to(console.tile_center())
 		if dist <= nearest_dist:
 			nearest_dist = dist
@@ -307,8 +349,9 @@ func _nearest_console_in_range(own_char: CharacterState) -> ShipClassData.Consol
 ## Label for a console in status-label prompts: its room's name if it's
 ## inside one (e.g. "Helm"), else its kind, capitalized.
 func _console_label(console: ShipClassData.Console) -> String:
-	if _ship_class != null:
-		var room := _ship_class.room_at(console.x, console.y)
+	var plan := _current_plan()
+	if plan != null:
+		var room := plan.room_at(console.x, console.y)
 		if room != null:
 			return room.name
 	return console.kind.capitalize()
@@ -359,7 +402,7 @@ func _update_interior_view() -> void:
 			rendered.append(_predicted_character_state(character) if _predicting else character)
 		else:
 			rendered.append(_interpolated_character_state(character, render_msec))
-	_interior_view.set_frame_data(_ship_class, rendered, _character_id)
+	_interior_view.set_frame_data(_current_plan(), rendered, _character_id)
 
 ## Copy of `server_char` with position replaced by the locally-predicted
 ## position.
@@ -512,7 +555,33 @@ func _on_snapshot_received(tick: int, ships: Array[ShipState]) -> void:
 ## serialized just before our `board` landed can still arrive for the ship
 ## we just left.
 func _on_interior_received(_tick: int, ship_id: int, characters: Array[CharacterState]) -> void:
+	if _station_id != "":
+		return
 	if ship_id != _ship_id:
+		return
+	_characters = characters
+	_interior_history.append({"arrival_msec": Time.get_ticks_msec(), "characters": characters})
+	while _interior_history.size() > INTERIOR_HISTORY_SIZE:
+		_interior_history.pop_front()
+	_reconcile_own_prediction()
+
+## Mirrors _on_board_result_received's reset: crossing between interiors
+## (deck <-> concourse) invalidates crew list, interpolation history and
+## prediction continuity.
+func _on_disembark_result_received(ok: bool, reason: Variant, station_id: Variant) -> void:
+	if ok:
+		_station_id = str(station_id)
+		_characters = []
+		_interior_history = []
+		_predicting = false
+	else:
+		_show_transient_message("disembark failed: %s" % str(reason))
+
+## Concourse crew flows through the same pipeline as interior crew: the
+## prediction/interpolation machinery only cares about positions on the
+## current plan, not what kind of place it is.
+func _on_concourse_received(_tick: int, station_id: String, characters: Array[CharacterState]) -> void:
+	if _station_id == "" or station_id != _station_id:
 		return
 	_characters = characters
 	_interior_history.append({"arrival_msec": Time.get_ticks_msec(), "characters": characters})
@@ -557,6 +626,9 @@ func _on_welcome_received(ship_id: int, world: WorldData) -> void:
 	_dt = NetworkClient.dt
 	_character_id = NetworkClient.character_id
 	_ship_class = NetworkClient.ship_class
+	_station_id = ""
+	_cargo = null
+	_market = null
 	_characters = []
 	_interior_history = []
 	# No continuity across a fresh login: prediction restarts from the
@@ -594,6 +666,7 @@ func _on_seat_result_received(ok: bool, reason: Variant, _seat: Variant) -> void
 func _on_board_result_received(ok: bool, reason: Variant, ship_id: int) -> void:
 	if ok:
 		_ship_id = ship_id
+		_station_id = ""
 		_characters = []
 		_interior_history = []
 		# No continuity across a ship change: prediction restarts from the
@@ -601,6 +674,18 @@ func _on_board_result_received(ok: bool, reason: Variant, ship_id: int) -> void:
 		_predicting = false
 	else:
 		_show_transient_message("board failed: %s" % str(reason))
+
+func _on_cargo_received(cargo: CargoState) -> void:
+	if cargo.ship_id == _ship_id:
+		_cargo = cargo
+
+
+func _on_market_received(market: MarketData) -> void:
+	_market = market
+
+
+func _on_trade_result_received(_ok: bool, _reason: Variant, _commodity: String, _quantity: int, _price: int) -> void:
+	pass  # Task 13 reports failures + refreshes the panel
 
 func _on_error_received(code: String, message: String) -> void:
 	_show_transient_message("%s: %s" % [code, message])
@@ -623,12 +708,24 @@ func _update_status_label() -> void:
 			lines.append("disconnected")
 
 	lines.append("view: %s" % view_mode_name())
+	if _station_id != "":
+		lines.append("ashore at %s" % _station_name(_station_id))
+		lines.append("X: return to ship")
+	if _cargo != null:
+		lines.append("wallet %d cr - hold %d/%d" % [_cargo.wallet, _cargo.hold_total(), _cargo.capacity])
+		for transfer in _cargo.transfers:
+			var verb := "loading" if transfer["direction"] == "to_ship" else "unloading"
+			lines.append("%s %d %s…" % [verb, transfer["remaining"], transfer["commodity"]])
 
 	var own := _own_ship()
 	if own != null:
 		lines.append("speed %.1f u/s" % own.velocity().length())
 		if own.is_docked():
 			lines.append("docked at %s" % _station_name(own.docked_at))
+			if _station_id == "":
+				var docked_station := _world.find_station(own.docked_at) if _world != null else null
+				if docked_station != null and docked_station.concourse != null:
+					lines.append("X: walk to %s concourse" % docked_station.name)
 		elif _view_mode == ViewMode.SYSTEM:
 			var near := _nearest_dockable_station_name()
 			if near != "":
