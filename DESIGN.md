@@ -441,8 +441,13 @@ The hull is the fixed part; what's inside is the loadout.
     tuned so many builds are defensible; if the community solves the loadout, the module
     catalog has failed and needs rebalancing, not more slots.
 
-  Start-of-run loadout choice covers the early game; swapping modules at station refit arrives
-  with M7+ depth.
+  Start-of-run loadout choice covers the early game; full refit/loadout depth arrives with M7+.
+  One slice moves up, though: **replace-one-part-at-a-dock** should land with M4, because the
+  default starter ship is a repossessed Mockingbird badly patched with Consolidated fleet parts
+  (see docs/lore.md, Manufacturers), and swapping those patches out is the intended
+  module-system tutorial, an early money sink that competes with the loan clock, and the run's
+  first act of dignity (docs/themes.md, Competence). A single "swap this module for that one"
+  interaction — no catalog breadth, no reconfiguration UI — is enough for that arc.
 
 Modules, hulls, and the matching between them are all declarative config — see "Content is
 data, not code" below.
@@ -578,7 +583,10 @@ what makes the game developable by agents rather than merely reviewable.
   retirement and scoring; lobby flow for creating/joining/resuming runs; universe/run-state
   persistence. Solo-universe only at first, but the universe/run split is built in here so
   shared universes are a capacity flag later, not a rewrite. *This is the milestone that proves
-  the game as a game* — it's when "get rich before the bank gets you" first exists.
+  the game as a game* — it's when "get rich before the bank gets you" first exists. Strongly
+  consider including the minimal part-swap refit here (see Ship customization): the starter
+  ship's fix-it-up arc (docs/lore.md, the Mockingbird) is the early game's tutorial and money
+  sink, and it needs only "swap one module at a dock," not M7's refit depth.
 - **M5 — Small craft:** shuttle berthed in a freighter; launch, fly, recover; shuttle the crew
   in to a congested station while the freighter holds at anchorage.
 - **M6 — Living system:** autopilot module, NPC traders as ambient traffic, economy reacts to
