@@ -23,6 +23,10 @@ Nobody should later "improve" them into bustling taverns without noticing that i
 Multi-crew ships will be different, obviously, because you're not alone; this becomes more like the Firefly fantasy, of a tight-knit
 crew together, alone against the universe. Then it becomes more unambiguously a positive loneliness.
 
+Loneliness also has a crowded flavor, and the game should serve both: docked at a busy terminal you're one shabby freighter among
+thousands, nobody's protagonist, alone in a place full of people with somewhere to be. Your ship is not special, and your crew is
+special to no one but you — at first. Clout is the theme about how that changes.
+
 ## Awe
 
 Loneliness's other half. The same pandemic that infused Classic with isolation also included, for me, moments of stunning, stark

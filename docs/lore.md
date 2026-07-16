@@ -106,6 +106,9 @@ role the honest way, per themes.md: it is genuinely both things at once — pred
 at all. Without the Company there is no border, only core. (DESIGN.md's "the bank" is, in the fiction, the Company's lending arm;
 its **factors** work the larger concourses — part broker, part debt collector, part political officer.)
 
+- **Recycled collateral:** the Company re-lends what it repossesses, at a markup, forever. Most mortgage hulls are decades old
+  and have outlived several crews — a "new" Company loan usually smells of the last crew's cooking. Consolidated builds new
+  hulls only when the used stock runs dry.
 - **The signatory law (Decided):** the Company's charter — and most charters, licenses, and courts of consequence — requires a
   *natural-born human* signatory. Senti personhood is legally real but economically hollow: a Senti can be a person in court and
   still be unable to hold a ship's note. Everyone knows it's prejudice with a legal veneer, but per themes.md (Moral Ambiguity)
@@ -228,7 +231,7 @@ configurations exist but are rarer, as with aircraft.
 
 Roughly equivalent to car companies — and load-bearing lore: in a game where the map changes every run, "who built your ship" is
 one of the few identities always with you. Manufacturers-as-cultures can carry as much of the world's character as governments do.
-They're also a class ladder, and everyone on a concourse can read it at a glance: a Daesun means the Company still owns you; a
+They're also a class ladder, and everyone on a concourse can read it at a glance: a Connie means the Company still owns you; a
 Theseus means you scraped one together; a Harrow means you built it yourself; a Rijay means you made it; an Aratori means you
 never had to worry; a Bureau hull means people will tell the story of having seen it.
 
@@ -245,6 +248,10 @@ Real-world equivalent: Toyota. Star Citizen equivalent: RSI.
     - Resembles the Republic Cruiser from Star Wars, with the neck and cockpit of the Firefly
     - Engine block is three large engines with ornamental fins on the sides and tops
     - Best as a tramp ship; two docking ports at the waist
+    - The default starting ship — precisely because it isn't special. The Company has re-lent Mockingbirds for a century; yours
+      is one of thousands of patched, previously-foreclosed hulls in the sky, and your crew is special to nobody but you (per
+      themes.md, Loneliness). Every hull wears its history differently — a mismatched center engine, one odd fin — and putting
+      it right is early dignity nobody else will ever notice. The stolen-hubcap principle: *you'll* notice.
 - The Sparrow
     - The Toyota Corolla of space fighters
 
@@ -280,17 +287,19 @@ hull is a model of one.** Most secondhand starter ships trace back here eventual
 recombined — a Rijay neck on a Porter frame with one Aratori engine that has a story behind it. Real-world equivalent: certified
 pre-owned meets rat rod.
 
-### Daesun Orbital
+### Consolidated Orbital
 
-The Company's in-house yard, and a fossil brand: one of the amalgamated Earth chaebols, surviving inside the Honourable Passage
-Company the way a logo survives on a sunken container. Daesun builds the standardized hulls the Company mortgages to crews like
-yours — brutally cheap at scale, aggressively unlovable, and designed for repossession: standard fittings, standard locks, nothing
-bespoke enough to complicate a foreclosure auction. Everyone can tell a Daesun at a glance, which means everyone can tell you're
-in debt. Visual language: container-grade, Company livery. Real-world equivalent: fleet-spec rental cars.
+The Company's industrial arm, and a fossil brand: the merger of mergers, its constituent names long since worn away — spacers
+just say **Connie**. Consolidated builds the Company's everything: standardized fleet hulls, the containers they carry, and the
+robot chassis that work the docks — including the one you wake up in if you die (see ../DESIGN.md, Death and robots): fleet-spec,
+standard fittings, aggressively unlovable, and now it's you. Its ships are designed for repossession — standard locks, nothing
+bespoke enough to complicate a foreclosure auction — and its silhouette is the most common in the sky: the Company's own
+logistics fleet and most NPC mortgage crews fly Connie. Everyone can tell one at a glance, which means everyone can tell whose it
+really is. Visual language: container-grade, Company livery. Real-world equivalent: fleet-spec rental cars, white delivery vans.
 
 - The Tenor
-    - The default mortgage hull. A loan's *tenor* is its repayment term; yes, that is the joke, and no, the Company has never
-      acknowledged it.
+    - The default fleet hull, and an alternate player start (fresh hull, crueler note). A loan's *tenor* is its repayment term;
+      yes, that is the joke, and no, the Company has never acknowledged it.
 
 ### Deepwright
 
