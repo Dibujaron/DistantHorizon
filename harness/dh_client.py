@@ -231,6 +231,68 @@ class DHClient:
         await self.send({"type": "board", "ship_id": ship_id})
         return await self.recv_type("board_result", timeout=timeout)
 
+    async def disembark(self, timeout: Optional[float] = DEFAULT_TIMEOUT) -> dict:
+        """Step off the docked ship onto the station concourse (M3);
+        wait for `disembark_result`."""
+        await self.send({"type": "disembark"})
+        return await self.recv_type("disembark_result", timeout=timeout)
+
+    async def buy(
+        self, commodity: str, quantity: int, timeout: Optional[float] = DEFAULT_TIMEOUT
+    ) -> dict:
+        """Buy at the seated broker (M3); wait for `trade_result`.
+
+        `quantity` is sent as a JSON int — the Gleam decoder rejects floats
+        here (the inverse of the move/helm float rule).
+        """
+        await self.send(
+            {"type": "buy", "commodity": commodity, "quantity": int(quantity)}
+        )
+        return await self.recv_type("trade_result", timeout=timeout)
+
+    async def sell(
+        self, commodity: str, quantity: int, timeout: Optional[float] = DEFAULT_TIMEOUT
+    ) -> dict:
+        """Sell at the seated broker (M3); wait for `trade_result`."""
+        await self.send(
+            {"type": "sell", "commodity": commodity, "quantity": int(quantity)}
+        )
+        return await self.recv_type("trade_result", timeout=timeout)
+
+    async def get_market(self, timeout: Optional[float] = DEFAULT_TIMEOUT) -> dict:
+        """Request the local station's market (M3); wait for `market`.
+
+        Works ashore or docked-aboard. If neither applies the server sends
+        `error` with code `no_market` instead, which this call will time out
+        waiting on — use recv_type("error") in tests that expect that.
+        """
+        await self.send({"type": "get_market"})
+        return await self.recv_type("market", timeout=timeout)
+
+    async def next_cargo(self, timeout: Optional[float] = DEFAULT_TIMEOUT) -> dict:
+        """Wait for the next `cargo` message (M3). Sent at 15 Hz to a
+        ship's crew, wherever their bodies are."""
+        return await self.recv_type("cargo", timeout=timeout)
+
+    async def next_concourse(self, timeout: Optional[float] = DEFAULT_TIMEOUT) -> dict:
+        """Wait for the next `concourse` message (M3). Only arrives while
+        this client's character is standing in that concourse."""
+        return await self.recv_type("concourse", timeout=timeout)
+
+    def store_in(self, market: dict, commodity: str) -> Optional[dict]:
+        """Find a commodity's store in a `market` message, if present."""
+        for store in market.get("stores", []):
+            if store.get("commodity") == commodity:
+                return store
+        return None
+
+    def hold_quantity(self, cargo: dict, commodity: str) -> int:
+        """Units of `commodity` in a `cargo` message's hold list."""
+        for entry in cargo.get("hold", []):
+            if entry.get("commodity") == commodity:
+                return int(entry.get("quantity", 0))
+        return 0
+
     async def next_snapshot(self, timeout: Optional[float] = DEFAULT_TIMEOUT) -> dict:
         """Wait for the next `snapshot` message."""
         return await self.recv_type("snapshot", timeout=timeout)
