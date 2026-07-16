@@ -59,6 +59,12 @@ class Station:
 	var parent_id: String
 	var dock_radius: float
 	var orbit: Orbit
+	var crane: bool = false
+	## Walkable concourse interior (same shape as a ship deck plan), or
+	## null when this station has none. Parsed with ShipClassData — id and
+	## name are absent on concourses, so they are backfilled from the
+	## station for display.
+	var concourse: ShipClassData = null
 
 	static func from_dict(data: Dictionary) -> Station:
 		var station := Station.new()
@@ -68,6 +74,12 @@ class Station:
 		station.dock_radius = float(data.get("dock_radius", 0.0))
 		var orbit: Variant = data.get("orbit")
 		station.orbit = Orbit.from_dict(orbit) if orbit is Dictionary else null
+		station.crane = bool(data.get("crane", false))
+		var concourse: Variant = data.get("concourse")
+		if concourse is Dictionary:
+			station.concourse = ShipClassData.from_dict(concourse)
+			station.concourse.id = station.id
+			station.concourse.name = station.name
 		return station
 
 

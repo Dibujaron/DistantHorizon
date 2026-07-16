@@ -33,7 +33,8 @@ class Room:
 
 
 ## A console tile. `kind` "helm" binds flight controls while seated there;
-## "cargo" is inert in M2 (M3 will bind it).
+## "cargo" opens the read-only manifest (M3); "broker" consoles exist on
+## station concourses and bind trading.
 class Console:
 	var id: String
 	var kind: String
@@ -72,6 +73,10 @@ var walkable: Array[String] = []  ## one row string per y, '#' walkable, '.' hul
 var rooms: Array[Room] = []
 var consoles: Array[Console] = []
 var spawn_tile: Vector2i = Vector2i.ZERO
+## M3 cargo block (ship class schema 2). Concourse plans parsed through
+## this class leave them at 0/"" — a concourse has no hold.
+var cargo_capacity: int = 0
+var handling: String = ""
 
 
 static func from_dict(data: Dictionary) -> ShipClassData:
@@ -94,6 +99,10 @@ static func from_dict(data: Dictionary) -> ShipClassData:
 	var spawn: Variant = data.get("spawn_tile")
 	if spawn is Array and spawn.size() == 2:
 		doc.spawn_tile = Vector2i(int(spawn[0]), int(spawn[1]))
+	var cargo: Variant = data.get("cargo")
+	if cargo is Dictionary:
+		doc.cargo_capacity = int(cargo.get("capacity", 0))
+		doc.handling = str(cargo.get("handling", ""))
 	return doc
 
 
