@@ -167,7 +167,7 @@ async def test_spawn_state(server):
 
         ship_class = welcome["ship_class"]
         assert client.ship_class == ship_class
-        assert ship_class["schema"] == 1
+        assert ship_class["schema"] == 2
         assert ship_class["id"] == "sparrow"
         assert ship_class["grid"] == {"width": 10, "height": 6}
         rows = ship_class["walkable"]
