@@ -7,26 +7,37 @@
 ////
 //// Every `snapshot_every` ticks (15 Hz) it serializes one exterior snapshot
 //// and fans it out to every registered client subject, and separately
-//// serializes one `interior` message per crewed ship, fanned out only to
-//// the clients whose character is currently aboard that ship — the
-//// interest-management boundary from DESIGN.md.
+//// serializes per-scope messages fanned out only to the clients they
+//// concern — the interest-management boundary from DESIGN.md: `interior`
+//// per crewed ship to bodies currently aboard, `concourse` per occupied
+//// station to bodies currently standing there, `cargo` per crewed ship to
+//// its whole crew (by membership, wherever their bodies are), and `market`
+//// per occupied station's market to that station's concourse occupants.
 ////
 //// A WebSocket handler process joins the simulation by calling
 //// `add_player`, which spawns it a ship docked at the world's spawn
 //// station, a character seated at that ship's helm, and registers it for
 //// snapshots in one call. `helm`/`dock`/`undock`/`move`/`sit`/`stand`/
-//// `board` are all routed by character id; the sim resolves the
-//// character's current ship itself, so a character's ship can change
-//// (via `board`) without the caller needing to track it.
+//// `board`/`disembark`/`buy`/`sell` are all routed by character id; the sim
+//// resolves the character's current ship (and place — aboard or ashore on
+//// a station concourse) itself, so a character's ship can change (via
+//// `board`) without the caller needing to track it. Helm control
+//// (`SetControls`, dock, undock) additionally requires the body to be
+//// aboard, not just seated at the console.
 ////
 //// The sim monitors each handler process and, on exit (cleanly or by
 //// crashing), removes its character and despawns any ship left with zero
-//// characters aboard — so a pilot who disconnects mid-flight leaves a
-//// walking crewmate on a still-flying ship, but the last character off a
-//// ship despawns it.
+//// *crew* — characters whose `ship_id` still references it, regardless of
+//// whether their bodies are aboard or ashore — so a pilot who disconnects
+//// mid-flight leaves a walking crewmate on a still-flying ship, a ship
+//// whose whole crew has gone ashore stays alive, and the last crew member
+//// leaving (by disconnect or by boarding another ship) despawns it.
 
+import dh_server/cargo
 import dh_server/character.{type Character}
 import dh_server/clock
+import dh_server/deckplan
+import dh_server/market
 import dh_server/protocol
 import dh_server/ship.{type Ship}
 import dh_server/shipclass.{type ShipClass}
@@ -39,13 +50,14 @@ import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/otp/actor
+import gleam/result
 
 pub const tick_rate = 60
 
 /// Broadcast a snapshot every 4th tick: 60 / 4 = 15 Hz.
 const snapshot_every = 4
 
-/// Log tick health to stdout every 300 ticks = every 5 s.
+/// Log tick health to stderr every 300 ticks = every 5 s.
 const log_every = 300
 
 const us_per_second = 1_000_000
@@ -89,6 +101,28 @@ pub opaque type Msg {
   ClientDown(down: process.Down)
   /// Reply with current tick statistics.
   GetStats(reply: Subject(stats.StatsReply))
+  /// Step off the ship onto the docked station's concourse.
+  RequestDisembark(character_id: Int, reply: Subject(protocol.DisembarkResult))
+  /// Buy `quantity` of `commodity` at the broker the character is seated at.
+  RequestBuy(
+    character_id: Int,
+    commodity: String,
+    quantity: Int,
+    reply: Subject(protocol.TradeResult),
+  )
+  /// Sell, mirror of RequestBuy.
+  RequestSell(
+    character_id: Int,
+    commodity: String,
+    quantity: Int,
+    reply: Subject(protocol.TradeResult),
+  )
+  /// The market of the station the character is at (ashore, or docked
+  /// aboard). Error("no_market") when neither applies.
+  RequestMarket(
+    character_id: Int,
+    reply: Subject(Result(market.Market, String)),
+  )
 }
 
 /// Messages the sim sends to connected client handler processes.
@@ -195,6 +229,59 @@ pub fn get_stats(sim: Subject(Msg), timeout_ms: Int) -> stats.StatsReply {
   process.call(sim, waiting: timeout_ms, sending: GetStats)
 }
 
+/// Step off the ship onto the docked station's concourse (blocking call).
+pub fn request_disembark(
+  sim: Subject(Msg),
+  character_id: Int,
+  timeout_ms: Int,
+) -> protocol.DisembarkResult {
+  process.call(sim, waiting: timeout_ms, sending: RequestDisembark(
+    character_id,
+    _,
+  ))
+}
+
+/// Buy at the seated broker (blocking call).
+pub fn request_buy(
+  sim: Subject(Msg),
+  character_id: Int,
+  commodity: String,
+  quantity: Int,
+  timeout_ms: Int,
+) -> protocol.TradeResult {
+  process.call(sim, waiting: timeout_ms, sending: RequestBuy(
+    character_id,
+    commodity,
+    quantity,
+    _,
+  ))
+}
+
+/// Sell at the seated broker (blocking call).
+pub fn request_sell(
+  sim: Subject(Msg),
+  character_id: Int,
+  commodity: String,
+  quantity: Int,
+  timeout_ms: Int,
+) -> protocol.TradeResult {
+  process.call(sim, waiting: timeout_ms, sending: RequestSell(
+    character_id,
+    commodity,
+    quantity,
+    _,
+  ))
+}
+
+/// The market where the character is (blocking call).
+pub fn request_market(
+  sim: Subject(Msg),
+  character_id: Int,
+  timeout_ms: Int,
+) -> Result(market.Market, String) {
+  process.call(sim, waiting: timeout_ms, sending: RequestMarket(character_id, _))
+}
+
 /// A registered listener: the subject to push to, the character it owns,
 /// and the monitor on its owning process that keys its removal.
 type Client {
@@ -219,6 +306,9 @@ type State {
     start_us: Int,
     clients: List(Client),
     acc: stats.Accumulator,
+    markets: List(market.Market),
+    price_epoch: Int,
+    regen_epoch: Int,
   )
 }
 
@@ -240,6 +330,9 @@ pub fn start(
         start_us: clock.now_us(),
         clients: [],
         acc: stats.new(),
+        markets: market.init(world),
+        price_epoch: 0,
+        regen_epoch: 0,
       )
     process.send(subject, Tick)
     // Receive our own messages plus Down notifications for every monitor
@@ -291,7 +384,7 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
               ],
             )
           process.send(reply, #(new_ship.id, new_character.id))
-          io.println(
+          io.println_error(
             "client connected ("
             <> int.to_string(list.length(state.clients))
             <> ")",
@@ -309,7 +402,10 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
       case find_character(state.characters, character_id) {
         Error(Nil) -> actor.continue(state)
         Ok(char) ->
-          case character.is_at_helm(char, state.class.plan) {
+          case
+            char.place == character.Aboard
+            && character.is_at_helm(char, state.class.plan)
+          {
             False -> actor.continue(state)
             True -> {
               let ships =
@@ -386,32 +482,50 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
         Ok(char) -> {
           let occupied =
             list.any(state.characters, fn(c) {
-              c.ship_id == char.ship_id && c.seat == Some(console)
+              character.same_place(c, char) && c.seat == Some(console)
             })
-          case character.try_sit(char, state.class.plan, console, occupied) {
-            Ok(updated) -> {
-              process.send(
-                reply,
-                protocol.SeatResult(ok: True, reason: None, seat: updated.seat),
-              )
-              actor.continue(
-                State(
-                  ..state,
-                  characters: replace_character(state.characters, updated),
-                ),
-              )
-            }
-            Error(reason) -> {
+          case plan_for(state, char) {
+            Error(Nil) -> {
               process.send(
                 reply,
                 protocol.SeatResult(
                   ok: False,
-                  reason: Some(reason),
+                  reason: Some("unknown_console"),
                   seat: char.seat,
                 ),
               )
               actor.continue(state)
             }
+            Ok(plan) ->
+              case character.try_sit(char, plan, console, occupied) {
+                Ok(updated) -> {
+                  process.send(
+                    reply,
+                    protocol.SeatResult(
+                      ok: True,
+                      reason: None,
+                      seat: updated.seat,
+                    ),
+                  )
+                  actor.continue(
+                    State(
+                      ..state,
+                      characters: replace_character(state.characters, updated),
+                    ),
+                  )
+                }
+                Error(reason) -> {
+                  process.send(
+                    reply,
+                    protocol.SeatResult(
+                      ok: False,
+                      reason: Some(reason),
+                      seat: char.seat,
+                    ),
+                  )
+                  actor.continue(state)
+                }
+              }
           }
         }
       }
@@ -488,7 +602,7 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
         list.map(characters, fn(c) { c.ship_id }) |> list.unique
       let ships =
         list.filter(state.ships, fn(s) { list.contains(crewed_ship_ids, s.id) })
-      io.println(
+      io.println_error(
         "client disconnected (" <> int.to_string(list.length(remaining)) <> ")",
       )
       actor.continue(
@@ -500,6 +614,44 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
 
     GetStats(reply) -> {
       process.send(reply, stats_reply(state))
+      actor.continue(state)
+    }
+
+    RequestDisembark(character_id, reply) -> {
+      case find_character(state.characters, character_id) {
+        Error(Nil) -> {
+          process.send(
+            reply,
+            protocol.DisembarkResult(
+              ok: False,
+              reason: Some("not_aboard"),
+              station_id: None,
+            ),
+          )
+          actor.continue(state)
+        }
+        Ok(char) -> handle_disembark(state, char, reply)
+      }
+    }
+
+    RequestBuy(character_id, commodity, quantity, reply) ->
+      handle_trade(state, character_id, commodity, quantity, True, reply)
+
+    RequestSell(character_id, commodity, quantity, reply) ->
+      handle_trade(state, character_id, commodity, quantity, False, reply)
+
+    RequestMarket(character_id, reply) -> {
+      let result = case find_character(state.characters, character_id) {
+        Error(Nil) -> Error("no_market")
+        Ok(char) ->
+          case market_station_for(state, char) {
+            Error(Nil) -> Error("no_market")
+            Ok(station_id) ->
+              find_market(state.markets, station_id)
+              |> result.replace_error("no_market")
+          }
+      }
+      process.send(reply, result)
       actor.continue(state)
     }
   }
@@ -522,7 +674,10 @@ fn with_helm_ship(
       actor.continue(state)
     }
     Ok(char) ->
-      case character.is_at_helm(char, state.class.plan) {
+      case
+        char.place == character.Aboard
+        && character.is_at_helm(char, state.class.plan)
+      {
         False -> {
           process.send(reply, Error("not_at_helm"))
           actor.continue(state)
@@ -545,81 +700,344 @@ fn handle_board(
   target_ship_id: Int,
   reply: Subject(protocol.BoardResult),
 ) -> actor.Next(State, Msg) {
-  case char.ship_id == target_ship_id {
-    True -> {
-      process.send(
-        reply,
-        protocol.BoardResult(
-          ok: False,
-          reason: Some("same_ship"),
-          ship_id: char.ship_id,
-        ),
-      )
-      actor.continue(state)
-    }
-    False ->
-      case find_ship(state.ships, target_ship_id) {
-        Error(Nil) -> {
-          process.send(
-            reply,
-            protocol.BoardResult(
-              ok: False,
-              reason: Some("unknown_ship"),
-              ship_id: char.ship_id,
-            ),
-          )
-          actor.continue(state)
-        }
-        Ok(target) -> {
-          let assert Ok(current) = find_ship(state.ships, char.ship_id)
-          case docked_at_same_station(current, target) {
+  let fail = fn(reason) {
+    process.send(
+      reply,
+      protocol.BoardResult(
+        ok: False,
+        reason: Some(reason),
+        ship_id: char.ship_id,
+      ),
+    )
+    actor.continue(state)
+  }
+  case find_ship(state.ships, target_ship_id) {
+    Error(Nil) -> fail("unknown_ship")
+    Ok(target) ->
+      case char.place {
+        // Ashore: board any ship docked at this station, your own included.
+        character.OnStation(station_id) ->
+          case target.dock == ship.Docked(station_id) {
+            False -> fail("not_docked_here")
+            True -> complete_board(state, char, target, reply)
+          }
+        // Aboard (the M2 flow): cross to another ship co-docked with yours.
+        character.Aboard ->
+          case char.ship_id == target_ship_id {
+            True -> fail("same_ship")
             False -> {
-              process.send(
-                reply,
-                protocol.BoardResult(
-                  ok: False,
-                  reason: Some("not_docked_together"),
-                  ship_id: char.ship_id,
-                ),
-              )
-              actor.continue(state)
-            }
-            True -> {
-              let old_ship_id = char.ship_id
-              let #(sx, sy) = character.spawn_position(state.class.plan)
-              // Move input is cleared, not just the seat (mirroring
-              // character.gleam's try_sit/stand): input held at the moment
-              // of boarding was buffered against the old ship's deck, and
-              // without the reset it would resume walking the character
-              // away from the new ship's spawn tile on the very next tick.
-              let boarded =
-                character.Character(
-                  ..char,
-                  ship_id: target.id,
-                  x: sx,
-                  y: sy,
-                  seat: None,
-                  move_dx: 0.0,
-                  move_dy: 0.0,
-                )
-              let characters = replace_character(state.characters, boarded)
-              // A ship left with zero characters aboard despawns
-              // immediately.
-              let old_ship_still_crewed =
-                list.any(characters, fn(c) { c.ship_id == old_ship_id })
-              let ships = case old_ship_still_crewed {
-                True -> state.ships
-                False -> list.filter(state.ships, fn(s) { s.id != old_ship_id })
+              let assert Ok(current) = find_ship(state.ships, char.ship_id)
+              case docked_at_same_station(current, target) {
+                False -> fail("not_docked_together")
+                True -> complete_board(state, char, target, reply)
               }
-              process.send(
-                reply,
-                protocol.BoardResult(ok: True, reason: None, ship_id: target.id),
-              )
-              actor.continue(
-                State(..state, characters: characters, ships: ships),
-              )
             }
           }
+      }
+  }
+}
+
+/// Move `char` aboard `target`: crew membership transfers, body lands
+/// standing at the spawn tile with buffered input cleared (input held at
+/// the transition was aimed at the old deck), and a ship left with zero
+/// crew despawns.
+fn complete_board(
+  state: State,
+  char: Character,
+  target: Ship,
+  reply: Subject(protocol.BoardResult),
+) -> actor.Next(State, Msg) {
+  let old_ship_id = char.ship_id
+  let #(sx, sy) = character.spawn_position(state.class.plan)
+  let boarded =
+    character.Character(
+      ..char,
+      ship_id: target.id,
+      place: character.Aboard,
+      x: sx,
+      y: sy,
+      seat: None,
+      move_dx: 0.0,
+      move_dy: 0.0,
+    )
+  let characters = replace_character(state.characters, boarded)
+  // Despawn on zero *crew* (ship_id references) — a ship whose whole crew
+  // is ashore stays alive; one whose last crew member transferred away
+  // does not.
+  let old_ship_still_crewed =
+    list.any(characters, fn(c) { c.ship_id == old_ship_id })
+  let ships = case old_ship_still_crewed {
+    True -> state.ships
+    False -> list.filter(state.ships, fn(s) { s.id != old_ship_id })
+  }
+  process.send(
+    reply,
+    protocol.BoardResult(ok: True, reason: None, ship_id: target.id),
+  )
+  actor.continue(State(..state, characters: characters, ships: ships))
+}
+
+/// The station whose market the character may inspect: the concourse
+/// they're standing in, or the station their ship is docked at while
+/// they're aboard.
+fn market_station_for(state: State, char: Character) -> Result(String, Nil) {
+  case char.place {
+    character.OnStation(station_id) -> Ok(station_id)
+    character.Aboard ->
+      case find_ship(state.ships, char.ship_id) {
+        Error(Nil) -> Error(Nil)
+        Ok(s) ->
+          case s.dock {
+            ship.Docked(station_id) -> Ok(station_id)
+            ship.Flying -> Error(Nil)
+          }
+      }
+  }
+}
+
+fn handle_disembark(
+  state: State,
+  char: Character,
+  reply: Subject(protocol.DisembarkResult),
+) -> actor.Next(State, Msg) {
+  let fail = fn(reason) {
+    process.send(
+      reply,
+      protocol.DisembarkResult(
+        ok: False,
+        reason: Some(reason),
+        station_id: None,
+      ),
+    )
+    actor.continue(state)
+  }
+  case char.place {
+    character.OnStation(_) -> fail("not_aboard")
+    character.Aboard ->
+      case find_ship(state.ships, char.ship_id) {
+        Error(Nil) -> fail("not_aboard")
+        Ok(s) ->
+          case s.dock {
+            ship.Flying -> fail("not_docked")
+            ship.Docked(station_id) -> {
+              let assert Ok(station) =
+                world.get_station(state.world, station_id)
+              case station.concourse {
+                None -> fail("no_concourse")
+                Some(plan) -> {
+                  let ashore = character.disembark_to(char, plan, station_id)
+                  process.send(
+                    reply,
+                    protocol.DisembarkResult(
+                      ok: True,
+                      reason: None,
+                      station_id: Some(station_id),
+                    ),
+                  )
+                  actor.continue(
+                    State(
+                      ..state,
+                      characters: replace_character(state.characters, ashore),
+                    ),
+                  )
+                }
+              }
+            }
+          }
+      }
+  }
+}
+
+/// Shared buy/sell gate: seated at a broker console ashore, own ship
+/// docked at that station, handling method available, station trades the
+/// commodity. Buys take stock first (price locked from the store), then
+/// validate the ship side — the market change is only committed when both
+/// halves succeed.
+fn handle_trade(
+  state: State,
+  character_id: Int,
+  commodity: String,
+  quantity: Int,
+  buying: Bool,
+  reply: Subject(protocol.TradeResult),
+) -> actor.Next(State, Msg) {
+  let fail = fn(reason) {
+    process.send(
+      reply,
+      protocol.TradeResult(
+        ok: False,
+        reason: Some(reason),
+        commodity: commodity,
+        quantity: quantity,
+        price: 0,
+      ),
+    )
+    actor.continue(state)
+  }
+  case find_character(state.characters, character_id) {
+    Error(Nil) -> fail("not_at_broker")
+    Ok(char) ->
+      case char.place {
+        character.Aboard -> fail("not_at_broker")
+        character.OnStation(station_id) -> {
+          let seated_at_broker = case plan_for(state, char) {
+            Ok(plan) -> character.seated_at_kind(char, plan, "broker")
+            Error(Nil) -> False
+          }
+          case seated_at_broker {
+            False -> fail("not_at_broker")
+            True ->
+              case find_ship(state.ships, char.ship_id) {
+                Error(Nil) -> fail("ship_not_docked")
+                Ok(s) ->
+                  case s.dock == ship.Docked(station_id) {
+                    False -> fail("ship_not_docked")
+                    True -> {
+                      let assert Ok(station) =
+                        world.get_station(state.world, station_id)
+                      case
+                        cargo.transfer_rate(station.crane, state.class.handling)
+                      {
+                        Error(reason) -> fail(reason)
+                        Ok(rate) ->
+                          case find_market(state.markets, station_id) {
+                            Error(Nil) -> fail("not_sold_here")
+                            Ok(m) ->
+                              case buying {
+                                True ->
+                                  do_buy(
+                                    state,
+                                    m,
+                                    s,
+                                    commodity,
+                                    quantity,
+                                    rate,
+                                    reply,
+                                  )
+                                False ->
+                                  do_sell(
+                                    state,
+                                    m,
+                                    s,
+                                    commodity,
+                                    quantity,
+                                    rate,
+                                    reply,
+                                  )
+                              }
+                          }
+                      }
+                    }
+                  }
+              }
+          }
+        }
+      }
+  }
+}
+
+fn do_buy(
+  state: State,
+  m: market.Market,
+  s: Ship,
+  commodity: String,
+  quantity: Int,
+  rate: Float,
+  reply: Subject(protocol.TradeResult),
+) -> actor.Next(State, Msg) {
+  let fail = fn(reason) {
+    process.send(
+      reply,
+      protocol.TradeResult(
+        ok: False,
+        reason: Some(reason),
+        commodity: commodity,
+        quantity: quantity,
+        price: 0,
+      ),
+    )
+    actor.continue(state)
+  }
+  case market.take_stock(m, commodity, quantity) {
+    Error(reason) -> fail(reason)
+    Ok(#(updated_market, store)) ->
+      case
+        cargo.begin_buy(
+          s,
+          commodity,
+          quantity,
+          store.price,
+          state.class.cargo_capacity,
+          rate,
+        )
+      {
+        // Ship-side rejection: the market change is discarded (never
+        // committed to state), so stock is untouched.
+        Error(reason) -> fail(reason)
+        Ok(updated_ship) -> {
+          process.send(
+            reply,
+            protocol.TradeResult(
+              ok: True,
+              reason: None,
+              commodity: commodity,
+              quantity: quantity,
+              price: store.price,
+            ),
+          )
+          actor.continue(
+            State(
+              ..state,
+              ships: replace_ship(state.ships, updated_ship),
+              markets: replace_market(state.markets, updated_market),
+            ),
+          )
+        }
+      }
+  }
+}
+
+fn do_sell(
+  state: State,
+  m: market.Market,
+  s: Ship,
+  commodity: String,
+  quantity: Int,
+  rate: Float,
+  reply: Subject(protocol.TradeResult),
+) -> actor.Next(State, Msg) {
+  let fail = fn(reason) {
+    process.send(
+      reply,
+      protocol.TradeResult(
+        ok: False,
+        reason: Some(reason),
+        commodity: commodity,
+        quantity: quantity,
+        price: 0,
+      ),
+    )
+    actor.continue(state)
+  }
+  case market.find_store(m, commodity) {
+    Error(Nil) -> fail("not_sold_here")
+    Ok(store) ->
+      case cargo.begin_sell(s, commodity, quantity, store.price, rate) {
+        Error(reason) -> fail(reason)
+        Ok(updated_ship) -> {
+          process.send(
+            reply,
+            protocol.TradeResult(
+              ok: True,
+              reason: None,
+              commodity: commodity,
+              quantity: quantity,
+              price: store.price,
+            ),
+          )
+          actor.continue(
+            State(..state, ships: replace_ship(state.ships, updated_ship)),
+          )
         }
       }
   }
@@ -664,6 +1082,38 @@ fn replace_character(
   })
 }
 
+/// The deck plan under the character's feet: their crew ship's plan when
+/// aboard, the station concourse when ashore.
+fn plan_for(state: State, char: Character) -> Result(deckplan.DeckPlan, Nil) {
+  case char.place {
+    character.Aboard -> Ok(state.class.plan)
+    character.OnStation(station_id) ->
+      case world.get_station(state.world, station_id) {
+        Error(Nil) -> Error(Nil)
+        Ok(station) -> option.to_result(station.concourse, Nil)
+      }
+  }
+}
+
+fn find_market(
+  markets: List(market.Market),
+  station_id: String,
+) -> Result(market.Market, Nil) {
+  list.find(markets, fn(m) { m.station_id == station_id })
+}
+
+fn replace_market(
+  markets: List(market.Market),
+  updated: market.Market,
+) -> List(market.Market) {
+  list.map(markets, fn(m) {
+    case m.station_id == updated.station_id {
+      True -> updated
+      False -> m
+    }
+  })
+}
+
 fn run_tick(state: State) -> actor.Next(State, Msg) {
   let started_us = clock.now_us()
 
@@ -672,7 +1122,54 @@ fn run_tick(state: State) -> actor.Next(State, Msg) {
   let t = int.to_float(tick) *. ship.dt
   let ships = list.map(state.ships, fn(s) { ship.step(s, state.world, t) })
   let characters =
-    list.map(state.characters, fn(c) { character.step(c, state.class.plan) })
+    list.map(state.characters, fn(c) {
+      case plan_for(state, c) {
+        Ok(plan) -> character.step(c, plan)
+        Error(Nil) -> c
+      }
+    })
+
+  // 1b. Advance cargo transfers on docked ships; sold units land in the
+  // station's store the moment they cross the dock.
+  let #(ships, markets) =
+    list.fold(ships, #([], state.markets), fn(acc, s) {
+      let #(done, markets) = acc
+      case s.transfers, s.dock {
+        [], _ -> #([s, ..done], markets)
+        [_, ..], ship.Docked(station_id) -> {
+          let #(stepped, deliveries) = cargo.step_transfers(s)
+          let markets =
+            list.fold(deliveries, markets, fn(markets, delivery) {
+              case find_market(markets, station_id) {
+                Error(Nil) -> markets
+                Ok(m) ->
+                  replace_market(
+                    markets,
+                    market.add_stock(m, delivery.commodity, delivery.quantity),
+                  )
+              }
+            })
+          #([stepped, ..done], markets)
+        }
+        // Unreachable while undock is blocked mid-transfer; keep the ship
+        // untouched rather than crash if that invariant ever changes.
+        [_, ..], ship.Flying -> #([s, ..done], markets)
+      }
+    })
+  let ships = list.reverse(ships)
+
+  // 1c. Price and stock epochs, derived from sim time.
+  let new_price_epoch = market.price_epoch(t)
+  let markets = case new_price_epoch == state.price_epoch {
+    True -> markets
+    False ->
+      list.map(markets, market.reprice(_, state.world.seed, new_price_epoch))
+  }
+  let new_regen_epoch = market.regen_epoch(t)
+  let markets = case new_regen_epoch == state.regen_epoch {
+    True -> markets
+    False -> list.map(markets, market.regen)
+  }
 
   // 2. Broadcast at 15 Hz (skip serialization with no listeners): one
   // shared exterior snapshot to everyone, plus one interior message per
@@ -684,6 +1181,14 @@ fn run_tick(state: State) -> actor.Next(State, Msg) {
         process.send(client.subject, SendText(snapshot))
       })
       broadcast_interiors(state.clients, characters, tick)
+      broadcast_concourses(state.clients, characters, tick)
+      broadcast_cargo(
+        state.clients,
+        characters,
+        ships,
+        state.class.cargo_capacity,
+      )
+      broadcast_markets(state.clients, characters, markets)
     }
     False -> Nil
   }
@@ -691,7 +1196,16 @@ fn run_tick(state: State) -> actor.Next(State, Msg) {
   // 3. Record how long the work took.
   let acc = stats.record(state.acc, clock.now_us() - started_us)
   let state =
-    State(..state, ships: ships, characters: characters, tick: tick, acc: acc)
+    State(
+      ..state,
+      ships: ships,
+      characters: characters,
+      tick: tick,
+      acc: acc,
+      markets: markets,
+      price_epoch: new_price_epoch,
+      regen_epoch: new_regen_epoch,
+    )
 
   // 4. Periodic health log.
   case tick % log_every == 0 {
@@ -714,12 +1228,81 @@ fn broadcast_interiors(
   characters: List(Character),
   tick: Int,
 ) -> Nil {
-  let crewed_ship_ids = list.map(characters, fn(c) { c.ship_id }) |> list.unique
+  let aboard = list.filter(characters, fn(c) { c.place == character.Aboard })
+  let crewed_ship_ids = list.map(aboard, fn(c) { c.ship_id }) |> list.unique
   let texts =
     list.map(crewed_ship_ids, fn(ship_id) {
-      let crew = list.filter(characters, fn(c) { c.ship_id == ship_id })
+      let crew = list.filter(aboard, fn(c) { c.ship_id == ship_id })
       #(ship_id, protocol.encode_interior(tick, ship_id, crew))
     })
+  list.each(clients, fn(client) {
+    case find_character(characters, client.character_id) {
+      Error(Nil) -> Nil
+      Ok(char) ->
+        case char.place {
+          character.OnStation(_) -> Nil
+          character.Aboard ->
+            case list.find(texts, fn(t) { t.0 == char.ship_id }) {
+              Error(Nil) -> Nil
+              Ok(#(_, text)) -> process.send(client.subject, SendText(text))
+            }
+        }
+    }
+  })
+}
+
+/// One `concourse` message per occupied station, sent only to the clients
+/// whose character is standing in it.
+fn broadcast_concourses(
+  clients: List(Client),
+  characters: List(Character),
+  tick: Int,
+) -> Nil {
+  let ashore =
+    list.filter_map(characters, fn(c) {
+      case c.place {
+        character.OnStation(station_id) -> Ok(#(station_id, c))
+        character.Aboard -> Error(Nil)
+      }
+    })
+  let station_ids = list.map(ashore, fn(pair) { pair.0 }) |> list.unique
+  let texts =
+    list.map(station_ids, fn(station_id) {
+      let occupants =
+        list.filter_map(ashore, fn(pair) {
+          case pair.0 == station_id {
+            True -> Ok(pair.1)
+            False -> Error(Nil)
+          }
+        })
+      #(station_id, protocol.encode_concourse(tick, station_id, occupants))
+    })
+  list.each(clients, fn(client) {
+    case find_character(characters, client.character_id) {
+      Error(Nil) -> Nil
+      Ok(char) ->
+        case char.place {
+          character.Aboard -> Nil
+          character.OnStation(station_id) ->
+            case list.find(texts, fn(t) { t.0 == station_id }) {
+              Error(Nil) -> Nil
+              Ok(#(_, text)) -> process.send(client.subject, SendText(text))
+            }
+        }
+    }
+  })
+}
+
+/// One `cargo` message per crewed ship, to its *crew* (by membership,
+/// wherever their bodies are — the quartermaster ashore watches the hold).
+fn broadcast_cargo(
+  clients: List(Client),
+  characters: List(Character),
+  ships: List(Ship),
+  capacity: Int,
+) -> Nil {
+  let texts =
+    list.map(ships, fn(s) { #(s.id, protocol.encode_cargo(s, capacity)) })
   list.each(clients, fn(client) {
     case find_character(characters, client.character_id) {
       Error(Nil) -> Nil
@@ -727,6 +1310,33 @@ fn broadcast_interiors(
         case list.find(texts, fn(t) { t.0 == char.ship_id }) {
           Error(Nil) -> Nil
           Ok(#(_, text)) -> process.send(client.subject, SendText(text))
+        }
+    }
+  })
+}
+
+/// One `market` message per occupied station's market, to its concourse
+/// occupants — prices and stock stay live while you stand at the broker.
+fn broadcast_markets(
+  clients: List(Client),
+  characters: List(Character),
+  markets: List(market.Market),
+) -> Nil {
+  list.each(clients, fn(client) {
+    case find_character(characters, client.character_id) {
+      Error(Nil) -> Nil
+      Ok(char) ->
+        case char.place {
+          character.Aboard -> Nil
+          character.OnStation(station_id) ->
+            case find_market(markets, station_id) {
+              Error(Nil) -> Nil
+              Ok(m) ->
+                process.send(
+                  client.subject,
+                  SendText(protocol.encode_market(m)),
+                )
+            }
         }
     }
   })
@@ -740,9 +1350,15 @@ fn stats_reply(state: State) -> stats.StatsReply {
   )
 }
 
+/// Sim diagnostics go to stderr (`println_error`, here and at the client
+/// connect/disconnect logs): stderr writes never route through the
+/// process's group leader, so a sim actor that outlives the process that
+/// spawned it — as happens under the eunit test runner, whose per-test
+/// group leaders die with each test — logs safely instead of crashing the
+/// tick loop with `Io(Terminated)` and taking its linked spawner with it.
 fn log_health(state: State) -> Nil {
   let s = stats.current(state.acc)
-  io.println(
+  io.println_error(
     "tick="
     <> int.to_string(state.tick)
     <> " clients="
