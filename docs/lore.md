@@ -244,14 +244,23 @@ Real-world equivalent: Toyota. Star Citizen equivalent: RSI.
 
 - The Mockingbird
     - Flagship product, and the game's flagship ship overall
-    - A midsize generalist: configurable for cargo, passengers, or both; one of the largest ships capable of landing planetside
+    - A midsize generalist: configurable for cargo, passengers, or both; one of the largest hulls that can land planetside —
+      with the right package (below)
     - Resembles the Republic Cruiser from Star Wars, with the neck and cockpit of the Firefly
-    - Engine block is three large engines with ornamental fins on the sides and tops
+    - Engine block is three large engines. The iconic engine fins are **not stock**: they come with the atmospheric-landing
+      package (aero surfaces, heat shielding) — an upgrade the workaday station-to-station Mockingbird skips. Fins on a
+      Mockingbird are capability you can read at a glance: this one goes downwell, where the big ships can't follow. Style and
+      function arriving together.
     - Best as a tramp ship; two docking ports at the waist
     - The default starting ship — precisely because it isn't special. The Company has re-lent Mockingbirds for a century; yours
-      is one of thousands of patched, previously-foreclosed hulls in the sky, and your crew is special to nobody but you (per
-      themes.md, Loneliness). Every hull wears its history differently — a mismatched center engine, one odd fin — and putting
-      it right is early dignity nobody else will ever notice. The stolen-hubcap principle: *you'll* notice.
+      is one of thousands of previously-foreclosed hulls in the sky, and your crew is special to nobody but you (per themes.md,
+      Loneliness). Repossessed hulls get refurbished the Company way: with whatever Consolidated fleet parts fit the hole,
+      badly — a Consol center engine shoved between two Rijay originals, fleet-spec fittings wherever the good ones got
+      stripped. A starter Mockingbird is genuinely *worse* than an honest Consol: a battered classic, badly fixed with cheap
+      parts.
+    - Which is the early game: putting it right. Swapping out the Company patches teaches the module system one part at a time,
+      every fix is visible on your own hull, and you can get surprisingly far on a starter you've actually taken care of. Early
+      dignity nobody else will ever notice — the stolen-hubcap principle: *you'll* notice.
 - The Sparrow
     - The Toyota Corolla of space fighters
 
