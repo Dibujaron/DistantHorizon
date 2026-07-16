@@ -25,3 +25,13 @@ offset_right = 500.0
 offset_bottom = 34.0
 theme_override_font_sizes/font_size = 18
 text = "connecting…"
+
+[node name="TradePanel" type="Label" parent="UI"]
+unique_name_in_owner = true
+visible = false
+offset_left = 10.0
+offset_top = 150.0
+offset_right = 620.0
+offset_bottom = 620.0
+theme_override_font_sizes/font_size = 16
+text = ""

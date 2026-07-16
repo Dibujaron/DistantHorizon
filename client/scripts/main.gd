@@ -115,9 +115,15 @@ var _transient_expire_msec: int = 0
 var _predicted_pos: Vector2 = Vector2.ZERO
 var _predicting: bool = false
 
+## Highlighted row in the trade panel while at a broker (clamped to
+## _market.stores' bounds each render; meaningless at the read-only cargo
+## console, where the panel draws no cursor).
+var _trade_selection: int = 0
+
 @onready var _status_label: Label = %StatusLabel
 @onready var _world_view: WorldView = %WorldView
 @onready var _interior_view: InteriorView = %InteriorView
+@onready var _trade_panel: Label = %TradePanel
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(BACKGROUND_COLOR)
@@ -147,8 +153,13 @@ func _process(delta: float) -> void:
 	_update_status_label()
 	_update_world_view()
 	_update_interior_view()
+	_update_trade_panel()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _at_broker() and event is InputEventKey and event.pressed and not event.echo:
+		if _handle_trade_input(event):
+			get_viewport().set_input_as_handled()
+			return
 	if event.is_action_pressed("toggle_dock"):
 		_toggle_dock()
 	elif event.is_action_pressed("interact"):
@@ -281,6 +292,30 @@ func _handle_disembark_toggle() -> void:
 	if own != null and own.is_docked():
 		NetworkClient.send_message({"type": "disembark"})
 
+## Returns true if the key drove the trade panel. W/S move the selection,
+## D buys 1, A sells 1, Shift multiplies by 10. Quantities are JSON ints
+## (the server decoder rejects floats here).
+func _handle_trade_input(event: InputEventKey) -> bool:
+	if _market == null or _market.stores.is_empty():
+		return false
+	var quantity := 10 if event.shift_pressed else 1
+	match event.physical_keycode:
+		KEY_W, KEY_UP:
+			_trade_selection = maxi(0, _trade_selection - 1)
+			return true
+		KEY_S, KEY_DOWN:
+			_trade_selection = mini(_market.stores.size() - 1, _trade_selection + 1)
+			return true
+		KEY_D, KEY_RIGHT:
+			var store := _market.stores[_trade_selection]
+			NetworkClient.send_message({"type": "buy", "commodity": store.commodity, "quantity": quantity})
+			return true
+		KEY_A, KEY_LEFT:
+			var sell_store := _market.stores[_trade_selection]
+			NetworkClient.send_message({"type": "sell", "commodity": sell_store.commodity, "quantity": quantity})
+			return true
+	return false
+
 func _own_ship() -> ShipState:
 	for ship in _ships:
 		if ship.id == _ship_id:
@@ -318,6 +353,28 @@ func _seated_at_helm() -> bool:
 	var plan := _current_plan()
 	var console := plan.find_console(own_char.seat) if plan != null else null
 	return console != null and console.kind == "helm"
+
+## The kind of console our character is seated at on the current plan, or
+## "" while standing / before data arrives.
+func _seated_console_kind() -> String:
+	var own_char := _own_character()
+	var plan := _current_plan()
+	if own_char == null or not own_char.is_seated() or plan == null:
+		return ""
+	var console := plan.find_console(own_char.seat)
+	return console.kind if console != null else ""
+
+
+## Interactive trading: seated at a broker on a concourse.
+func _at_broker() -> bool:
+	return _seated_console_kind() == "broker"
+
+
+## The trade panel is visible at a broker (interactive) and at the ship's
+## cargo console (read-only manifest -- M3's binding of the M2 console).
+func _trade_panel_open() -> bool:
+	var kind := _seated_console_kind()
+	return kind == "broker" or kind == "cargo"
 
 ## The first other ship (by snapshot order) docked at the same station as
 ## `own`, or null. `own` must itself be docked.
@@ -654,6 +711,10 @@ func _on_dock_result_received(ok: bool, reason: Variant) -> void:
 func _on_seat_result_received(ok: bool, reason: Variant, _seat: Variant) -> void:
 	if not ok:
 		_show_transient_message("seat failed: %s" % str(reason))
+		return
+	_trade_selection = 0
+	if _trade_panel_open():
+		NetworkClient.send_message({"type": "get_market"})
 
 ## On `ok`, NetworkClient.ship_id has already been updated (it's the wire
 ## authority); mirror it into our local copy so status-label/board logic
@@ -684,8 +745,12 @@ func _on_market_received(market: MarketData) -> void:
 	_market = market
 
 
-func _on_trade_result_received(_ok: bool, _reason: Variant, _commodity: String, _quantity: int, _price: int) -> void:
-	pass  # Task 13 reports failures + refreshes the panel
+func _on_trade_result_received(ok: bool, reason: Variant, commodity: String, quantity: int, price: int) -> void:
+	if not ok:
+		_show_transient_message("trade failed: %s" % str(reason))
+	else:
+		_show_transient_message("%s %d %s @ %d cr" % [
+			"order placed:", quantity, commodity, price])
 
 func _on_error_received(code: String, message: String) -> void:
 	_show_transient_message("%s: %s" % [code, message])
@@ -693,6 +758,40 @@ func _on_error_received(code: String, message: String) -> void:
 func _show_transient_message(message: String) -> void:
 	_transient_message = message
 	_transient_expire_msec = Time.get_ticks_msec() + int(TRANSIENT_MESSAGE_SEC * 1000.0)
+
+## Renders the trade panel: visible whenever _trade_panel_open(), showing
+## live prices/stock/hold at a broker (with a selection cursor and the key
+## legend) or a read-only manifest at the ship's cargo console.
+func _update_trade_panel() -> void:
+	var open := _trade_panel_open()
+	_trade_panel.visible = open
+	if not open:
+		return
+	var lines: PackedStringArray = []
+	var interactive := _at_broker()
+	var title := "MARKET" if interactive else "CARGO MANIFEST (read-only)"
+	if _market != null and _world != null:
+		title += " — %s" % _world.station_name(_market.station_id)
+	lines.append(title)
+	if _cargo != null:
+		lines.append("wallet %d cr   hold %d/%d" % [_cargo.wallet, _cargo.hold_total(), _cargo.capacity])
+	lines.append("")
+	if _market == null:
+		lines.append("(waiting for market data…)")
+	else:
+		_trade_selection = clampi(_trade_selection, 0, maxi(0, _market.stores.size() - 1))
+		for i in _market.stores.size():
+			var store := _market.stores[i]
+			var cursor := "> " if interactive and i == _trade_selection else "  "
+			var held := _cargo.hold_quantity(store.commodity) if _cargo != null else 0
+			lines.append("%s%-12s %5d cr   stock %4d   hold %3d" % [
+				cursor, store.name, store.price, store.quantity, held])
+	lines.append("")
+	if interactive:
+		lines.append("W/S select   D buy 1   A sell 1   (Shift = x10)   E stand")
+	else:
+		lines.append("trading happens at station brokers — E stand")
+	_trade_panel.text = "\n".join(lines)
 
 func _update_status_label() -> void:
 	var lines: PackedStringArray = []
