@@ -231,7 +231,7 @@ configurations exist but are rarer, as with aircraft.
 
 Roughly equivalent to car companies — and load-bearing lore: in a game where the map changes every run, "who built your ship" is
 one of the few identities always with you. Manufacturers-as-cultures can carry as much of the world's character as governments do.
-They're also a class ladder, and everyone on a concourse can read it at a glance: a Connie means the Company still owns you; a
+They're also a class ladder, and everyone on a concourse can read it at a glance: a Consol means the Company still owns you; a
 Theseus means you scraped one together; a Harrow means you built it yourself; a Rijay means you made it; an Aratori means you
 never had to worry; a Bureau hull means people will tell the story of having seen it.
 
@@ -290,11 +290,12 @@ pre-owned meets rat rod.
 ### Consolidated Orbital
 
 The Company's industrial arm, and a fossil brand: the merger of mergers, its constituent names long since worn away — spacers
-just say **Connie**. Consolidated builds the Company's everything: standardized fleet hulls, the containers they carry, and the
+just say **Consol**, which happens to be an old Earth word for a bond that never matures. Debt with no end date, as a nickname
+for the Company's own ships: the kind of joke history writes by itself. Consolidated builds the Company's everything: standardized fleet hulls, the containers they carry, and the
 robot chassis that work the docks — including the one you wake up in if you die (see ../DESIGN.md, Death and robots): fleet-spec,
 standard fittings, aggressively unlovable, and now it's you. Its ships are designed for repossession — standard locks, nothing
 bespoke enough to complicate a foreclosure auction — and its silhouette is the most common in the sky: the Company's own
-logistics fleet and most NPC mortgage crews fly Connie. Everyone can tell one at a glance, which means everyone can tell whose it
+logistics fleet and most NPC mortgage crews fly Consol. Everyone can tell one at a glance, which means everyone can tell whose it
 really is. Visual language: container-grade, Company livery. Real-world equivalent: fleet-spec rental cars, white delivery vans.
 
 - The Tenor
