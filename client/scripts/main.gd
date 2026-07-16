@@ -635,6 +635,9 @@ func _on_disembark_result_received(ok: bool, reason: Variant, station_id: Varian
 		_characters = []
 		_interior_history = []
 		_predicting = false
+		# Stale cargo/market panels from the old place must not linger.
+		_cargo = null
+		_market = null
 	else:
 		_show_transient_message("disembark failed: %s" % str(reason))
 
@@ -737,6 +740,9 @@ func _on_board_result_received(ok: bool, reason: Variant, ship_id: int) -> void:
 		# No continuity across a ship change: prediction restarts from the
 		# server position outright the next time _update_own_prediction runs.
 		_predicting = false
+		# Stale cargo/market panels from the old place must not linger.
+		_cargo = null
+		_market = null
 	else:
 		_show_transient_message("board failed: %s" % str(reason))
 

@@ -29,8 +29,9 @@ signal interior_received(tick: int, ship_id: int, characters: Array[CharacterSta
 ## "not_seated". `seat` is the console id (or null) after the attempt.
 signal seat_result_received(ok: bool, reason: Variant, seat: Variant)
 ## Reply to a `board` request. `reason` is null when `ok`, otherwise one of
-## "unknown_ship" | "not_docked_together" | "same_ship". `ship_id` is your
-## ship after the attempt (unchanged from before the attempt if not `ok`).
+## "unknown_ship" | "not_docked_together" | "same_ship" | "not_docked_here".
+## `ship_id` is your ship after the attempt (unchanged from before the
+## attempt if not `ok`).
 signal board_result_received(ok: bool, reason: Variant, ship_id: int)
 ## Reply to a `disembark` request. `reason` is null when `ok`, otherwise
 ## one of "not_aboard" | "not_docked" | "no_concourse". `station_id` is

@@ -69,14 +69,15 @@ python -m pytest test_m3_trade.py -v             # just M3
 | → | `sell` | `commodity` (string), `quantity` (**JSON int**) |
 | → | `get_market` | — → `market` |
 | ← | `disembark_result` | `ok`, `reason` (`null`\|`not_aboard`\|`not_docked`\|`no_concourse`), `station_id` (string \| `null`) |
-| ← | `trade_result` | `ok`, `reason` (`null`\|`not_at_broker`\|`ship_not_docked`\|`no_crane`\|`not_sold_here`\|`insufficient_stock`\|`invalid_quantity`\|`insufficient_hold`\|`insufficient_funds`\|`insufficient_cargo`\|`no_market`), `commodity`, `quantity`, `price` (locked unit price, `0` on failure) |
+| ← | `trade_result` | `ok`, `reason` (`null`\|`not_at_broker`\|`ship_not_docked`\|`no_crane`\|`not_sold_here`\|`insufficient_stock`\|`invalid_quantity`\|`insufficient_hold`\|`insufficient_funds`\|`insufficient_cargo`), `commodity`, `quantity`, `price` (locked unit price, `0` on failure) |
 | ← | `market` | `station_id`, `stores: [{commodity, name, price, quantity}]` |
 | ← | `cargo` | `ship_id`, `wallet`, `capacity`, `hold: [{commodity, quantity}]` (sorted by commodity), `transfers: [{commodity, direction: "to_ship"\|"to_station", remaining}]` |
 | ← | `concourse` | `tick`, `station_id`, `characters: [{id, name, x, y, seat}]` — same shape as `interior` |
 
 Changed: `board_result` gains reason `"not_docked_here"`; `dock_result` gains reason
 `"transfer_in_progress"` (both new strings through existing plumbing — no encoder
-change).
+change). `get_market` with no reachable station market replies with an `error`
+frame, `code: "no_market"`, rather than a `trade_result` reason.
 
 ## World doc schema (`schema: 2`) additions
 

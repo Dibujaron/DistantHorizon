@@ -312,10 +312,13 @@ fn handle_client_text(
         LoggedIn(_, _, character_id) -> {
           let _ = case sim.request_market(sim_subject, character_id, 1000) {
             Ok(m) -> mist.send_text_frame(conn, protocol.encode_market(m))
-            Error(reason) ->
+            Error(_reason) ->
               mist.send_text_frame(
                 conn,
-                protocol.encode_error("no_market", reason),
+                protocol.encode_error(
+                  "no_market",
+                  "no station market here (not ashore or docked)",
+                ),
               )
           }
           session

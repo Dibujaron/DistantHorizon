@@ -20,7 +20,8 @@
 //// Server -> client:
 ////   {"v":1,"type":"welcome","account_id":N,"ship_id":N,"character_id":N,
 ////    "tick_rate":60,"dt":F,"world":{...},"ship_class":{...}}
-////   {"v":1,"type":"error","code":"auth_failed"|"storage_error","message":S}
+////   {"v":1,"type":"error","code":"auth_failed"|"storage_error"|"no_market",
+////    "message":S}
 ////   {"v":1,"type":"dock_result","ok":Bool,"reason":null|S} — reasons
 ////   include "transfer_in_progress"
 ////   {"v":1,"type":"seat_result","ok":Bool,"reason":null|S,"seat":null|S}
@@ -32,8 +33,7 @@
 ////   {"v":1,"type":"trade_result","ok":Bool,"reason":null|S,"commodity":S,
 ////    "quantity":N,"price":N} — reasons: not_at_broker | ship_not_docked |
 ////   no_crane | not_sold_here | insufficient_stock | invalid_quantity |
-////   insufficient_hold | insufficient_funds | insufficient_cargo |
-////   no_market
+////   insufficient_hold | insufficient_funds | insufficient_cargo
 ////   {"v":1,"type":"market","station_id":S,
 ////    "stores":[{"commodity","name","price","quantity"}...]}
 ////   {"v":1,"type":"cargo","ship_id":N,"wallet":N,"capacity":N,
