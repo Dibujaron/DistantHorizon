@@ -53,17 +53,8 @@ https://github.com/Dibujaron/DistantHorizonClassic/blob/main/balancer/About.html
 
 # Population
 
-**Decided: Variant 2 — human-descended races, no aliens (yet).** Moral ambiguity among peoples who did this to themselves — or had it done to them — within remembered history is sharper than rubber-forehead aliens; prejudice against Senti or Mixers implicates the player's own society. Variant 1 remains the fallback floor; Variant 3 is parked as a possible future expansion.
+**Decided: Variant 2 — human-descended races, no aliens (yet).** Moral ambiguity among peoples who did this to themselves — or had it done to them — within remembered history is sharper than rubber-forehead aliens; prejudice against Senti or Mixers implicates the player's own society. Aliens are hinted at in-world, but not widely known if they exist at all.
 
-## Variant 1: Human Only (fallback floor)
-
-- Like Firefly. 
-- Aliens are hinted at, but not widely known if they exist at all. 
-- No sentient AI for reasons.
-
-## Variant 2: Races, Human-Descended (Decided)
-
-- No aliens yet as above
 - Humans have splintered into a few distinct categories.
 - Human Basics
     - Unmodified or lightly genetically altered basic humans (e.g. no more cancer)
@@ -81,10 +72,9 @@ https://github.com/Dibujaron/DistantHorizonClassic/blob/main/balancer/About.html
     - Cyperpunk vibes?
     - Maybe they have shorter lives or something
 
-## Variant 3: Full Aliens (parked — possible expansion)
+## Parked: Aliens (possible future expansion)
 
-- Some or all of the above, plus a few alien races ala FTL
-- Canonically, these races would've made peaceful first contact with humanity in the distant past and are now integrated into their space (to greater and lesser extents)
+- A few alien races ala FTL, who canonically made peaceful first contact with humanity in the distant past and are now integrated into their space (to greater and lesser extents)
 - Decapods
     - "Decs"
     - A squidlike species native to acquatic habitats that is the best-integrated alien species with humanity. 
