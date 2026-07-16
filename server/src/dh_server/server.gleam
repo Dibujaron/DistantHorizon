@@ -4,7 +4,7 @@
 //// a valid `login`; the given `Authenticator` decides success/failure. On
 //// success the connection's ship and character are spawned via
 //// `sim.add_player` and it moves to `LoggedIn`, at which point
-//// `helm`/`dock`/`undock`/`move`/`sit`/`stand`/`board` take effect.
+//// `helm`/`dock`/`undock`/`move`/`sit`/`stand`/`board`/`disembark`/`buy`/`sell`/`get_market` take effect.
 //// `get_stats` works in both states. `LoggedIn.ship_id` tracks the
 //// character's current ship and is updated after every `board` attempt
 //// (even a failed one, to the character's unchanged current ship) so that
@@ -259,13 +259,68 @@ fn handle_client_text(
         }
       }
 
-    // disembark/buy/sell/get_market are parsed but not yet dispatched —
-    // sim wiring lands in a later task. Ignored for now, same as an
-    // unhandled message.
-    Ok(protocol.Disembark) -> session
-    Ok(protocol.Buy(_, _)) -> session
-    Ok(protocol.Sell(_, _)) -> session
-    Ok(protocol.GetMarket) -> session
+    Ok(protocol.Disembark) ->
+      case session {
+        PreLogin(_) -> session
+        LoggedIn(_, _, character_id) -> {
+          let result = sim.request_disembark(sim_subject, character_id, 1000)
+          let _ =
+            mist.send_text_frame(conn, protocol.encode_disembark_result(result))
+          session
+        }
+      }
+
+    Ok(protocol.Buy(commodity, quantity)) ->
+      case session {
+        PreLogin(_) -> session
+        LoggedIn(_, _, character_id) -> {
+          let result =
+            sim.request_buy(
+              sim_subject,
+              character_id,
+              commodity,
+              quantity,
+              1000,
+            )
+          let _ =
+            mist.send_text_frame(conn, protocol.encode_trade_result(result))
+          session
+        }
+      }
+
+    Ok(protocol.Sell(commodity, quantity)) ->
+      case session {
+        PreLogin(_) -> session
+        LoggedIn(_, _, character_id) -> {
+          let result =
+            sim.request_sell(
+              sim_subject,
+              character_id,
+              commodity,
+              quantity,
+              1000,
+            )
+          let _ =
+            mist.send_text_frame(conn, protocol.encode_trade_result(result))
+          session
+        }
+      }
+
+    Ok(protocol.GetMarket) ->
+      case session {
+        PreLogin(_) -> session
+        LoggedIn(_, _, character_id) -> {
+          let _ = case sim.request_market(sim_subject, character_id, 1000) {
+            Ok(m) -> mist.send_text_frame(conn, protocol.encode_market(m))
+            Error(reason) ->
+              mist.send_text_frame(
+                conn,
+                protocol.encode_error("no_market", reason),
+              )
+          }
+          session
+        }
+      }
 
     // get_stats works in both states.
     Ok(protocol.GetStats) -> {
