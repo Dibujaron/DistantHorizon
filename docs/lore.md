@@ -94,6 +94,12 @@ and none has dared void. Spacers just say **the Company**. Its business is every
 mortgages, station concessions, the border's only system-wide credit. The UCE needs the Company to knit the border together —
 cheap tramp-ship mortgages to anyone with a pulse are cheaper than garrisons — and hates every minute of the dependency.
 
+The Company is not a company so much as the fossil of dozens: the amalgamated remains of Earth's corporate giants — carmakers, oil
+majors, media empires, chip foundries, a few dynastic conglomerates — merged to finance the Crossing on the theory that only
+everything could pay for it. Its full legal name runs to a paragraph; nobody uses it. It is ruled by **the Directors**:
+incomprehensibly wealthy, never seen, and — since minds port, and the Crossing was three and a half centuries ago — not provably
+alive or dead. Whether anyone is behind the charter, or the charter simply continues, is a question the Company does not entertain.
+
 That's you, by the way. A player crew isn't an adventuring party; it's line seventeen of a Company ledger, the instrument of
 someone else's empire, working out about as well as such instruments do. The Company is the setting's great villain and earns the
 role the honest way, per themes.md: it is genuinely both things at once — predatory, and the only reason people like you get ships
@@ -139,6 +145,14 @@ peoples who did this to themselves — or had it done to them — within remembe
 prejudice against Grafters or Senti implicates the player's own society. Aliens are hinted at in-world, but not widely known if
 they exist at all.
 
+Two rules keep the taxonomy honest. First, the race names are umbrella words, and mostly *other people's* words: each covers many
+world-specific lineages that don't consider themselves one people, lumped together because the core can't be bothered to
+distinguish them. Categories are what prejudice looks like from inside a census. Second, spacers are a selected population: bodies
+adapted to one world tend to stay on it, so the people a crew actually meets on ships and concourses are every race's outliers,
+exiles, and edge cases. Whole planetary cultures exist that a trading crew only ever glimpses in flavor text (per themes.md,
+Loneliness: the worlds hold you at a distance). And a guardrail from themes.md (Competence, Not Power): race and lineage are
+texture and reputation, never stats — every body walks the same decks at the same speed.
+
 ## Baselines
 
 Unmodified or lightly tuned humans (no more cancer; nothing you'd see). The core's majority and its self-image. "Natural-born" is
@@ -153,6 +167,9 @@ wet-suits, unhurried and slightly too graceful. The name was an insult once — 
 pride instead. Their shipyards' hulls handle like nothing else; ask a Selkie pilot why and you'll get a shrug: *you fly a ship,
 we swim it.*
 
+Most Selkies never leave the water, and a people who prize fluid motion do not queue for jobs in stiff suits on dry decks. A
+Selkie aboard a ship is rare enough to be a story in themselves — and they know it.
+
 ## Grafters
 
 The marginal worlds' answer: where terraforming was never coming and the sea wasn't an option, people grafted what the world
@@ -160,6 +177,10 @@ demanded — lungs for thin air, rad-weave under the skin, heavy-G frames, cheap
 carries the double edge the border likes in a word: the grafts, and the graft — the endless work. The mods cost something; what
 exactly is an open question. (Candidate we like: **maintenance debt** — a Grafter body carries a lien like a ship does, which
 would make them the only people in the system who understand the player's mortgage in their bones.)
+
+"Grafter" is the widest umbrella of all — a heavy-G frame is useless on a low-G moon, and neither belongs in a ship's corridor.
+The lineage a crew actually meets aboard is the **void-born**: people grafted for space itself, the most marginal world of all
+and the only one every spacer lives in. Their worlds-of-origin lineages mostly stay home, doing exactly what they were made for.
 
 ## Senti
 
