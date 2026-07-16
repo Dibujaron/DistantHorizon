@@ -571,6 +571,7 @@ what makes the game developable by agents rather than merely reviewable.
 - **M3 — Trade on foot:** station concourse (reusing interior tech); walk off the ship; buy and
   sell at a broker; cargo transfer with handling times (cranes vs. robots); dynamic prices ported
   from Classic. Playable sandbox from here on.
+  **✅ Done 2026-07-15 ([results](docs/M3-RESULTS.md)).**
 - **M4 — The run:** world generation from a seed; the debt clock (loan, interest, fees);
   retirement and scoring; lobby flow for creating/joining/resuming runs; universe/run-state
   persistence. Solo-universe only at first, but the universe/run split is built in here so
@@ -597,6 +598,8 @@ what makes the game developable by agents rather than merely reviewable.
 - ~~**How much ship-system depth at M2:**~~ **Decided in M2: consoles first.** Helm console is
   functional; the cargo console exists on the deck but binds nothing until M3. No
   power/repair/fires — per the seat test, that busywork doesn't earn a crew role anyway.
+  (M3: the cargo console now opens a read-only manifest; trading happens at concourse
+  brokers.)
 - **The world outside the window (must-do, milestone TBD):** the interior view currently
   renders the deck against a void, but the simulation isn't the constraint — the client already
   knows the ship's exterior position/heading and every rail, so compositing the system view
