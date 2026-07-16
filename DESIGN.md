@@ -97,7 +97,9 @@ ending.
   holds at anchorage until you're back, but the universe — and the debt clock — keeps moving.)
 - **Meta-progression:** account-level and deliberately light — scoreboards, run history, and
   unlocks that add *variety*, not power (new starting hulls, starting scenarios, harder loan
-  terms for bragging rights). Nothing should make run #50 mechanically stronger than run #1;
+  terms for bragging rights, and eventually a **Senti start** — play an AI captain under
+  paper-captain rules, see the signatory rule under Multiplayer & crew design; strictly harder,
+  textbook variety-not-power). Nothing should make run #50 mechanically stronger than run #1;
   roguelike replayability dies when the meta becomes a grind gate.
 - **Crew and runs:** a run is created by a host crew (lobby flow); friends drop in mid-run as
   crew aboard the ship and drop out without ending anything. Solo runs are the same systems with
@@ -364,14 +366,31 @@ grid, rooms, door graph), console placements, docking ports, and hangar berths f
   shared-universe); friends join as characters aboard the ship, mid-run drop-in/drop-out
   included. No "new ship per player" — a *run* has one crew and (to start) one mothership plus
   its small craft; in a shared universe, other ships belong to other crews' runs.
-- **Death and robots.** Personal permadeath with team continuation: if you die while a crewmate
-  lives, you respawn as a **robot** crew member — as capable as a human, walking the same
+- **Death and robots.** Personal permadeath with team continuation: if you die while the run
+  survives, you respawn as a **robot** crew member — as capable as a human, walking the same
   corridors, sitting the same seats — and the ship's wallet is billed for the purchase. Death,
-  like everything else in this game, is an economic wound. But at least one living human is
-  required to continue: when the last human dies, the run is over — which means a solo captain
-  dies like a roguelike character should. The lore holds together on its own: the stevedore
-  robots already prove the tech, and the reason humans crew ships at all is that the bank's
-  charter requires a living signatory. Robots can't hold the note.
+  like everything else in this game, is an economic wound. Respawn is player continuity, not
+  resurrection: the character is dead; the player continues in a purchased chassis. (This also
+  keeps Senti death consistent with the no-cloning rule — minds port but never copy, so no
+  backups; see docs/lore.md, Technology.)
+- **The signatory rule.** The bank's charter requires a living **natural-born human** signatory
+  aboard — the in-world reason humans crew ships at all, and deliberately a piece of prejudice
+  with a legal veneer: Senti (AI with legal personhood — docs/lore.md) can fly the ship but
+  can't hold the note, and crew robots are non-sentient appliances. The run continues while at
+  least one natural-born human is alive aboard, **player or NPC**:
+  - All-human and mixed crews: unchanged — when the last human dies, the run is over, and a
+    solo captain dies like a roguelike character should.
+  - **The paper captain.** A Senti start (a variety unlock, not the default — see
+    Meta-progression under The run) ships with a hired NPC signatory aboard: a salaried human
+    whose entire job is to legally exist. They sit in a bunk, draw a wage from the ship's
+    wallet, and are irreplaceable legal infrastructure — the robot rule inverted (humans keep
+    robots as replaceable labor; Senti keep a human as an irreplaceable signature). Protect
+    your useless human.
+  - **Grace window.** A signatory-less ship isn't unrecoverable — humans are hireable at any
+    concourse — so per the desperation-lever principle the bank grants a short window to get a
+    new warm body under contract before foreclosure. "Our legal person died; burn for the
+    nearest port and hire literally anyone" is a designed crisis, and per the Panic theme
+    (docs/themes.md) it rewards route math, not reflexes.
 - Chat: per-ship (intercom) and per-concourse/local, plus a lobby channel. Classic's Discord
   bridge was nice; port the idea eventually.
 
@@ -599,7 +618,9 @@ what makes the game developable by agents rather than merely reviewable.
   "wait, lighter, shuttle in, or divert" stays a real decision instead of a solved one.
 - **Death tuning:** what kills you before combat exists (decompression? industrial accidents?
   EVA?), robot pricing relative to the debt curve, and whether robot bodies carry any drawback
-  beyond the bill.
+  beyond the bill. Also signatory tuning for Senti starts: paper-captain salary, and
+  grace-window length so losing your signatory is a real crisis rather than a formality or an
+  instant loss.
 - **Shared-universe scope:** how do crews interact — visible traffic and shared markets only, or
   also direct trade, crew transfer, and (once combat exists) piracy against each other? Does a
   shared universe have a lifespan of its own (a season that eventually winds down), and how are

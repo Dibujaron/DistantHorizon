@@ -1,6 +1,6 @@
 # Intro
 
-none of this is set in stone, vibes only, suggestions welcome
+none of this is set in stone, vibes only, suggestions welcome — except items marked **Decided** (2026-07-15), which we've committed to
 
 # Original DH CLassic Lore
 
@@ -13,6 +13,14 @@ https://github.com/Dibujaron/DistantHorizonClassic/blob/main/balancer/About.html
 - Skyrim for race-vibes
 - The Culture for forward-looking tech; it's too far in the future to copy directly but it's got some influence
 - Star Citizen a bit, mostly around ship manufacturers
+
+# Canon vs. Seed
+
+**Decided: recurring cast, procedural stage.** The world regenerates every run (see ../DESIGN.md), so lore attaches to the *cast*, not the *map*. FTL is the precedent: the Federation and the Engi are canon; the map never is.
+
+- **Canonical (exists in every universe):** factions, races, religions, ship manufacturers, the UCE, the bank, and the signatory law.
+- **Per-seed:** the map itself — which stars and worlds exist, who holds them, where the profitable routes are.
+- If named-place attachment ever feels missing, the middle path is *anchor institutions* that exist in every seed (there's always a UCE core, always the bank, maybe always one named cathedral station) — just arranged differently.
 
 # Geography
 
@@ -31,7 +39,7 @@ https://github.com/Dibujaron/DistantHorizonClassic/blob/main/balancer/About.html
 - Terraforming is possible but very costly and takes decades.
 - News and occasional colonists are carried between star systems by long-haul ships
     - any such journey is a one-way trip always, as everyone you know back home will be dead by the time you get anywhere
-- Human-parity AI exists, but superhuman AI proved to be impossible in this world. A brain cannot make something smarter than itself (or some bullshit like that).
+- Human-parity AI exists, but superhuman AI proved to be impossible, because **minds can be ported but never copied** (Decided). A consciousness — human or artificial — transfers cleanly to a new substrate, but any attempt to *duplicate* one degrades into noise. One rule, three payoffs: no superintelligence bootstrap (you can't iterate on a mind you can't copy), Senti are mortal (no backups — destroy the substrate before transfer and they're gone), and Senti aren't tied to one hull (portable, just not copyable).
 - Space elevators exist on lower-gravity planets
 
 # Politics
@@ -40,16 +48,20 @@ https://github.com/Dibujaron/DistantHorizonClassic/blob/main/balancer/About.html
 - In practice the more distant planets are loosely ruled, de-facto independent, or are truly independent offshoots
 - The UCE welcome immigrants (on generation ships) from other star systems in an attempt to more thoroughly tame the border planets
     - Most immigrants are not welcome to settle on the central planets, which are 'full'; they are pushed to barely-habitable border worlds
+- **The signatory law (Decided):** banks — and most charters and licenses of consequence — require a *natural-born human* signatory. Senti personhood is legally real but economically hollow: a Senti can be a person in court and still be unable to hold a ship's note. Everyone in-world knows it's prejudice with a legal veneer, but per themes.md (Moral Ambiguity) the law's defenders have real arguments too: a signatory who can die is a hostage to fortune, while a mind that can port to a new hull the moment the repo crew docks is genuinely hard to hold accountable; personhood law is young, and law lags.
+- **Signatories of convenience ("paper captains"):** the workaround is an institution. Broke humans rent out their personhood to Senti crews — sit in a bunk, draw a wage, legally exist. The most capable being on the ship is the least legally real. (Mechanics: ../DESIGN.md, the signatory rule under Multiplayer & crew design.)
 
 # Population
 
-## Variant 1: Human Only
+**Decided: Variant 2 — human-descended races, no aliens (yet).** Moral ambiguity among peoples who did this to themselves — or had it done to them — within remembered history is sharper than rubber-forehead aliens; prejudice against Senti or Mixers implicates the player's own society. Variant 1 remains the fallback floor; Variant 3 is parked as a possible future expansion.
+
+## Variant 1: Human Only (fallback floor)
 
 - Like Firefly. 
 - Aliens are hinted at, but not widely known if they exist at all. 
 - No sentient AI for reasons.
 
-## Variant 2: Races, Human-Descended
+## Variant 2: Races, Human-Descended (Decided)
 
 - No aliens yet as above
 - Humans have splintered into a few distinct categories.
@@ -60,14 +72,16 @@ https://github.com/Dibujaron/DistantHorizonClassic/blob/main/balancer/About.html
     - Acquatics?
     - Weird cultists who modified themselves in XX way?
 - Senti: Human-equivalent AI which have legal personhood
-    - Did they buy their own freedom? How does this work.
-    - Maybe humans don't any contradiction in treating some AI as human and others not, in the same way that dogs and pigs are almost the same but one is family and the other food.
-    - What stops Senti from being effectively immortal? Is their consciousness tied to one hull? That's lame.
+    - Personhood is real but economically hollow — see the signatory law under Politics. A person in court, and still unable to hold a ship's note.
+    - Mortality and hull-independence both fall out of the no-cloning rule under Technology: minds port but never copy, so no backups (mortal) and no single fixed hull (not lame).
+    - How they got personhood is still open — bought their freedom? A court case? Something uglier?
+    - The dogs-and-pigs point stands: humans feel no contradiction treating Senti as people and ship robots as appliances, the same way a dog is family and a pig is food. Crew robots are non-sentient by design (and possibly by law).
+    - Playable eventually: a Senti start is a variety unlock, not the default (see ../DESIGN.md, meta-progression). Humans are the default start; the Senti layer is discovered depth, not the pitch.
 - Mixers: Genetically or cybernetically 'enhanced' humans?
     - Cyperpunk vibes?
     - Maybe they have shorter lives or something
 
-## Variant 3: Full Aliens
+## Variant 3: Full Aliens (parked — possible expansion)
 
 - Some or all of the above, plus a few alien races ala FTL
 - Canonically, these races would've made peaceful first contact with humanity in the distant past and are now integrated into their space (to greater and lesser extents)
@@ -76,6 +90,7 @@ https://github.com/Dibujaron/DistantHorizonClassic/blob/main/balancer/About.html
     - A squidlike species native to acquatic habitats that is the best-integrated alien species with humanity. 
     - Requires a helmet around their core 'head' to breathe, but arms can be exposed to human atmo and they can walk on land.
         - Is this ridiculous? If you're adapted to swim, being on land sucks. Seems like we wouldn't mix that much.
+        - Resolution if we ever use them: lean into it — Decs on land are *rare*, their presence on stations felt through water-filled districts, and meeting one in person is memorable. Scarcity serves the loneliness theme instead of fighting it.
     - Their ships and habitats are underwater (or something water-ish).
 - What else could we do that's not a ripoff of FTL?
 
@@ -101,7 +116,7 @@ https://github.com/Dibujaron/DistantHorizonClassic/blob/main/balancer/About.html
 
 ## Ship Manufacturers
 
-Ship manufacturers are roughly equivalent to car companies. 
+Ship manufacturers are roughly equivalent to car companies. They're also load-bearing lore: in a game where the map changes every run, "who built your ship" is one of the few identities always with you — manufacturers-as-cultures can carry as much of the world's character as governments do. 
 
 ### Rijay Drive Yards
 
