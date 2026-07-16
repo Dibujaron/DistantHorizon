@@ -2,6 +2,8 @@
 
 *Rewrite of Distant Horizon ("Classic", see `../DistantHorizonClassic`). Living document — edit freely.*
 
+*See also lore and theme documents in ./docs*
+
 ## Vision
 
 Distant Horizon is a multiplayer roguelike about realistic space travel. You and your crew take out
