@@ -23,6 +23,27 @@ Nobody should later "improve" them into bustling taverns without noticing that i
 Multi-crew ships will be different, obviously, because you're not alone; this becomes more like the Firefly fantasy, of a tight-knit
 crew together, alone against the universe. Then it becomes more unambiguously a positive loneliness.
 
+## Awe
+
+Loneliness's other half. The same pandemic that infused Classic with isolation also included, for me, moments of stunning, stark
+beauty that never would've come about otherwise — and the game should carry both. The void is beautiful and doesn't care that it is.
+Awe is the payoff that makes the solitude worth choosing; without it, loneliness is just deprivation.
+
+This makes the "world outside the window" feature (see ../DESIGN.md, open questions) theme-critical rather than a nice-to-have:
+walking the cargo hold while a station slides past *is* this theme. Cutting thrust to coast should feel like something. And nothing
+should ever reward looking — no screenshot achievements, no scenic-route bonuses. The moment beauty pays, it becomes a collectible.
+It has to stay indifferent to you; that's the point.
+
+## Competence, Not Power
+
+Almost every game answers "what does the player become?" with *more powerful*. We answer it with *better at your job*. The design
+already says this everywhere without naming it — the seat test asks whether the work itself is fun, meta-progression is variety-not-power,
+and debt is escaped by doing your job well — so the theme should say it out loud: the fantasy is the clean dock, the perfect flip
+point, the route math that saves the evening. Trucker in space. We do the job, we get paid.
+
+This forbids things: no trade-bonus perks, no stat trees, no power curve inside a run. Skill expression lives in the player's hands
+and choices, never in a number that grew. It's also part of why the loneliness is bearable: competence is company.
+
 ## Self-Sufficiency
 
 In the black, there's nobody who's coming to save you. Crews should be encouraged to solve problems on their own in creative ways. We should facilitate
@@ -35,10 +56,21 @@ Just as importantly, this theme forbids things: no rescue services or tow trucks
 *do*, not things done for you), no cheap insurance that makes failure painless (robot respawn bills the wallet; foreclosure ends the run),
 and no quest markers or handed-down solutions (contracts state problems; crews find approaches).
 
+## Trust
+
+Within a crew, trust is total and mechanical: anyone aboard can fly the ship, spend the wallet, vent the air. The game deliberately
+does not protect you from your crewmates — that's what makes crew mean something. Letting someone aboard is the most meaningful
+choice in the game; the Firefly fantasy isn't "a crew," it's *people who could ruin you and don't*. So: no permission tiers, no
+ownership locks, no anti-betrayal systems inside the airlock.
+
+The airlock is the boundary. In shared universes, other crews are outsiders — docking rights, boarding, and (eventually) piracy need
+real permissions, for their sake and ours. Trust is a gift you give your crew, not a default the universe extends to strangers.
+
 ## Moral Ambiguity
 
-Fights that initially appear morally obvious, should later be revealed to not be. There are two sides to every argument.
-Everything you think is right can be wrong in a different place and time. There should be quests that put you in
+Fights that initially appear morally obvious should often turn out to have two sides — and the interesting ones are where both sides
+are partly right. Reversals have to be earned, though: no cheap shock-value twists ("actually they were innocent babies the whole
+time!"); looking back, the player should be able to see the evidence was there all along. There should be quests that put you in
 "Stanford Prison Experiment" like situations, if possible; you do a small bad thing, and become more willing to do a larger bad thing,
 until you're a monster. "It is difficult to make a man understand something, if his salary depends upon him not understanding" is a key lesson
 to demonstrate, ideally by making the player that man — and the debt clock (see ../DESIGN.md) is how. The run's shape, desperate then
@@ -60,7 +92,9 @@ settlement should die out substantially — and it's unambiguously *your* failur
 so nobody's failure aggregates anonymously across strangers. Furthermore, there should be situations where you have to make impossible
 choices; say, you end up having to choose to let a settlement die in favor of saving a different one. People should send out bounty
 hunters to kill you as a result of those choices. All of it — bounty hunters, cold shoulders, dying settlements — arrives within the
-run's few hours, which is what makes it dramatic instead of a database entry.
+run's few hours, which is what makes it dramatic instead of a database entry. And though the run ends, in the fiction the universe
+doesn't: the settlement you saved — or starved — is still out there, in a world that keeps going without you. You were a citizen of
+that world, never its protagonist, and the mark you left doesn't need you around to be real.
 
 ## Clout
 
@@ -97,9 +131,10 @@ hot water with the fanatics.
 ## Governance
 
 The game should depict both left-wing and right-wing governments, and should portray them with both positive and negative characteristics.
-Ideally, politically-minded people should instantly be drawn to the one that matches their predilections, and then should gently
-realize *on their own* some of the real shortcomings of the system. This should be done delicately, subtly, and in a way
-that people go "ahhh interesting" and not "hey, this is strawmanning my political system!"
+The aim is portrait, not lecture — though the line is razor-thin, because a good portrait *is* pedagogy; good art is what changes us.
+The difference is aim: paint each system honestly, flaws rendered with the same care as virtues, and let players conclude what they
+conclude. The moment a player feels targeted — "hey, this is strawmanning my political system!" — the portrait has failed as art and
+as argument both.
 
 That being said, given the sparseness of the universe, a firefly-like libertarian bent is pretty natural, and a skepticism
 of all government is sort of implicit if you're a space peddler. Successful-looking governments should be small, not spread too thin.
