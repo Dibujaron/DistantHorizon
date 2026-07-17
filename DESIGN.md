@@ -653,6 +653,7 @@ what makes the game developable by agents rather than merely reviewable.
   shipped the interim behavior (X cycles the airlock, only from the airlock, docking collar
   rendered); this milestone deletes that crossing entirely. *This is key — "the ship is a
   place" lives or dies at the airlock.*
+  **✅ Done 2026-07-17 ([results](docs/M3.1-RESULTS.md)).**
 - **M3.5 — The vibe pass:** people fall in love with a vibe, and nobody can love a pixelated
   circle on a grid. First in-game aesthetic pass over the M3 playable loop: real hull sprites
   from the parts-vocabulary pipeline (the artspike style that passed the eyeball test,
