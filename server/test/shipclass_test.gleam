@@ -9,9 +9,12 @@ pub fn load_bundled_sparrow_test() {
   assert c.id == "sparrow"
   assert c.plan.grid == Grid(width: 10, height: 6)
   assert list.length(c.plan.walkable) == 6
-  assert list.length(c.plan.rooms) == 4
+  assert list.length(c.plan.rooms) == 5
   assert list.length(c.plan.consoles) == 2
+  // The spawn tile doubles as the airlock (see character.near_airlock);
+  // the sparrow labels it with its aft Airlock room.
   assert c.plan.spawn_tile == #(5, 4)
+  assert list.any(c.plan.rooms, fn(r) { r.id == "airlock" })
 }
 
 pub fn decode_encode_round_trips_test() {

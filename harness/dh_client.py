@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import dataclass
 from typing import Any, AsyncIterator, Optional
 
 import websockets
@@ -28,6 +29,30 @@ DEFAULT_TIMEOUT = 10.0
 
 class ProtocolError(Exception):
     """A message violated the wire protocol."""
+
+
+@dataclass(frozen=True)
+class CharacterView:
+    """One character from an `interior`/`concourse` message, as a typed
+    view. Tests reach entities through this (me.x, me.seat) rather than
+    string-indexing dicts; raw message dicts remain the tool only where a
+    test asserts on the wire shape itself."""
+
+    id: int
+    name: str
+    x: float
+    y: float
+    seat: Optional[str]
+
+    @staticmethod
+    def from_wire(data: dict) -> "CharacterView":
+        return CharacterView(
+            id=int(data.get("id", -1)),
+            name=str(data.get("name", "")),
+            x=float(data.get("x", 0.0)),
+            y=float(data.get("y", 0.0)),
+            seat=data.get("seat"),
+        )
 
 
 class AuthError(Exception):
@@ -312,12 +337,12 @@ class DHClient:
                 return ship
         return None
 
-    def character_in(self, interior: dict, character_id: int) -> Optional[dict]:
-        """Find the character with `character_id` in an interior message's
-        crew list, if present."""
+    def character_in(self, interior: dict, character_id: int) -> Optional[CharacterView]:
+        """Find the character with `character_id` in an `interior` (or
+        `concourse`) message's crew list, as a typed CharacterView."""
         for character in interior.get("characters", []):
             if character.get("id") == character_id:
-                return character
+                return CharacterView.from_wire(character)
         return None
 
     async def get_stats(self, timeout: Optional[float] = DEFAULT_TIMEOUT) -> dict:

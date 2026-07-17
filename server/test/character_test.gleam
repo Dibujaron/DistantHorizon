@@ -149,6 +149,23 @@ pub fn spawn_at_spawn_tile_is_standing_at_spawn_test() {
   assert c.y == 4.5
 }
 
+pub fn near_airlock_true_on_the_airlock_tile_test() {
+  let plan = sparrow()
+  // The airlock is the spawn tile: [5, 4] -> center (5.5, 4.5).
+  assert character.near_airlock(standing_at(5.5, 4.5), plan)
+}
+
+pub fn near_airlock_true_within_range_test() {
+  let plan = sparrow()
+  // One tile north of the airlock center: distance 1.0 <= 1.2.
+  assert character.near_airlock(standing_at(5.5, 3.5), plan)
+}
+
+pub fn near_airlock_false_at_the_helm_test() {
+  let plan = sparrow()
+  assert !character.near_airlock(standing_at(1.5, 2.5), plan)
+}
+
 pub fn is_at_helm_false_when_standing_test() {
   let plan = sparrow()
   let c = standing_at(1.5, 2.5)

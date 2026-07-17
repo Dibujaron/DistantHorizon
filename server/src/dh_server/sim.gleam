@@ -715,11 +715,22 @@ fn handle_board(
     Error(Nil) -> fail("unknown_ship")
     Ok(target) ->
       case char.place {
-        // Ashore: board any ship docked at this station, your own included.
+        // Ashore: board any ship docked at this station, your own included
+        // — but only from the concourse airlock, the counterpart of the
+        // walk-to-the-airlock disembark gate.
         character.OnStation(station_id) ->
           case target.dock == ship.Docked(station_id) {
             False -> fail("not_docked_here")
-            True -> complete_board(state, char, target, reply)
+            True -> {
+              // Standing on a concourse implies the station has one.
+              let assert Ok(station) =
+                world.get_station(state.world, station_id)
+              let assert Some(concourse) = station.concourse
+              case character.near_airlock(char, concourse) {
+                False -> fail("not_at_airlock")
+                True -> complete_board(state, char, target, reply)
+              }
+            }
           }
         // Aboard (the M2 flow): cross to another ship co-docked with yours.
         character.Aboard ->
@@ -819,30 +830,41 @@ fn handle_disembark(
         Ok(s) ->
           case s.dock {
             ship.Flying -> fail("not_docked")
-            ship.Docked(station_id) -> {
-              let assert Ok(station) =
-                world.get_station(state.world, station_id)
-              case station.concourse {
-                None -> fail("no_concourse")
-                Some(plan) -> {
-                  let ashore = character.disembark_to(char, plan, station_id)
-                  process.send(
-                    reply,
-                    protocol.DisembarkResult(
-                      ok: True,
-                      reason: None,
-                      station_id: Some(station_id),
-                    ),
-                  )
-                  actor.continue(
-                    State(
-                      ..state,
-                      characters: replace_character(state.characters, ashore),
-                    ),
-                  )
+            ship.Docked(station_id) ->
+              // The deck and the concourse connect at their airlocks: you
+              // walk to your ship's airlock and step through, you don't
+              // teleport off from anywhere aboard.
+              case character.near_airlock(char, state.class.plan) {
+                False -> fail("not_at_airlock")
+                True -> {
+                  let assert Ok(station) =
+                    world.get_station(state.world, station_id)
+                  case station.concourse {
+                    None -> fail("no_concourse")
+                    Some(plan) -> {
+                      let ashore =
+                        character.disembark_to(char, plan, station_id)
+                      process.send(
+                        reply,
+                        protocol.DisembarkResult(
+                          ok: True,
+                          reason: None,
+                          station_id: Some(station_id),
+                        ),
+                      )
+                      actor.continue(
+                        State(
+                          ..state,
+                          characters: replace_character(
+                            state.characters,
+                            ashore,
+                          ),
+                        ),
+                      )
+                    }
+                  }
                 }
               }
-            }
           }
       }
   }

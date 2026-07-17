@@ -21,6 +21,12 @@ pub const radius = 0.3
 /// tiles.
 pub const sit_range = 1.2
 
+/// Maximum distance (character center to airlock tile center) to cycle an
+/// airlock, tiles: disembarking a docked ship, or boarding one from the
+/// concourse. Matches sit_range so all "close enough to use" checks feel
+/// the same on foot.
+pub const airlock_range = 1.2
+
 /// Where a character's body is: aboard their crew ship, or ashore on a
 /// station concourse. Crew membership is `ship_id` either way — going
 /// ashore does not stop you being crew (or keeping your ship alive).
@@ -211,6 +217,18 @@ pub fn disembark_to(
     move_dx: 0.0,
     move_dy: 0.0,
   )
+}
+
+/// Whether `character` is within airlock_range of `plan`'s airlock. The
+/// airlock is the spawn tile: deck plans already treat it as "the airlock
+/// end" (it's where boarders and robot stevedores come through), and both
+/// ship classes and concourses label it with an Airlock room. Crossing
+/// between a docked ship and its station concourse requires walking here
+/// first — the two interiors connect at their airlocks, they aren't
+/// teleport-anywhere worlds.
+pub fn near_airlock(character: Character, plan: DeckPlan) -> Bool {
+  let #(ax, ay) = spawn_position(plan)
+  distance(character.x, character.y, ax, ay) <=. airlock_range
 }
 
 /// Whether `character` is seated at a console of `kind` on `plan`.

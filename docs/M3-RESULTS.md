@@ -13,9 +13,14 @@ is blocked mid-transfer and released once the transfer completes.
 - **Character place model** — a character's `ship_id` is now crew membership, not
   location; a new `place` (body-side location) tracks where the character actually
   is. A ship survives with its crew ashore, same as it survives a disconnect.
-- **Disembark / board-back flow** — `X` walks a standing character out the airlock
-  onto the docked station's concourse; `X` again (or boarding prompts) returns them
-  to the ship. Requires the ship to be docked at that station.
+- **Disembark / board-back flow** — `X` cycles the airlock: a standing character
+  within 1.2 tiles of the ship's aft Airlock steps onto the docked station's
+  concourse (arriving at *its* airlock), and `X` there boards the ship back.
+  Requires the ship docked at that station and the body at the airlock — the two
+  interiors connect at their airlocks (reason `not_at_airlock` otherwise), they
+  aren't teleport-anywhere worlds. A docking collar is rendered beyond the airlock
+  naming what's on the other side. (PR #4 review round; full stitched interiors
+  are M3.1 in DESIGN.md.)
 - **Broker trading** — buy/sell seated at a broker console. Wallet and cargo hold
   live on the *ship* (crew-shared), not the character: hold capacity 40, starting
   wallet 2000.
@@ -50,8 +55,8 @@ cd server; gleam run
 # terminals 2+3 — two clients aboard one ship
 godot --path client -- --username=ada --password=lovelace
 godot --path client -- --username=grace --password=hopper
-# grace: E to stand, X to disembark onto the concourse, E to sit at a broker,
-# D to buy / A to sell (hold Shift for x10), X to walk back and reboard.
+# grace: E to stand, WASD aft to the Airlock, X to step ashore, E to sit at a
+# broker, D to buy / A to sell (hold Shift for x10), X at the airlock to reboard.
 # meanwhile ada stays seated at the helm and can undock/fly at will — until grace
 # has cargo mid-transfer, at which point SPACE (undock) is refused.
 
@@ -68,7 +73,8 @@ python -m pytest test_m3_trade.py -v             # just M3
 | → | `buy` | `commodity` (string), `quantity` (**JSON int** — decoder rejects floats) |
 | → | `sell` | `commodity` (string), `quantity` (**JSON int**) |
 | → | `get_market` | — → `market` |
-| ← | `disembark_result` | `ok`, `reason` (`null`\|`not_aboard`\|`not_docked`\|`no_concourse`), `station_id` (string \| `null`) |
+| ← | `disembark_result` | `ok`, `reason` (`null`\|`not_aboard`\|`not_docked`\|`not_at_airlock`\|`no_concourse`), `station_id` (string \| `null`) |
+| ← | `board_result` | now also fails with reason `not_at_airlock` when boarding from a concourse away from its airlock |
 | ← | `trade_result` | `ok`, `reason` (`null`\|`not_at_broker`\|`ship_not_docked`\|`no_crane`\|`not_sold_here`\|`insufficient_stock`\|`invalid_quantity`\|`insufficient_hold`\|`insufficient_funds`\|`insufficient_cargo`), `commodity`, `quantity`, `price` (locked unit price, `0` on failure) |
 | ← | `market` | `station_id`, `stores: [{commodity, name, price, quantity}]` |
 | ← | `cargo` | `ship_id`, `wallet`, `capacity`, `hold: [{commodity, quantity}]` (sorted by commodity), `transfers: [{commodity, direction: "to_ship"\|"to_station", remaining}]` |

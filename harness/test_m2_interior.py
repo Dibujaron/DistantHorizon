@@ -26,7 +26,7 @@ import math
 
 import pytest
 
-from dh_client import DHClient
+from dh_client import CharacterView, DHClient
 from test_m1_flight import (  # shared station-frame helpers
     TICK_RATE,
     rail_relative_displacement,
@@ -190,10 +190,10 @@ async def test_spawn_state(server):
         assert len(interior["characters"]) == 1
         me = client.character_in(interior, client.character_id)
         assert me is not None
-        assert me["name"] == "gale_spawn"
-        assert me["seat"] == "helm_main"
-        assert me["x"] == pytest.approx(HELM_CENTER[0])
-        assert me["y"] == pytest.approx(HELM_CENTER[1])
+        assert me.name == "gale_spawn"
+        assert me.seat == "helm_main"
+        assert me.x == pytest.approx(HELM_CENTER[0])
+        assert me.y == pytest.approx(HELM_CENTER[1])
 
 
 @pytest.mark.asyncio
@@ -219,9 +219,9 @@ async def test_stand_walk_collide(server):
         await client.move(1.0, 0.0)
 
         # 7.2 tiles at 3 tiles/s is ~144 ticks; 600 is a generous bound.
-        samples: list[dict] = []
+        samples: list[CharacterView] = []
 
-        def record(interior: dict) -> dict:
+        def record(interior: dict) -> CharacterView:
             me = client.character_in(interior, char_id)
             assert me is not None
             samples.append(me)
@@ -229,13 +229,13 @@ async def test_stand_walk_collide(server):
 
         await interior_until(
             client,
-            lambda i: record(i)["x"] >= 5.5,
+            lambda i: record(i).x >= 5.5,
             max_ticks=600,
             what="walked east into the cargo hold (x >= 5.5)",
         )
         near_wall = await interior_until(
             client,
-            lambda i: record(i)["x"] >= 8.6,
+            lambda i: record(i).x >= 8.6,
             max_ticks=600,
             what="pinned against the east wall (x >= 8.6)",
         )
@@ -251,13 +251,13 @@ async def test_stand_walk_collide(server):
             later = await interior_after_ticks(client, tick, TICK_RATE // 2)
             me2 = client.character_in(later, char_id)
             samples.append(me2)
-            if me2["x"] == me1["x"]:
+            if me2.x == me1.x:
                 break
             me1, tick = me2, later["tick"]
         else:
             pytest.fail(f"character never pinned against the wall: {samples[-3:]}")
-        assert me2["x"] == pytest.approx(9.0 - CHAR_RADIUS, abs=WALK_SPEED / TICK_RATE)
-        assert me2["x"] <= 9.0 - CHAR_RADIUS + 1e-9
+        assert me2.x == pytest.approx(9.0 - CHAR_RADIUS, abs=WALK_SPEED / TICK_RATE)
+        assert me2.x <= 9.0 - CHAR_RADIUS + 1e-9
 
         await client.move(0.0, 0.0)
 
@@ -265,10 +265,10 @@ async def test_stand_walk_collide(server):
         # tiles, x only ever advanced, and y never drifted off the row.
         assert len(samples) >= 3
         for me in samples:
-            assert circle_walkable(ship_class, me["x"], me["y"]), me
-            assert me["seat"] is None
-            assert me["y"] == pytest.approx(2.5)
-        xs = [me["x"] for me in samples]
+            assert circle_walkable(ship_class, me.x, me.y), me
+            assert me.seat is None
+            assert me.y == pytest.approx(2.5)
+        xs = [me.x for me in samples]
         assert xs == sorted(xs)
         assert xs[-1] > xs[0]
 
@@ -385,11 +385,11 @@ async def test_boarding(server):
             assert len(interior["characters"]) == 2
             crew_a = client.character_in(interior, char_a)
             crew_b = client.character_in(interior, char_b)
-            assert crew_a["seat"] == "helm_main"
-            assert crew_b["seat"] is None
-            assert crew_b["name"] == "kira_boarder"
-            assert crew_b["x"] == pytest.approx(SPAWN_CENTER[0])
-            assert crew_b["y"] == pytest.approx(SPAWN_CENTER[1])
+            assert crew_a.seat == "helm_main"
+            assert crew_b.seat is None
+            assert crew_b.name == "kira_boarder"
+            assert crew_b.x == pytest.approx(SPAWN_CENTER[0])
+            assert crew_b.y == pytest.approx(SPAWN_CENTER[1])
 
 
 @pytest.mark.asyncio
@@ -443,7 +443,7 @@ async def test_one_flies_one_walks(server):
             client_b,
             lambda i: (
                 i["ship_id"] == ship_a
-                and abs(client_b.character_in(i, char_b)["y"] - SPAWN_CENTER[1])
+                and abs(client_b.character_in(i, char_b).y - SPAWN_CENTER[1])
                 > 0.05
             ),
             max_ticks=10 * TICK_RATE,
@@ -453,11 +453,11 @@ async def test_one_flies_one_walks(server):
 
         later = await interior_after_ticks(client_b, moving["tick"], TICK_RATE // 2)
         b2 = client_b.character_in(later, char_b)
-        assert b2["y"] < b1["y"] - 0.5  # 0.5 s at 3 tiles/s, minus margin
-        assert b2["seat"] is None
+        assert b2.y < b1.y - 0.5  # 0.5 s at 3 tiles/s, minus margin
+        assert b2.seat is None
         ship_class = client_b.ship_class
         for sample in (b1, b2):
-            assert circle_walkable(ship_class, sample["x"], sample["y"]), sample
+            assert circle_walkable(ship_class, sample.x, sample.y), sample
 
         # One second of full thrust: the ship moved in the station frame
         # (rail drift removed, as in the M1 tests), still at full burn,
@@ -482,5 +482,5 @@ async def test_one_flies_one_walks(server):
         assert crew_ids == {char_a, char_b}
         pilot = client_a.character_in(interior_a, char_a)
         walker = client_a.character_in(interior_a, char_b)
-        assert pilot["seat"] == "helm_main"
-        assert walker["seat"] is None
+        assert pilot.seat == "helm_main"
+        assert walker.seat is None

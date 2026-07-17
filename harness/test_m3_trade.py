@@ -7,9 +7,12 @@ blocked mid-transfer. World numbers come from server/worlds/m1_system.json:
 spawn station meridian_highport, concourse spawn [4,4] exactly 1.0 tiles
 from broker_main, machinery base 55 +/- 4, starting wallet 2000, hold
 capacity 40, robot rate 1.0 unit/s.
-"""
 
-import asyncio
+Crossing between ship and concourse happens at the airlocks (the spawn
+tile of each plan; reason "not_at_airlock" otherwise), so going ashore
+means standing up at the helm and physically walking to the sparrow's aft
+airlock first — see _walk_to_ship_airlock.
+"""
 
 import pytest
 
@@ -29,10 +32,38 @@ async def _login(server, name: str) -> tuple[DHClient, dict]:
     return client, welcome
 
 
+async def _wait_for_own_position(client: DHClient, feed: str, predicate, max_messages: int = 90) -> dict:
+    """Poll `interior` or `concourse` messages until our own character's
+    position satisfies `predicate`. 90 messages is 6 s at 15 Hz — double
+    the longest walk leg in these tests."""
+    getter = client.next_interior if feed == "interior" else client.next_concourse
+    me = None
+    for _ in range(max_messages):
+        message = await getter()
+        me = client.character_in(message, client.character_id)
+        if me is not None and predicate(me):
+            return me
+    raise AssertionError(f"character never reached expected position; last: {me}")
+
+
+async def _walk_to_ship_airlock(client: DHClient) -> None:
+    """From standing at the helm, walk east along the deck then south into
+    the aft airlock (spawn tile [5,4] -> center (5.5, 4.5)). Thresholds sit
+    ~0.2 tiles short of the target; the overshoot before the stop lands is
+    well inside the 1.2-tile airlock range."""
+    await client.move(1, 0)
+    await _wait_for_own_position(client, "interior", lambda me: me.x >= 5.3)
+    await client.move(0, 1)
+    await _wait_for_own_position(client, "interior", lambda me: me.y >= 4.3)
+    await client.move(0, 0)
+
+
 async def _go_ashore(client: DHClient) -> dict:
-    """Stand up (login seats you at the helm) and walk off the ship."""
+    """Stand up (login seats you at the helm), walk to the airlock, and
+    step off the ship."""
     stand = await client.stand()
     assert stand["ok"], stand
+    await _walk_to_ship_airlock(client)
     result = await client.disembark()
     assert result["ok"], result
     assert result["station_id"] == SPAWN_STATION
@@ -43,32 +74,50 @@ async def test_disembark_walk_and_return(server):
     async with DHClient(name="m3_walker") as client:
         welcome = await client.login("m3_walker", "pw")
         ship_id = welcome["ship_id"]
-        await _go_ashore(client)
+
+        # Standing at the helm you can't just step off the ship: the deck
+        # and the concourse connect at their airlocks.
+        stand = await client.stand()
+        assert stand["ok"], stand
+        blocked = await client.disembark()
+        assert not blocked["ok"] and blocked["reason"] == "not_at_airlock"
+
+        await _walk_to_ship_airlock(client)
+        result = await client.disembark()
+        assert result["ok"], result
+        assert result["station_id"] == SPAWN_STATION
 
         # We appear in the concourse feed, standing at the spawn tile.
         concourse = await client.next_concourse()
         assert concourse["station_id"] == SPAWN_STATION
         me = client.character_in(concourse, client.character_id)
         assert me is not None
-        assert me["seat"] is None
-        assert (me["x"], me["y"]) == (4.5, 4.5)
+        assert me.seat is None
+        assert (me.x, me.y) == (4.5, 4.5)
 
-        # Walk one tile up (into the concourse proper) and stop.
+        # Walk north into the concourse proper, past airlock range, and
+        # stop: boarding is refused until we come back to the airlock.
         await client.move(0, -1)
-        await asyncio.sleep(0.5)
+        me = await _wait_for_own_position(client, "concourse", lambda me: me.y <= 2.9)
         await client.move(0, 0)
-        moved = await client.next_concourse()
-        me = client.character_in(moved, client.character_id)
-        assert me["y"] < 4.5
+        assert me.y < 4.5
+        blocked = await client.board(ship_id)
+        assert not blocked["ok"] and blocked["reason"] == "not_at_airlock"
 
-        # Board our own ship back; we land at the ship spawn tile.
+        # Walk back down onto the concourse airlock and board our own ship
+        # back; we land at the ship's airlock (its spawn tile).
+        await client.move(0, 1)
+        await _wait_for_own_position(client, "concourse", lambda me: me.y >= 4.2)
+        await client.move(0, 0)
         board = await client.board(ship_id)
         assert board["ok"], board
         assert board["ship_id"] == ship_id
-        interior = await client.next_interior()
-        me = client.character_in(interior, client.character_id)
-        assert me is not None
-        assert (me["x"], me["y"]) == (5.5, 4.5)
+        # Skip any stale pre-disembark interiors buffered during the walk:
+        # the post-board one reports the exact airlock (spawn tile) snap.
+        me = await _wait_for_own_position(
+            client, "interior", lambda me: (me.x, me.y) == (5.5, 4.5)
+        )
+        assert me.seat is None
 
 
 async def test_market_visible_while_docked_aboard(server):
@@ -97,8 +146,14 @@ async def test_buy_delivers_over_time(server):
         price = trade["price"]
         assert MACHINERY_MIN <= price <= MACHINERY_MAX
 
-        # Wallet debited up front; goods arrive over ~3 s (1 unit/s).
+        # Wallet debited up front; goods arrive over ~3 s (1 unit/s). Skip
+        # the cargo backlog buffered while walking to the airlock: the
+        # first debited message is the one this buy produced.
         cargo = await client.next_cargo()
+        for _ in range(120):
+            if cargo["wallet"] != STARTING_WALLET:
+                break
+            cargo = await client.next_cargo()
         assert cargo["wallet"] == STARTING_WALLET - 3 * price
         for _ in range(120):  # 120 messages at 15 Hz ~= 8 s budget
             if client.hold_quantity(cargo, "machinery") == 3 and not cargo["transfers"]:

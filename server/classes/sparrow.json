@@ -12,8 +12,9 @@
   "rooms": [
     {"id": "helm",     "name": "Helm",        "x": 1, "y": 2, "w": 2, "h": 2},
     {"id": "corridor", "name": "Corridor",    "x": 3, "y": 2, "w": 1, "h": 2},
-    {"id": "cargo",    "name": "Cargo Hold",  "x": 4, "y": 1, "w": 3, "h": 4},
-    {"id": "engine",   "name": "Engine Room", "x": 7, "y": 2, "w": 2, "h": 2}
+    {"id": "cargo",    "name": "Cargo Hold",  "x": 4, "y": 1, "w": 3, "h": 3},
+    {"id": "engine",   "name": "Engine Room", "x": 7, "y": 2, "w": 2, "h": 2},
+    {"id": "airlock",  "name": "Airlock",     "x": 4, "y": 4, "w": 3, "h": 1}
   ],
   "consoles": [
     {"id": "helm_main",  "kind": "helm",  "x": 1, "y": 2},

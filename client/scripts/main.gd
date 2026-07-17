@@ -38,6 +38,11 @@ const ZOOM_TRANSITION_SEC := 0.6
 ## on whether a `sit` actually lands (spec: character sim, "Sit").
 const SIT_RANGE_TILES := 1.2
 
+## Airlock range shown in the X prompts -- mirrors `airlock_range` in
+## character.gleam; the server is the authority on whether a
+## disembark/board actually lands.
+const AIRLOCK_RANGE_TILES := 1.2
+
 ## Client-side prediction of the OWN character only (fixes the stop
 ## snap-back: walkers halt instantly server-side on key release, but the old
 ## velocity-extrapolation render lagged behind at the stale speed until the
@@ -402,6 +407,34 @@ func _at_broker() -> bool:
 	return _seated_console_kind() == "broker"
 
 
+## Mirrors character.near_airlock server-side: within AIRLOCK_RANGE_TILES
+## of the current plan's spawn tile (the airlock end). Uses the predicted
+## position while walking so the prompt tracks what the player sees.
+func _near_airlock() -> bool:
+	var own_char := _own_character()
+	var plan := _current_plan()
+	if own_char == null or plan == null:
+		return false
+	var pos := _predicted_pos if _predicting else own_char.position()
+	var airlock := Vector2(plan.spawn_tile) + Vector2(0.5, 0.5)
+	return pos.distance_to(airlock) <= AIRLOCK_RANGE_TILES
+
+
+## What the current plan's airlock is connected to, for the interior
+## renderer's docking collar: the station concourse while aboard a docked
+## ship, our own (still-docked) ship while ashore, "" when nothing is on
+## the other side (flying, or the ship undocked while we were ashore).
+func _dock_link_label() -> String:
+	var own := _own_ship()
+	if _station_id != "":
+		if own != null and own.docked_at == _station_id and _ship_class != null:
+			return "%s #%d (your ship)" % [_ship_class.name, _ship_id]
+		return ""
+	if own != null and own.is_docked():
+		return _station_name(own.docked_at)
+	return ""
+
+
 ## The trade panel is visible at a broker (interactive) and at the ship's
 ## cargo console (read-only manifest -- M3's binding of the M2 console).
 func _trade_panel_open() -> bool:
@@ -509,7 +542,7 @@ func _update_interior_view() -> void:
 			rendered.append(_predicted_character_state(character) if _predicting else character)
 		else:
 			rendered.append(_interpolated_character_state(character, render_msec))
-	_interior_view.set_frame_data(_current_plan(), rendered, _character_id)
+	_interior_view.set_frame_data(_current_plan(), rendered, _character_id, _dock_link_label())
 
 ## Copy of `server_char` with position replaced by the locally-predicted
 ## position.
@@ -896,7 +929,10 @@ func _update_status_label() -> void:
 	lines.append("view: %s" % view_mode_name())
 	if _station_id != "":
 		lines.append("ashore at %s" % _station_name(_station_id))
-		lines.append("X: return to ship")
+		if _near_airlock():
+			lines.append("X: cycle airlock — board your ship")
+		else:
+			lines.append("your ship is through the Airlock")
 	if _cargo != null:
 		lines.append("wallet %d cr - hold %d/%d" % [_cargo.wallet, _cargo.hold_total(), _cargo.capacity])
 		for transfer in _cargo.transfers:
@@ -911,7 +947,10 @@ func _update_status_label() -> void:
 			if _station_id == "":
 				var docked_station := _world.find_station(own.docked_at) if _world != null else null
 				if docked_station != null and docked_station.concourse != null:
-					lines.append("X: walk to %s concourse" % docked_station.name)
+					if _near_airlock():
+						lines.append("X: cycle airlock to %s concourse" % docked_station.name)
+					else:
+						lines.append("go ashore at the Airlock (aft)")
 		elif _view_mode == ViewMode.SYSTEM:
 			var near := _nearest_dockable_station_name()
 			if near != "":

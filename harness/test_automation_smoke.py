@@ -50,6 +50,24 @@ def _wait_for_state(automation: GodotAutomation, predicate, timeout: float, desc
     raise AssertionError(f"timed out waiting for {description}; last state: {last_state}")
 
 
+def _walk_until(automation: GodotAutomation, action: str, predicate, description: str) -> None:
+    """Hold a move action until the dumped character position satisfies
+    `predicate`, then release it. Polls fast (well under a tile of travel
+    at 3 tiles/s) so the stop lands close to the threshold."""
+    automation.action(action, True)
+    try:
+        deadline = time.monotonic() + STATE_TIMEOUT_S
+        last: dict = {}
+        while time.monotonic() < deadline:
+            last = automation.dump().get("character") or {}
+            if last and predicate(last):
+                return
+            time.sleep(0.05)
+        raise AssertionError(f"timed out walking ({description}); last character: {last}")
+    finally:
+        automation.action(action, False)
+
+
 @pytest.mark.automation
 def test_automation_smoke(server, tmp_path):
     proc = launch_client(["--username=automation_smoke", "--password=pw_automation"])
@@ -154,6 +172,13 @@ def test_walk_ashore_and_screenshot(server, tmp_path):
             STATE_TIMEOUT_S,
             "E to stand up from the helm",
         )
+
+        # Walk to the sparrow's aft airlock (spawn tile [5,4] -> center
+        # (5.5, 4.5)): the ship and the concourse connect at their
+        # airlocks, so X only works from there. move_* are polled actions
+        # like thrust, so `action` press/release injection works.
+        _walk_until(automation, "move_right", lambda c: c.get("x", 0.0) >= 4.9, "east to the airlock column")
+        _walk_until(automation, "move_down", lambda c: c.get("y", 0.0) >= 3.9, "south into the airlock")
 
         # Step ashore (X is bound to "disembark", physical keycode 88).
         # Disembarking triggers main.gd's interior/exterior transition

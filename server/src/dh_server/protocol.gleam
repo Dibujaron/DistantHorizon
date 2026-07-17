@@ -26,9 +26,10 @@
 ////   include "transfer_in_progress"
 ////   {"v":1,"type":"seat_result","ok":Bool,"reason":null|S,"seat":null|S}
 ////   {"v":1,"type":"board_result","ok":Bool,"reason":null|S,"ship_id":N} —
-////   reasons include "not_docked_here"
+////   reasons include "not_docked_here" and "not_at_airlock" (boarding from
+////   a concourse requires standing at its airlock)
 ////   {"v":1,"type":"disembark_result","ok":Bool,
-////    "reason":null|"not_aboard"|"not_docked"|"no_concourse",
+////    "reason":null|"not_aboard"|"not_docked"|"not_at_airlock"|"no_concourse",
 ////    "station_id":S|null}
 ////   {"v":1,"type":"trade_result","ok":Bool,"reason":null|S,"commodity":S,
 ////    "quantity":N,"price":N} — reasons: not_at_broker | ship_not_docked |
