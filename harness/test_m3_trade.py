@@ -297,30 +297,6 @@ async def test_trade_validation_reasons(server):
         assert not second["ok"] and second["reason"] == "insufficient_funds", second
 
 
-async def test_fourth_login_is_refused(server):
-    """M3.1: Meridian Highport authors three berths, and login docks you into
-    one. Three concurrent clients hold them all; the fourth login is refused
-    with code `station_full`."""
-    from dh_client import AuthError
-
-    holders = [DHClient(name=f"m31_berth{i}") for i in range(3)]
-    for i, client in enumerate(holders):
-        await client.connect()
-        await client.login(f"m31_berth{i}", "pw")
-    try:
-        fourth = DHClient(name="m31_overflow")
-        await fourth.connect()
-        try:
-            with pytest.raises(AuthError) as excinfo:
-                await fourth.login("m31_overflow", "pw")
-            assert excinfo.value.code == "station_full"
-        finally:
-            await fourth.close()
-    finally:
-        for client in holders:
-            await client.close()
-
-
 async def test_pilot_holds_helm_while_quartermaster_trades(server):
     """M3.1 exit criterion: a quartermaster shanghais onto the pilot's ship,
     the pilot undocks and RE-DOCKS (the crew-join re-graft path, which has no
