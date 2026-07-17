@@ -55,8 +55,9 @@ type QuestRefs {
     id: String,
     acquisition: String,
     trigger_targets: List(String),
-    has_parent_binding: Bool,
     slot_names: List(String),
+    parent_refs: List(String),
+    item_ids: List(String),
   )
 }
 
@@ -69,6 +70,10 @@ fn refs_decoder() -> decode.Decoder(QuestRefs) {
     use from <- decode.optional_field("from", "", decode.string)
     decode.success(from)
   }
+  let item = {
+    use id <- decode.field("id", decode.string)
+    decode.success(id)
+  }
   use id <- decode.field("id", decode.string)
   use acquisition <- decode.field("acquisition", decode.string)
   use slots <- decode.optional_field(
@@ -76,6 +81,7 @@ fn refs_decoder() -> decode.Decoder(QuestRefs) {
     dict.new(),
     decode.dict(decode.string, slot_from),
   )
+  use items <- decode.optional_field("items", [], decode.list(item))
   use on_complete <- decode.optional_field("on_complete", [], decode.list(trigger))
   use on_failed <- decode.optional_field("on_failed", [], decode.list(trigger))
   use on_expired <- decode.optional_field("on_expired", [], decode.list(trigger))
@@ -83,9 +89,10 @@ fn refs_decoder() -> decode.Decoder(QuestRefs) {
     id:,
     acquisition:,
     trigger_targets: list.flatten([on_complete, on_failed, on_expired]),
-    has_parent_binding: dict.values(slots)
-      |> list.any(string.starts_with(_, "parent.")),
     slot_names: dict.keys(slots),
+    parent_refs: dict.values(slots)
+      |> list.filter(string.starts_with(_, "parent.")),
+    item_ids: items,
   ))
 }
 
@@ -117,13 +124,60 @@ pub fn quest_triggers_are_coherent_test() {
     assert referenced == { refs.acquisition == "triggered" }
     // parent.* bindings only live in slot "from" fields, and only make sense
     // in triggered quests.
-    case refs.has_parent_binding {
-      True -> {
+    case refs.parent_refs {
+      [] -> Nil
+      _ -> {
         assert refs.acquisition == "triggered"
+        Nil
+      }
+    }
+  })
+}
+
+pub fn broker_quests_declare_offer_broker_test() {
+  list.each(load_refs(), fn(refs) {
+    // acquisition "broker" implies the reserved offer_broker slot exists —
+    // it names the broker where the offer is posted.
+    case refs.acquisition == "broker" {
+      True -> {
+        assert list.contains(refs.slot_names, "offer_broker")
         Nil
       }
       False -> Nil
     }
+  })
+}
+
+pub fn parent_bindings_exist_in_all_triggering_parents_test() {
+  let quests = load_refs()
+  list.each(quests, fn(child) {
+    let parents =
+      list.filter(quests, fn(p) { list.contains(p.trigger_targets, child.id) })
+    list.each(child.parent_refs, fn(ref) {
+      // ref is "parent.<slot>" or "parent.item.<itemId>". A child can be
+      // triggered by any of its parents, so EVERY parent must satisfy it.
+      let assert Ok(#("parent", rest)) = string.split_once(ref, ".")
+      list.each(parents, fn(parent) {
+        case string.split_once(rest, ".") {
+          Ok(#("item", item_id)) ->
+            case list.contains(parent.item_ids, item_id) {
+              True -> Nil
+              False ->
+                panic as {
+                  child.id <> ": " <> ref <> " is not an item of parent " <> parent.id
+                }
+            }
+          _ ->
+            case list.contains(parent.slot_names, rest) {
+              True -> Nil
+              False ->
+                panic as {
+                  child.id <> ": " <> ref <> " is not a slot of parent " <> parent.id
+                }
+            }
+        }
+      })
+    })
   })
 }
 
