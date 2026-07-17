@@ -29,9 +29,27 @@ text = "connecting…"
 [node name="TradePanel" type="Label" parent="UI"]
 unique_name_in_owner = true
 visible = false
-offset_left = 10.0
-offset_top = 150.0
-offset_right = 620.0
-offset_bottom = 620.0
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -640.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = 480.0
+grow_horizontal = 0
 theme_override_font_sizes/font_size = 16
+text = ""
+
+[node name="ChatLog" type="Label" parent="UI"]
+unique_name_in_owner = true
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = -190.0
+offset_right = 640.0
+offset_bottom = -10.0
+grow_vertical = 0
+theme_override_font_sizes/font_size = 15
+vertical_alignment = 2
 text = ""

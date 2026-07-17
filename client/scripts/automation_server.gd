@@ -226,6 +226,7 @@ func _dump_state() -> Dictionary:
 		"hold": _latest_cargo.hold if _latest_cargo != null else {},
 		"transfers": _latest_cargo.transfers.size() if _latest_cargo != null else 0,
 		"trade_panel_open": _trade_panel_open_from_scene(),
+		"chat": _chat_lines_from_scene(),
 	}
 	var own_ship := _find_own_ship()
 	if own_ship != null:
@@ -293,6 +294,17 @@ func _trade_panel_open_from_scene() -> bool:
 	if main_node == null or not main_node.has_method("trade_panel_open"):
 		return false
 	return bool(main_node.call("trade_panel_open"))
+
+## main.gd's chat log is otherwise private render-loop state; it exposes
+## one small public method, chat_lines(), mirroring view_mode_name().
+func _chat_lines_from_scene() -> Array:
+	var main_node := get_tree().current_scene
+	if main_node == null or not main_node.has_method("chat_lines"):
+		return []
+	var lines: Array = []
+	for line: String in main_node.call("chat_lines"):
+		lines.append(line)
+	return lines
 
 func _status_label_text() -> String:
 	var main_node := get_tree().current_scene
