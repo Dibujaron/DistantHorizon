@@ -60,3 +60,15 @@ func is_station() -> bool:
 ## The station id when this is a station space, "" otherwise.
 func station_id() -> String:
 	return id.trim_prefix("station:") if is_station() else ""
+
+
+func is_ship() -> bool:
+	return id.begins_with("ship:")
+
+
+## The ship id when this is a flying-ship space, -1 otherwise. A "ship:N"
+## space is authoritative crew membership: a body aboard a flying ship is
+## always that ship's crew (this is how a crew transfer / undock "shanghai"
+## reaches the client).
+func ship_id() -> int:
+	return int(id.trim_prefix("ship:")) if is_ship() else -1

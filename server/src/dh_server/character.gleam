@@ -196,6 +196,16 @@ fn normalize(dx: Float, dy: Float) -> #(Float, Float) {
   }
 }
 
+/// Whether a body (collision circle, radius `radius`) can stand centered at
+/// `(x, y)` on `plan` — the same circle-vs-tile test `step` gates movement
+/// on, so a position that passes here is one the character could have walked
+/// to. Used by the sim to detect a body left in void when a graft despawns
+/// under it (a plain `deckplan.is_walkable` on the center tile is not enough:
+/// the collision radius matters at tile edges).
+pub fn can_stand_at(plan: DeckPlan, x: Float, y: Float) -> Bool {
+  circle_walkable(plan, x, y)
+}
+
 /// Whether every tile overlapped by the character collision circle
 /// centered at `(cx, cy)` is walkable.
 fn circle_walkable(plan: DeckPlan, cx: Float, cy: Float) -> Bool {

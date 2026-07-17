@@ -15,7 +15,7 @@ signal connection_state_changed(state: ConnectionState)
 signal welcome_received(ship_id: int, world: WorldData)
 ## Reply to a `dock`/`undock` request. `reason` is null when `ok`, otherwise
 ## one of "out_of_range" | "too_fast" | "already_docked" | "not_docked" |
-## "not_at_helm".
+## "not_at_helm" | "berths_full" | "no_berths" | "transfer_in_progress".
 signal dock_result_received(ok: bool, reason: Variant)
 ## Login rejected (or a storage error). Connection stays open; caller may
 ## retry login.
@@ -56,15 +56,18 @@ var state: ConnectionState = ConnectionState.DISCONNECTED
 var last_tick: int = -1
 var snapshot_count: int = 0
 
-## Populated once `welcome` arrives; -1 / empty until then.
+## Our crew ship. Populated once `welcome` arrives; -1 until then. NOT
+## session-stable: a crew transfer (undocking while standing on another
+## crew's ship — the "shanghai") reassigns us server-side, and we adopt the
+## new id from the "ship:N" space message it pushes (see `_handle_space`).
 var ship_id: int = -1
 var account_id: int = -1
 var tick_rate: int = 60
 var dt: float = 0.016666666666666666
 var world: WorldData = null
 var logged_in: bool = false
-## Stable for the whole session, like ship_id (M3.1 stitched interiors
-## retired the M3 board mechanic that used to reassign ship_id).
+## Our character is our stable identity for the whole session (unlike
+## ship_id, which a crew transfer can reassign); routing is by character id.
 var character_id: int = -1
 var ship_class: ShipClassData = null
 ## The walkable space we're currently in (M3.1); null until the first
@@ -237,6 +240,12 @@ func _handle_cargo(message: Dictionary) -> void:
 func _handle_space(message: Dictionary) -> void:
 	space = SpaceData.from_dict(message)
 	station_id = space.station_id()
+	# A "ship:N" space is authoritative crew membership (a body aboard a
+	# flying ship is that ship's crew), so adopt N as our crew ship — this is
+	# how a crew transfer reaches us. A station space says nothing about crew,
+	# so leave ship_id alone there (mirrors how station_id is derived above).
+	if space.is_ship():
+		ship_id = space.ship_id()
 	space_received.emit(space)
 
 func _handle_walkers(message: Dictionary) -> void:

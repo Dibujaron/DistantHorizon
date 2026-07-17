@@ -632,6 +632,11 @@ func _on_snapshot_received(tick: int, ships: Array[ShipState]) -> void:
 ## and input logic never see an empty frame.
 func _on_space_received(space: SpaceData) -> void:
 	_space = space
+	# A "ship:N" space is authoritative crew membership: if a crew transfer
+	# carried us onto another crew's ship (undock "shanghai"), adopt N so
+	# cargo routing and _own_ship() follow us to the ship we're now aboard.
+	if space.is_ship():
+		_ship_id = space.ship_id()
 	var me := CharacterState.new()
 	me.id = _character_id
 	me.name = "you"

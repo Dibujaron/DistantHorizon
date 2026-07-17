@@ -815,19 +815,36 @@ fn handle_undock_split(
         })
       // Crew transfer may have emptied other ships (their last crew member
       // left standing on the departing deck): despawn them.
+      let surviving = replace_ship(state.ships, flying)
       let crewed_ship_ids =
         list.map(characters, fn(c) { c.ship_id }) |> list.unique
       let ships =
-        replace_ship(state.ships, flying)
-        |> list.filter(fn(s) { list.contains(crewed_ship_ids, s.id) })
+        list.filter(surviving, fn(s) { list.contains(crewed_ship_ids, s.id) })
+      // A ship despawned by the transfer while docked at a *different*
+      // station leaves that station's composite with a ghost graft. Mirror
+      // ClientDown: rebuild+re-push every such remote station too (the local
+      // station is rebuilt below). rebuild_space's snap re-floors any body
+      // that was standing on those remote grafts.
+      let despawned_station_ids =
+        list.filter_map(surviving, fn(s) {
+          case list.contains(crewed_ship_ids, s.id), s.dock {
+            False, ship.Docked(sid, _) if sid != station_id -> Ok(sid)
+            _, _ -> Error(Nil)
+          }
+        })
+        |> list.unique
       let state =
         rebuild_space(
           State(..state, ships: ships, characters: characters),
           station_id,
         )
+      let state = list.fold(despawned_station_ids, state, rebuild_space)
       process.send(reply, Ok(Nil))
       push_space(state, protocol.StationSpace(station_id))
       push_space(state, protocol.ShipSpace(target.id))
+      list.each(despawned_station_ids, fn(sid) {
+        push_space(state, protocol.StationSpace(sid))
+      })
       actor.continue(state)
     }
   }
@@ -1130,6 +1147,7 @@ fn docked_ships_at(
   list.filter_map(state.ships, fn(s) {
     case s.dock {
       ship.Docked(sid, berth) if sid == station_id ->
+        // M4 (multi-class refit): state.class.plan is the single-hull assumption.
         Ok(composite.DockedShip(
           ship_id: s.id,
           berth: berth,
@@ -1211,12 +1229,37 @@ fn rebuild_space(state: State, station_id: String) -> State {
           }
           let shift_x = int.to_float(built.concourse_dx - old_dx)
           let shift_y = int.to_float(built.concourse_dy - old_dy)
+          // A body standing on a ship graft that just despawned lands in
+          // void on the new composite (its tiles are gone). Rather than
+          // leave it soft-locked — character.step rejects every move out of
+          // a non-walkable circle — snap it to the concourse spawn tile,
+          // dropping any now-ghost seat and pending move input.
+          let #(spawn_tx, spawn_ty) = built.plan.spawn_tile
+          let #(spawn_x, spawn_y) = deckplan.tile_center(spawn_tx, spawn_ty)
           let characters =
             list.map(state.characters, fn(c) {
               case c.place == character.OnStation(station_id) {
                 False -> c
-                True ->
-                  character.Character(..c, x: c.x +. shift_x, y: c.y +. shift_y)
+                True -> {
+                  let moved =
+                    character.Character(
+                      ..c,
+                      x: c.x +. shift_x,
+                      y: c.y +. shift_y,
+                    )
+                  case character.can_stand_at(built.plan, moved.x, moved.y) {
+                    True -> moved
+                    False ->
+                      character.Character(
+                        ..moved,
+                        x: spawn_x,
+                        y: spawn_y,
+                        seat: None,
+                        move_dx: 0.0,
+                        move_dy: 0.0,
+                      )
+                  }
+                }
               }
             })
           let epoch = case find_space(state.spaces, station_id) {

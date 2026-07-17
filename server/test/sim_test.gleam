@@ -503,6 +503,42 @@ pub fn undock_carries_visitors_and_transfers_crew_test() {
   assert_ship_leaves_snapshots(pilot, ship_v, 400)
 }
 
+pub fn body_on_a_despawning_graft_is_refloored_test() {
+  let s = start_sim()
+  let #(pid_a, client_a) = spawn_fake_client()
+  let client_b = process.new_subject()
+  let assert Ok(#(_ship_a, _char_a)) = sim.add_player(s, "ada", client_a, 1000)
+  let assert Ok(#(_ship_b, char_b)) = sim.add_player(s, "grace", client_b, 1000)
+  // grace walks onto ada's *docked* ship (berth 0) and stops on its tiles.
+  walk_visitor_onto_ada_ship(s, client_b, char_b)
+  // ada disconnects: her crewless docked ship despawns and the composite
+  // rebuilds without its graft, so the tiles grace is standing on become
+  // void. rebuild_space must re-floor her to the concourse spawn tile
+  // center rather than soft-lock her (character.step rejects every move out
+  // of a non-walkable circle forever otherwise).
+  process.kill(pid_a)
+  assert wait_for_clients(s, 1, 100)
+  // She lands at the concourse spawn tile: (16,3) + concourse offset (0,4) =
+  // (16,7) tile -> center (16.5, 7.5). Only her own berth-1 ship is left
+  // grafted, so min_y (-4) and thus the offset are unchanged by the rebuild.
+  wait_for_walker(client_b, char_b, fn(x, y) { x == 16.5 && y == 7.5 }, 120)
+  // ...and she is unstuck: fresh move input changes her position again.
+  sim.set_move(s, char_b, 1.0, 0.0)
+  wait_for_walker(client_b, char_b, fn(x, _y) { x >. 16.5 }, 120)
+}
+
+// FINDING 3 (remote-station rebuild on undock crew-transfer despawn) has no
+// direct sim_test: it needs a ship despawned by the transfer while docked at
+// a station OTHER than where the undock happens, i.e. that ship's entire crew
+// standing on the departing ship's graft at station S1 while their own ship
+// sits docked at S2. Every path to a body at S1 that is crew of a ship at S2
+// requires flying that ship to S2 with its crew's bodies left behind at S1 —
+// impossible with single-crew ships and this world's berth counts (solis has
+// one berth). The fix mirrors ClientDown's despawned_station_ids computation
+// (see the ClientDown handler in sim.gleam), which the disconnect-despawn
+// tests above exercise as the shared shape; FINDING 2's re-floor (now inside
+// rebuild_space) protects any body left on such a remote ghost graft.
+
 pub fn spawn_station_fills_up_test() {
   let s = start_sim()
   // Meridian Highport authors three berths; the fourth login is refused.
