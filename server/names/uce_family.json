@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "tags": { "type": "character", "part": "family", "faction": "uce" },
+  "entries": [
+    "Voss", "Castellan", "Okonjo", "Balakrishnan", "Ferreira", "Nakamura",
+    "Aldana", "Strand",
+    { "name": "Montclair", "tags": { "wealth": "high" } },
+    { "name": "Aurelian-Hale", "tags": { "wealth": "high" } }
+  ]
+}

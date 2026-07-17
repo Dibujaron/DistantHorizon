@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "tags": { "type": "character", "part": "family", "faction": "freehold" },
+  "entries": [
+    "Calder", "Stroud", "Okoro", "Brandt", "Iyer", "Maddox", "Soto",
+    "Varga", "Onishi", "Reyes-Calder"
+  ]
+}

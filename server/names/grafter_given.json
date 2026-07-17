@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "tags": { "type": "character", "part": "given", "race": "grafter" },
+  "entries": [
+    "Sable", "Vex", "Arc", "Nadir", "Ash", "Cade", "Onyx", "Ren", "Lux",
+    "Vela", "Corin", "Sol"
+  ]
+}

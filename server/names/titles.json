@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "tags": { "type": "character", "part": "title" },
+  "entries": [
+    { "name": "Mr.", "tags": { "gender": "male" } },
+    { "name": "Ms.", "tags": { "gender": "female" } },
+    { "name": "Mx.", "tags": { "gender": "neutral" } }
+  ]
+}

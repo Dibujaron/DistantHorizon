@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-06/schema#",
+  "$id": "https://distanthorizon.dev/schemas/names.schema.json",
+  "title": "Distant Horizon name pool file",
+  "description": "One file of name-pool entries. Files are organizational only: the loader merges every server/names/*.json (base game and mods alike) into pools keyed purely by effective tags — file-level tags are defaults, entry-level tags override per entry. An entry serves a generated principal iff every tag it declares is consistent with the principal's attributes; an untagged axis means 'usable for anyone'. part=pattern entries are templates over parts (e.g. \"${given} ${family}\"); part=title entries are honorifics selected by the principal's effective (address-style-adjusted) gender. See docs/superpowers/specs/2026-07-17-quest-principals-and-name-pools-design.md.",
+  "type": "object",
+  "required": ["schema", "tags", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": 1 },
+    "tags": {
+      "type": "object",
+      "required": ["type", "part"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["character", "ship"] },
+        "part": { "enum": ["given", "family", "full", "title", "pattern"] },
+        "race": { "$ref": "#/definitions/race" },
+        "faction": { "$ref": "#/definitions/id_string" },
+        "wealth": { "$ref": "#/definitions/wealth" },
+        "gender": { "$ref": "#/definitions/gender" },
+        "role": { "$ref": "#/definitions/ship_role" },
+        "manufacturer": { "$ref": "#/definitions/id_string" }
+      }
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          { "type": "string", "minLength": 1 },
+          {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "tags": {
+                "type": "object",
+                "minProperties": 1,
+                "additionalProperties": false,
+                "properties": {
+                  "race": { "$ref": "#/definitions/race" },
+                  "faction": { "$ref": "#/definitions/id_string" },
+                  "wealth": { "$ref": "#/definitions/wealth" },
+                  "gender": { "$ref": "#/definitions/gender" },
+                  "role": { "$ref": "#/definitions/ship_role" },
+                  "manufacturer": { "$ref": "#/definitions/id_string" }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "race": { "enum": ["human", "selkie", "grafter", "senti"] },
+    "wealth": { "enum": ["low", "mid", "high"] },
+    "gender": { "enum": ["female", "male", "neutral"] },
+    "ship_role": {
+      "enum": ["packet", "hauler", "liner", "gunship", "tug", "yacht"],
+      "description": "Shared with future hull auto-categorization; this enum is the authority until that feature lands."
+    },
+    "id_string": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "A faction or manufacturer id. Open vocabulary in the schema; cross-checked against the canonical domain constants in dh_server/names.gleam at test time (world files carry no factions yet)."
+    }
+  }
+}

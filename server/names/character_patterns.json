@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "tags": { "type": "character", "part": "pattern" },
+  "entries": [
+    { "name": "${given} ${family}", "tags": { "race": "human" } },
+    { "name": "${given} ${family}", "tags": { "race": "grafter" } },
+    { "name": "${given}", "tags": { "race": "selkie" } },
+    { "name": "${full}", "tags": { "race": "senti" } }
+  ]
+}
