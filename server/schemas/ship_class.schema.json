@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://distanthorizon.dev/schemas/ship_class.schema.json",
+  "title": "Ship class document",
+  "description": "A hull's deck plan plus the cargo characteristics M3 trading needs. Derived from the Gleam decoders in server/src/dh_server/shipclass.gleam (ship_class_decoder/cargo_decoder/handling_decoder) and server/src/dh_server/deckplan.gleam (decoder, embedded at the top level via decode.then) — those decoders are the source of truth; this schema is documentation and a typo-catcher, not a substitute for them. additionalProperties is false at every object level even though the decoders themselves ignore unknown fields, precisely so this schema can catch typos the decoders would silently swallow.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "id", "name",
+    "grid", "walkable", "rooms", "consoles", "spawn_tile",
+    "cargo"
+  ],
+  "properties": {
+    "schema": { "type": "integer" },
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "grid": { "$ref": "#/$defs/grid" },
+    "walkable": {
+      "type": "array",
+      "description": "One string per row, top to bottom; '#' walkable, anything else (canonically '.') hull/void. Row count and each row's length must match grid.height/grid.width, and there must be a console of kind \"helm\" (enforced by the Gleam decoder's validate step, not by this schema).",
+      "items": {
+        "type": "string",
+        "pattern": "^[#.]*$"
+      }
+    },
+    "rooms": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/room" }
+    },
+    "consoles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/console" }
+    },
+    "spawn_tile": {
+      "type": "array",
+      "description": "[x, y] tile where arriving characters appear (the airlock end).",
+      "items": { "type": "integer" },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "cargo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capacity", "handling"],
+      "properties": {
+        "capacity": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Hold size in cargo units. Must be >= 0 (enforced by the Gleam decoder's validate step, not by this schema)."
+        },
+        "handling": {
+          "type": "string",
+          "enum": ["breakbulk", "container"],
+          "description": "How cargo physically gets aboard: break-bulk hulls load by robot stevedores anywhere; container hulls need a station crane and never open their holds."
+        }
+      }
+    }
+  },
+  "$defs": {
+    "grid": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "integer" },
+        "height": { "type": "integer" }
+      }
+    },
+    "room": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "x", "y", "w", "h"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "x": { "type": "integer" },
+        "y": { "type": "integer" },
+        "w": { "type": "integer" },
+        "h": { "type": "integer" }
+      }
+    },
+    "console": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "x", "y"],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "description": "Free-form in the decoder (e.g. \"helm\"/\"cargo\" are conventions, not constraints); left open here. At least one console of kind \"helm\" is required by the Gleam decoder's validate step, not by this schema."
+        },
+        "x": { "type": "integer" },
+        "y": { "type": "integer" }
+      }
+    }
+  }
+}
