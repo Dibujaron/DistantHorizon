@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "id": "freehold_water_run_2b",
-  "name": "Reclamation at Cradle's End",
-  "flavor": "Cradle's End is quiet now. The condensers never restarted and the people are gone, one way or another. What's left is fittings, alloy, and nobody with standing to object. A Breakers buyer pays honest rates for whatever comes loose, and asks only that you not say the word 'grave' where the cutting crew can hear it.",
+  "name": "Reclamation at ${dead_site}",
+  "flavor": "${dead_site} is quiet now. The condensers never restarted and the people are gone, one way or another. What's left is fittings, alloy, and nobody with standing to object. A Breakers buyer pays good rates for whatever comes loose, and asks only that you not say the word 'grave'.",
   "acquisition": "triggered",
   "slots": {
     "dead_site": { "from": "parent.dest" },
@@ -23,7 +23,7 @@
   "items": [
     {
       "id": "salvage",
-      "name": "Reclaimed Fittings — Cradle's End",
+      "name": "Reclaimed Fittings — ${dead_site}",
       "space": "hold",
       "units": 10,
       "pickup_at": "${dead_site}"

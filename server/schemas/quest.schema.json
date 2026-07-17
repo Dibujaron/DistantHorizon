@@ -13,8 +13,16 @@
       "pattern": "^[a-z0-9_]+$",
       "description": "Must equal the filename minus .json (test-enforced)."
     },
-    "name": { "type": "string", "minLength": 1 },
-    "flavor": { "type": "string", "minLength": 1 },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Display name. ${slot} interpolations are substituted with the bound entity's display name at offer time (e.g. \"Water for ${dest}\")."
+    },
+    "flavor": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Offer prose. ${slot} interpolations are substituted with bound display names, as in name."
+    },
     "acquisition": {
       "enum": ["broker", "rumor", "triggered"],
       "description": "broker: offered at a faction broker console. rumor: ambient, no contract, no penalty for ignoring. triggered: only reachable via another quest's triggers."
@@ -51,11 +59,29 @@
       "items": { "$ref": "#/definitions/item" }
     },
     "rewards": { "$ref": "#/definitions/rewards" },
+    "effects": {
+      "type": "object",
+      "description": "World effects by outcome — the third consequence kind besides rewards (crew) and triggers (quests). Applied by the engine when the outcome resolves; once a world simulation exists, effects become discrete story-beat inputs to it, not overrides.",
+      "properties": {
+        "on_complete": { "$ref": "#/definitions/world_effect" },
+        "on_failed": { "$ref": "#/definitions/world_effect" },
+        "on_expired": { "$ref": "#/definitions/world_effect" }
+      },
+      "additionalProperties": false
+    },
     "on_complete": { "type": "array", "items": { "$ref": "#/definitions/trigger" } },
     "on_failed": { "type": "array", "items": { "$ref": "#/definitions/trigger" } },
     "on_expired": { "type": "array", "items": { "$ref": "#/definitions/trigger" } }
   },
   "definitions": {
+    "world_effect": {
+      "type": "object",
+      "description": "Vocabulary of world effects; grows as content demands.",
+      "properties": {
+        "settlement_dies": { "$ref": "#/definitions/ref_string" }
+      },
+      "additionalProperties": false
+    },
     "slot": {
       "type": "object",
       "oneOf": [

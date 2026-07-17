@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "id": "freehold_water_run_1",
-  "name": "Water for Cradle's End",
-  "flavor": "The condensers at Cradle's End are down and the Compact's nearest help is weeks out. Somebody with a hold full of water gets there first, or nobody does. The broker is not dressing it up: this is the whole settlement on one delivery, and the fee is what they could scrape.",
+  "name": "Water for ${dest}",
+  "flavor": "The condensers at ${dest} are down and the Compact's nearest help is weeks out. Somebody with a hold full of water gets there first, or nobody does. The broker is not dressing it up: this is the whole settlement on one delivery, and the fee is what they could scrape.",
   "acquisition": "broker",
   "slots": {
     "patron": { "kind": "faction", "constraints": { "id": "freehold" } },
@@ -36,6 +36,10 @@
   "rewards": {
     "credits": 900,
     "rep": [{ "target": "${patron}", "delta": 15 }]
+  },
+  "effects": {
+    "on_failed": { "settlement_dies": "${dest}" },
+    "on_expired": { "settlement_dies": "${dest}" }
   },
   "on_complete": [
     { "quest": "freehold_water_run_2a", "offer": { "mode": "open" } }

@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "id": "freehold_water_run_2a",
-  "name": "Cradle's End, Rebuilding",
-  "flavor": "Cradle's End made it. The condensers are running on what you brought, and the Compact means to build the place back better than it was. That takes machinery, and the contract is posted open: first hold in gets the work. That's how the border says thank you — more work.",
+  "name": "${dest}, Rebuilding",
+  "flavor": "${dest} made it. The condensers are running on what you brought, and the Compact means to build the place back better than it was. That takes machinery, and the contract is posted open: first hold in gets the job. That's how the border says thank you — more honest work for honest pay.",
   "acquisition": "triggered",
   "slots": {
     "patron": { "from": "parent.patron" },
