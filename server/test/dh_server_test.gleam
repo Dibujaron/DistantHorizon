@@ -102,8 +102,8 @@ pub fn add_player_returns_incrementing_ids_test() {
   let client1 = process.new_subject()
   let client2 = process.new_subject()
 
-  assert sim.add_player(sim_subject, "ada", client1, 1000) == #(1, 1)
-  assert sim.add_player(sim_subject, "grace", client2, 1000) == #(2, 2)
+  assert sim.add_player(sim_subject, "ada", client1, 1000) == Ok(#(1, 1))
+  assert sim.add_player(sim_subject, "grace", client2, 1000) == Ok(#(2, 2))
 }
 
 pub fn add_player_snapshot_contains_docked_ship_test() {
@@ -111,7 +111,7 @@ pub fn add_player_snapshot_contains_docked_ship_test() {
   let sim_subject = started.data
 
   let client = process.new_subject()
-  let #(ship_id, _character_id) =
+  let assert Ok(#(ship_id, _character_id)) =
     sim.add_player(sim_subject, "pilot", client, 1000)
 
   let #(_tick, x) = receive_snapshot_at_or_after(client, ship_id, 0)
@@ -125,11 +125,12 @@ pub fn set_controls_and_undock_advances_x_test() {
   let sim_subject = started.data
 
   let client = process.new_subject()
-  let #(ship_id, character_id) =
+  let assert Ok(#(ship_id, character_id)) =
     sim.add_player(sim_subject, "pilot", client, 1000)
 
-  // Login spawns the character seated at the helm, so undock/helm work
-  // immediately — this is the M1 flow, unchanged by M2.
+  // Login seats the character at its namespaced helm in the station
+  // composite, so undock takes effect immediately; after undock the body is
+  // aboard the flying ship at the ship-local helm, so helm control works.
   let assert Ok(Nil) = sim.request_undock(sim_subject, character_id, 1000)
   sim.set_controls(sim_subject, character_id, 0.0, 1.0)
 

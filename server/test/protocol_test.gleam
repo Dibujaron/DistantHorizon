@@ -1,4 +1,6 @@
 import dh_server/character
+import dh_server/composite
+import dh_server/deckplan
 import dh_server/market
 import dh_server/protocol
 import dh_server/ship
@@ -68,11 +70,14 @@ pub fn parse_stand_test() {
     == Ok(protocol.Stand)
 }
 
-pub fn parse_board_test() {
+pub fn board_and_disembark_are_no_longer_messages_test() {
+  // M3.1 deleted the airlock-cycling crossing: these parse as unknown.
   assert protocol.parse_client_message(
       "{\"v\":1,\"type\":\"board\",\"ship_id\":7}",
     )
-    == Ok(protocol.Board(ship_id: 7))
+    == Error(Nil)
+  assert protocol.parse_client_message("{\"v\":1,\"type\":\"disembark\"}")
+    == Error(Nil)
 }
 
 pub fn parse_get_stats_test() {
@@ -251,85 +256,67 @@ pub fn encode_seat_result_error_test() {
   assert string.contains(text, "\"seat\":null")
 }
 
-pub fn encode_board_result_ok_test() {
-  let text =
-    protocol.encode_board_result(protocol.BoardResult(
-      ok: True,
-      reason: None,
-      ship_id: 2,
-    ))
-  assert string.contains(text, "\"type\":\"board_result\"")
-  assert string.contains(text, "\"ok\":true")
-  assert string.contains(text, "\"reason\":null")
-  assert string.contains(text, "\"ship_id\":2")
-}
-
-pub fn encode_board_result_error_test() {
-  let text =
-    protocol.encode_board_result(protocol.BoardResult(
-      ok: False,
-      reason: Some("not_docked_together"),
+pub fn encode_walkers_test() {
+  let char =
+    character.Character(
+      id: 4,
+      name: "ada",
       ship_id: 1,
-    ))
-  assert string.contains(text, "\"ok\":false")
-  assert string.contains(text, "\"reason\":\"not_docked_together\"")
+      place: character.OnStation("meridian_highport"),
+      x: 2.5,
+      y: 2.5,
+      seat: Some("s1:helm_main"),
+      move_dx: 0.0,
+      move_dy: 0.0,
+    )
+  let text =
+    protocol.encode_walkers(120, protocol.StationSpace("meridian_highport"), 3, [
+      char,
+    ])
+  assert string.contains(text, "\"type\":\"walkers\"")
+  assert string.contains(text, "\"space\":\"station:meridian_highport\"")
+  assert string.contains(text, "\"epoch\":3")
+  assert string.contains(text, "\"seat\":\"s1:helm_main\"")
 }
 
-type DecodedCharacter {
-  DecodedCharacter(
-    id: Int,
-    name: String,
-    x: Float,
-    y: Float,
-    seat: option.Option(String),
-  )
+pub fn encode_space_test() {
+  let plan =
+    deckplan.DeckPlan(
+      grid: deckplan.Grid(width: 3, height: 3),
+      walkable: [".#.", "###", ".#."],
+      rooms: [],
+      consoles: [],
+      spawn_tile: #(1, 1),
+    )
+  let you =
+    character.Character(
+      id: 4,
+      name: "ada",
+      ship_id: 1,
+      place: character.OnStation("meridian_highport"),
+      x: 2.5,
+      y: 2.5,
+      seat: None,
+      move_dx: 0.0,
+      move_dy: 0.0,
+    )
+  let text =
+    protocol.encode_space(
+      protocol.StationSpace("meridian_highport"),
+      2,
+      plan,
+      [composite.Graft(ship_id: 1, dx: 1, dy: 0)],
+      you,
+    )
+  assert string.contains(text, "\"type\":\"space\"")
+  assert string.contains(text, "\"space\":\"station:meridian_highport\"")
+  assert string.contains(text, "\"grafts\":[{\"ship_id\":1,\"dx\":1,\"dy\":0}]")
+  assert string.contains(text, "\"you\":{\"x\":2.5,\"y\":2.5,\"seat\":null}")
 }
 
-fn decoded_character_decoder() -> decode.Decoder(DecodedCharacter) {
-  use id <- decode.field("id", decode.int)
-  use name <- decode.field("name", decode.string)
-  use x <- decode.field("x", decode.float)
-  use y <- decode.field("y", decode.float)
-  use seat <- decode.field("seat", decode.optional(decode.string))
-  decode.success(DecodedCharacter(id: id, name: name, x: x, y: y, seat: seat))
-}
-
-fn interior_decoder() -> decode.Decoder(#(Int, Int, List(DecodedCharacter))) {
-  use tick <- decode.field("tick", decode.int)
-  use ship_id <- decode.field("ship_id", decode.int)
-  use characters <- decode.field(
-    "characters",
-    decode.list(decoded_character_decoder()),
-  )
-  decode.success(#(tick, ship_id, characters))
-}
-
-pub fn encode_interior_round_trip_test() {
-  let class = test_class()
-  let pilot = character.spawn_seated_at_helm(1, "ada", 9, class.plan)
-  let walker = character.spawn_at_spawn_tile(2, "grace", 9, class.plan)
-  let text = protocol.encode_interior(90, 9, [pilot, walker])
-  assert string.contains(text, "\"type\":\"interior\"")
-  assert string.contains(text, "\"tick\":90")
-  assert string.contains(text, "\"ship_id\":9")
-
-  let assert Ok(#(tick, ship_id, characters)) =
-    json.parse(text, interior_decoder())
-  assert tick == 90
-  assert ship_id == 9
-  let assert Ok(decoded_pilot) = list.find(characters, fn(c) { c.id == 1 })
-  let assert Ok(decoded_walker) = list.find(characters, fn(c) { c.id == 2 })
-  assert decoded_pilot.name == "ada"
-  assert decoded_pilot.seat == Some("helm_main")
-  assert decoded_walker.name == "grace"
-  assert decoded_walker.seat == None
-  assert decoded_walker.x == walker.x
-  assert decoded_walker.y == walker.y
-}
-
-pub fn parse_disembark_test() {
-  assert protocol.parse_client_message("{\"v\":1,\"type\":\"disembark\"}")
-    == Ok(protocol.Disembark)
+pub fn ship_space_id_test() {
+  let text = protocol.encode_walkers(1, protocol.ShipSpace(3), 0, [])
+  assert string.contains(text, "\"space\":\"ship:3\"")
 }
 
 pub fn parse_buy_and_sell_test() {
@@ -354,17 +341,6 @@ pub fn parse_buy_rejects_float_quantity_test() {
 pub fn parse_get_market_test() {
   assert protocol.parse_client_message("{\"v\":1,\"type\":\"get_market\"}")
     == Ok(protocol.GetMarket)
-}
-
-pub fn encode_disembark_result_test() {
-  let text =
-    protocol.encode_disembark_result(protocol.DisembarkResult(
-      ok: True,
-      reason: None,
-      station_id: Some("meridian_highport"),
-    ))
-  assert text
-    == "{\"v\":1,\"type\":\"disembark_result\",\"ok\":true,\"reason\":null,\"station_id\":\"meridian_highport\"}"
 }
 
 pub fn encode_trade_result_test() {
@@ -418,13 +394,4 @@ pub fn encode_cargo_sorts_hold_and_lists_transfers_test() {
     )
   assert protocol.encode_cargo(s, 40)
     == "{\"v\":1,\"type\":\"cargo\",\"ship_id\":7,\"wallet\":1725,\"capacity\":40,\"hold\":[{\"commodity\":\"machinery\",\"quantity\":5},{\"commodity\":\"water\",\"quantity\":3}],\"transfers\":[{\"commodity\":\"food\",\"direction\":\"to_ship\",\"remaining\":4}]}"
-}
-
-pub fn encode_concourse_test() {
-  let assert Ok(class) = shipclass.load("classes/sparrow.json")
-  let c = character.spawn_at_spawn_tile(3, "ada", 1, class.plan)
-  let c = character.disembark_to(c, class.plan, "meridian_highport")
-  let text = protocol.encode_concourse(120, "meridian_highport", [c])
-  assert text
-    == "{\"v\":1,\"type\":\"concourse\",\"tick\":120,\"station_id\":\"meridian_highport\",\"characters\":[{\"id\":3,\"name\":\"ada\",\"x\":5.5,\"y\":4.5,\"seat\":null}]}"
 }

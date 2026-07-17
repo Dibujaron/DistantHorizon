@@ -1,8 +1,11 @@
-//// Sim-actor-level tests for the M2 character/boarding logic: boarding
-//// success and every failure reason, despawn-on-empty (via board and via
-//// disconnect), pilot-disconnect-with-crew survival, and interior fan-out
-//// isolation. These drive the real actor through its public API and
-//// observe it the way clients do — through snapshot/interior messages.
+//// Sim-actor-level tests for M3.1 stitched interiors: login lands seated at
+//// a namespaced helm in the station composite, docked crews share one
+//// space, ship<->concourse crossing is plain walking, undock splits bodies
+//// by tile ownership (visitors carried, crew transferred, emptied ships
+//// despawned), berth exhaustion refuses login, and the trade/cargo/despawn
+//// flows survive the rework. These drive the real actor through its public
+//// API and observe it the way clients do — through snapshot/space/walkers
+//// messages.
 
 import dh_server/protocol
 import dh_server/shipclass
@@ -10,9 +13,11 @@ import dh_server/sim
 import dh_server/world
 import gleam/dynamic/decode
 import gleam/erlang/process
+import gleam/float
+import gleam/int
 import gleam/json
 import gleam/list
-import gleam/option.{type Option, None, Some}
+import gleam/option.{type Option, Some}
 
 fn start_sim() -> process.Subject(sim.Msg) {
   let assert Ok(w) = world.load("worlds/m1_system.json")
@@ -40,24 +45,42 @@ fn message_type_decoder() -> decode.Decoder(String) {
   decode.field("type", decode.string, decode.success)
 }
 
-/// One character as reported by an `interior`/`concourse` message.
+/// One character as reported by a `walkers` message.
 type CrewMember {
   CrewMember(id: Int, x: Float, y: Float, seat: Option(String))
 }
 
-fn interior_decoder() -> decode.Decoder(#(Int, List(CrewMember))) {
-  use ship_id <- decode.field("ship_id", decode.int)
+fn crew_member_decoder() -> decode.Decoder(CrewMember) {
+  use id <- decode.field("id", decode.int)
+  use x <- decode.field("x", decode.float)
+  use y <- decode.field("y", decode.float)
+  use seat <- decode.field("seat", decode.optional(decode.string))
+  decode.success(CrewMember(id: id, x: x, y: y, seat: seat))
+}
+
+/// A `walkers` message: space id, epoch, and its occupants.
+fn walkers_decoder() -> decode.Decoder(#(String, Int, List(CrewMember))) {
+  use space <- decode.field("space", decode.string)
+  use epoch <- decode.field("epoch", decode.int)
   use characters <- decode.field(
     "characters",
-    decode.list({
-      use id <- decode.field("id", decode.int)
-      use x <- decode.field("x", decode.float)
-      use y <- decode.field("y", decode.float)
-      use seat <- decode.field("seat", decode.optional(decode.string))
-      decode.success(CrewMember(id: id, x: x, y: y, seat: seat))
-    }),
+    decode.list(crew_member_decoder()),
   )
-  decode.success(#(ship_id, characters))
+  decode.success(#(space, epoch, characters))
+}
+
+/// A `space` message: space id and epoch. Decoding also asserts a `you`
+/// object is present (personalization), the field the client snaps to.
+fn space_decoder() -> decode.Decoder(#(String, Int)) {
+  use space <- decode.field("space", decode.string)
+  use epoch <- decode.field("epoch", decode.int)
+  use _you_x <- decode.field("you", you_x_decoder())
+  decode.success(#(space, epoch))
+}
+
+fn you_x_decoder() -> decode.Decoder(Float) {
+  use x <- decode.field("x", decode.float)
+  decode.success(x)
 }
 
 fn snapshot_ship_ids_decoder() -> decode.Decoder(List(Int)) {
@@ -68,33 +91,58 @@ fn snapshot_ship_ids_decoder() -> decode.Decoder(List(Int)) {
   )
 }
 
-/// Receive messages on `client` until an `interior` arrives, returning its
-/// ship_id and characters.
-fn receive_interior(
+/// Receive messages on `client` until a `walkers` arrives, returning its
+/// space id, epoch and characters.
+fn receive_walkers(
   client: process.Subject(sim.ClientMsg),
-) -> #(Int, List(CrewMember)) {
+) -> #(String, Int, List(CrewMember)) {
   let assert Ok(sim.SendText(text)) = process.receive(client, 2000)
   let assert Ok(msg_type) = json.parse(text, message_type_decoder())
   case msg_type {
-    "interior" -> {
-      let assert Ok(decoded) = json.parse(text, interior_decoder())
+    "walkers" -> {
+      let assert Ok(decoded) = json.parse(text, walkers_decoder())
       decoded
     }
-    _ -> receive_interior(client)
+    _ -> receive_walkers(client)
   }
 }
 
-/// Receive interiors on `client` until one for `ship_id` arrives (skipping
-/// any stale pre-transition interiors buffered for a previous ship),
-/// returning its characters.
-fn receive_interior_for_ship(
+/// Receive walkers on `client` until one for `space` arrives (draining any
+/// stale walkers buffered for a previous space).
+fn receive_walkers_for(
   client: process.Subject(sim.ClientMsg),
-  ship_id: Int,
-) -> List(CrewMember) {
-  let #(sid, characters) = receive_interior(client)
-  case sid == ship_id {
-    True -> characters
-    False -> receive_interior_for_ship(client, ship_id)
+  space: String,
+) -> #(String, Int, List(CrewMember)) {
+  let #(sp, epoch, characters) = receive_walkers(client)
+  case sp == space {
+    True -> #(sp, epoch, characters)
+    False -> receive_walkers_for(client, space)
+  }
+}
+
+/// Receive messages on `client` until a `space` arrives, returning its
+/// space id and epoch.
+fn receive_space(client: process.Subject(sim.ClientMsg)) -> #(String, Int) {
+  let assert Ok(sim.SendText(text)) = process.receive(client, 2000)
+  let assert Ok(msg_type) = json.parse(text, message_type_decoder())
+  case msg_type {
+    "space" -> {
+      let assert Ok(decoded) = json.parse(text, space_decoder())
+      decoded
+    }
+    _ -> receive_space(client)
+  }
+}
+
+/// Receive `space` messages on `client` until one for `space` arrives.
+fn receive_space_for(
+  client: process.Subject(sim.ClientMsg),
+  space: String,
+) -> #(String, Int) {
+  let #(sp, epoch) = receive_space(client)
+  case sp == space {
+    True -> #(sp, epoch)
+    False -> receive_space_for(client, space)
   }
 }
 
@@ -146,90 +194,130 @@ fn wait_for_clients(
   }
 }
 
-fn concourse_decoder() -> decode.Decoder(#(String, List(CrewMember))) {
-  use station_id <- decode.field("station_id", decode.string)
-  use characters <- decode.field(
-    "characters",
-    decode.list({
-      use id <- decode.field("id", decode.int)
-      use x <- decode.field("x", decode.float)
-      use y <- decode.field("y", decode.float)
-      use seat <- decode.field("seat", decode.optional(decode.string))
-      decode.success(CrewMember(id: id, x: x, y: y, seat: seat))
-    }),
-  )
-  decode.success(#(station_id, characters))
+/// Receive walkers until `predicate` holds for `char_id`'s position. Fails
+/// after `tries` walkers.
+fn wait_for_walker(
+  client: process.Subject(sim.ClientMsg),
+  char_id: Int,
+  predicate: fn(Float, Float) -> Bool,
+  tries: Int,
+) -> Nil {
+  let #(_space, _epoch, characters) = receive_walkers(client)
+  let position_ok = case list.find(characters, fn(c) { c.id == char_id }) {
+    Ok(CrewMember(x: x, y: y, ..)) -> predicate(x, y)
+    Error(Nil) -> False
+  }
+  case position_ok, tries {
+    True, _ -> Nil
+    False, 0 -> panic as "character never reached the expected position"
+    False, _ -> wait_for_walker(client, char_id, predicate, tries - 1)
+  }
 }
 
-/// Receive messages until a `concourse` arrives.
-fn receive_concourse(
+/// Receive walkers until `char_id` appears, returning its position. Fails
+/// after `tries` walkers.
+fn wait_for_position(
   client: process.Subject(sim.ClientMsg),
+  char_id: Int,
+  tries: Int,
+) -> #(Float, Float) {
+  let #(_space, _epoch, characters) = receive_walkers(client)
+  case list.find(characters, fn(c) { c.id == char_id }), tries {
+    Ok(CrewMember(x: x, y: y, ..)), _ -> #(x, y)
+    Error(Nil), 0 -> panic as "character never appeared in walkers"
+    Error(Nil), _ -> wait_for_position(client, char_id, tries - 1)
+  }
+}
+
+/// Receive walkers until one carries every id in `ids`, returning its space
+/// and characters. Fails after `tries`.
+fn wait_for_walkers_with(
+  client: process.Subject(sim.ClientMsg),
+  ids: List(Int),
+  tries: Int,
 ) -> #(String, List(CrewMember)) {
-  let assert Ok(sim.SendText(text)) = process.receive(client, 2000)
-  let assert Ok(msg_type) = json.parse(text, message_type_decoder())
-  case msg_type {
-    "concourse" -> {
-      let assert Ok(decoded) = json.parse(text, concourse_decoder())
-      decoded
-    }
-    _ -> receive_concourse(client)
+  let #(space, _epoch, characters) = receive_walkers(client)
+  let all_present =
+    list.all(ids, fn(id) { list.any(characters, fn(c) { c.id == id }) })
+  case all_present, tries {
+    True, _ -> #(space, characters)
+    False, 0 -> panic as "walkers never carried every expected character"
+    False, _ -> wait_for_walkers_with(client, ids, tries - 1)
   }
 }
 
-/// Receive interiors until `predicate` holds for `char_id`'s position.
-/// Fails after `tries` interiors.
-fn wait_for_character(
-  client: process.Subject(sim.ClientMsg),
-  char_id: Int,
-  predicate: fn(Float, Float) -> Bool,
-  tries: Int,
-) -> Nil {
-  let #(_ship_id, characters) = receive_interior(client)
-  let position_ok = case list.find(characters, fn(c) { c.id == char_id }) {
-    Ok(CrewMember(x: x, y: y, ..)) -> predicate(x, y)
-    Error(Nil) -> False
-  }
-  case position_ok, tries {
-    True, _ -> Nil
-    False, 0 -> panic as "character never reached the expected position"
-    False, _ -> wait_for_character(client, char_id, predicate, tries - 1)
-  }
-}
-
-/// Concourse twin of wait_for_character.
-fn wait_for_ashore_character(
-  client: process.Subject(sim.ClientMsg),
-  char_id: Int,
-  predicate: fn(Float, Float) -> Bool,
-  tries: Int,
-) -> Nil {
-  let #(_station_id, characters) = receive_concourse(client)
-  let position_ok = case list.find(characters, fn(c) { c.id == char_id }) {
-    Ok(CrewMember(x: x, y: y, ..)) -> predicate(x, y)
-    Error(Nil) -> False
-  }
-  case position_ok, tries {
-    True, _ -> Nil
-    False, 0 -> panic as "character never reached the expected position"
-    False, _ -> wait_for_ashore_character(client, char_id, predicate, tries - 1)
-  }
-}
-
-/// Walk a standing character from the helm to the sparrow's aft airlock
-/// (the spawn tile, [5, 4]): east along row 2, then south down the cargo
-/// strip. Disembarking requires standing near the airlock (see
-/// character.near_airlock), so tests that go ashore walk there first, the
-/// same way a player does. Each leg is ~4 tiles at 3 tiles/s, well inside
-/// 60 interiors (4 s) at 15 Hz.
-fn walk_to_ship_airlock(
+/// Walk a standing character from their helm seat to `broker_main` at
+/// composite (10.5, 7.5), entirely by move input: stand, east to the ship's
+/// airlock column (helm column + 4, from the ship geometry), south through
+/// the airlock and berth stub onto the concourse floor, then along the
+/// floor to the broker. The airlock column is derived from the character's
+/// current helm position, so this works from any berth. Plain walking end
+/// to end — the stitched-space replacement for M3's stand/walk/disembark.
+fn walk_to_broker(
   s: process.Subject(sim.Msg),
   client: process.Subject(sim.ClientMsg),
   char: Int,
 ) -> Nil {
+  let assert protocol.SeatResult(ok: True, ..) =
+    sim.request_stand(s, char, 1000)
+  let #(x0, _y0) = wait_for_position(client, char, 60)
+  let helm_col = float.round(float.floor(x0))
+  // The airlock (spawn) column of the sparrow is 4 east of the helm; center
+  // on it so the character clears the single-tile berth pinch.
+  let airlock_x = int.to_float(helm_col + 4) +. 0.5
   sim.set_move(s, char, 1.0, 0.0)
-  wait_for_character(client, char, fn(x, _y) { x >=. 5.3 }, 60)
+  wait_for_walker(client, char, fn(x, _y) { x >=. airlock_x -. 0.1 }, 120)
   sim.set_move(s, char, 0.0, 1.0)
-  wait_for_character(client, char, fn(_x, y) { y >=. 4.3 }, 60)
+  wait_for_walker(client, char, fn(_x, y) { y >=. 7.2 }, 120)
+  // Along the floor to the broker column (10), from either side.
+  case airlock_x <. 10.5 {
+    True -> {
+      sim.set_move(s, char, 1.0, 0.0)
+      wait_for_walker(client, char, fn(x, _y) { x >=. 10.4 }, 120)
+    }
+    False -> {
+      sim.set_move(s, char, -1.0, 0.0)
+      wait_for_walker(client, char, fn(x, _y) { x <=. 10.6 }, 120)
+    }
+  }
+  sim.set_move(s, char, 0.0, 0.0)
+}
+
+/// Reverse of `walk_to_broker` for a berth-0 character: from the concourse
+/// floor near the broker back up ada's airlock column (6) onto her deck and
+/// west to the helm at (2.5, 2.5).
+fn walk_broker_to_helm(
+  s: process.Subject(sim.Msg),
+  client: process.Subject(sim.ClientMsg),
+  char: Int,
+) -> Nil {
+  sim.set_move(s, char, -1.0, 0.0)
+  wait_for_walker(client, char, fn(x, _y) { x <=. 6.5 }, 120)
+  sim.set_move(s, char, 0.0, -1.0)
+  wait_for_walker(client, char, fn(_x, y) { y <=. 2.6 }, 120)
+  sim.set_move(s, char, -1.0, 0.0)
+  wait_for_walker(client, char, fn(x, _y) { x <=. 2.6 }, 120)
+  sim.set_move(s, char, 0.0, 0.0)
+}
+
+/// A berth-1 visitor walks onto ada's (berth-0) deck: stand, east down her
+/// own airlock column (16), south to the floor, west to ada's airlock
+/// column (6), north onto ada's ship tiles (composite y <= 4).
+fn walk_visitor_onto_ada_ship(
+  s: process.Subject(sim.Msg),
+  client: process.Subject(sim.ClientMsg),
+  char: Int,
+) -> Nil {
+  let assert protocol.SeatResult(ok: True, ..) =
+    sim.request_stand(s, char, 1000)
+  sim.set_move(s, char, 1.0, 0.0)
+  wait_for_walker(client, char, fn(x, _y) { x >=. 16.4 }, 120)
+  sim.set_move(s, char, 0.0, 1.0)
+  wait_for_walker(client, char, fn(_x, y) { y >=. 7.2 }, 120)
+  sim.set_move(s, char, -1.0, 0.0)
+  wait_for_walker(client, char, fn(x, _y) { x <=. 6.5 }, 200)
+  sim.set_move(s, char, 0.0, -1.0)
+  wait_for_walker(client, char, fn(_x, y) { y <=. 3.6 }, 120)
   sim.set_move(s, char, 0.0, 0.0)
 }
 
@@ -293,168 +381,165 @@ fn wait_for_cargo(
   }
 }
 
-/// Assert the next `count` sim pushes to `client` include no `concourse`.
-fn assert_no_concourse(
+/// Receive `count` consecutive walkers, asserting each is for `space`.
+fn assert_walkers_only_for(
   client: process.Subject(sim.ClientMsg),
+  space: String,
   count: Int,
 ) -> Nil {
   case count {
     0 -> Nil
     _ -> {
-      let assert Ok(sim.SendText(text)) = process.receive(client, 2000)
-      let assert Ok(msg_type) = json.parse(text, message_type_decoder())
-      assert msg_type != "concourse"
-      assert_no_concourse(client, count - 1)
+      let #(sp, _epoch, _characters) = receive_walkers(client)
+      assert sp == space
+      assert_walkers_only_for(client, space, count - 1)
     }
   }
 }
 
-pub fn board_success_arrives_standing_at_spawn_tile_test() {
+pub fn login_lands_in_the_station_space_seated_at_own_helm_test() {
   let s = start_sim()
-  let client_a = process.new_subject()
-  let client_b = process.new_subject()
-  let #(ship_a, char_a) = sim.add_player(s, "ada", client_a, 1000)
-  let #(ship_b, char_b) = sim.add_player(s, "grace", client_b, 1000)
-
-  // Both ships spawn docked at the same spawn station, so boarding works
-  // immediately.
-  assert sim.request_board(s, char_b, ship_a, 1000)
-    == protocol.BoardResult(ok: True, reason: None, ship_id: ship_a)
-
-  // b's interior is now ship A's, with b standing at the spawn tile
-  // ([5, 4] -> center (5.5, 4.5)) and a still seated at the helm.
-  let characters = receive_interior_for_ship(client_b, ship_a)
-  let assert Ok(CrewMember(x: bx, y: by, seat: b_seat, ..)) =
-    list.find(characters, fn(c) { c.id == char_b })
-  assert b_seat == None
-  assert bx == 5.5
-  assert by == 4.5
-  let assert Ok(CrewMember(seat: a_seat, ..)) =
-    list.find(characters, fn(c) { c.id == char_a })
-  assert a_seat == Some("helm_main")
-  assert list.length(characters) == 2
-
-  // b's old ship, emptied by the board, despawns from snapshots.
-  assert_ship_leaves_snapshots(client_b, ship_b, 10)
+  let client = process.new_subject()
+  let assert Ok(#(ship_id, char_id)) = sim.add_player(s, "ada", client, 1000)
+  // The space message names the spawn station's composite and seats us at
+  // our own namespaced helm.
+  let #(space, _epoch) = receive_space(client)
+  assert space == "station:meridian_highport"
+  let #(walk_space, _epoch, characters) = receive_walkers(client)
+  assert walk_space == "station:meridian_highport"
+  let assert Ok(CrewMember(x: x, y: y, seat: seat, ..)) =
+    list.find(characters, fn(c) { c.id == char_id })
+  assert seat == Some("s" <> int.to_string(ship_id) <> ":helm_main")
+  // Berth 0 graft offset (1,0): helm tile (1,2) -> composite center (2.5, 2.5).
+  assert x == 2.5
+  assert y == 2.5
 }
 
-/// Standing, walking input buffered on the old ship must not survive a
-/// board: without clearing `move_dx`/`move_dy` alongside the seat (the fix
-/// this test pins), the boarded character would resume walking away from
-/// the new ship's spawn tile on the very next tick.
-pub fn board_while_walking_arrives_and_stays_at_spawn_tile_test() {
+pub fn two_docked_crews_share_one_space_test() {
   let s = start_sim()
   let client_a = process.new_subject()
   let client_b = process.new_subject()
-  let #(ship_a, _char_a) = sim.add_player(s, "ada", client_a, 1000)
-  let #(_ship_b, char_b) = sim.add_player(s, "grace", client_b, 1000)
+  let assert Ok(#(_ship_a, char_a)) = sim.add_player(s, "ada", client_a, 1000)
+  let assert Ok(#(_ship_b, char_b)) = sim.add_player(s, "grace", client_b, 1000)
+  // Both crews are in the same station space and see each other.
+  let #(space, characters) =
+    wait_for_walkers_with(client_a, [char_a, char_b], 40)
+  assert space == "station:meridian_highport"
+  assert list.any(characters, fn(c) { c.id == char_a })
+  assert list.any(characters, fn(c) { c.id == char_b })
+}
 
-  // b stands and sets nonzero walk input on their own ship, then boards a.
+pub fn walking_from_ship_to_concourse_is_just_walking_test() {
+  let s = start_sim()
+  let client = process.new_subject()
+  let assert Ok(#(_ship, char)) = sim.add_player(s, "ada", client, 1000)
+  // From the helm seat to the broker with nothing but move input: down the
+  // deck, through the airlock, across the berth stub, onto the floor.
+  walk_to_broker(s, client, char)
+  let assert protocol.SeatResult(ok: True, ..) =
+    sim.request_sit(s, char, "broker_main", 1000)
+}
+
+pub fn undock_splits_bodies_by_tile_test() {
+  let s = start_sim()
+  let pilot = process.new_subject()
+  let walker = process.new_subject()
+  let assert Ok(#(ship_p, char_p)) = sim.add_player(s, "ada", pilot, 1000)
+  let assert Ok(#(ship_w, char_w)) = sim.add_player(s, "grace", walker, 1000)
+  // grace walks off her ship onto the concourse floor and stays there.
+  walk_to_broker(s, walker, char_w)
+  // ada undocks (seated at her namespaced helm since login): her ship
+  // leaves with her body; grace stays in the station space, and grace's
+  // crew membership is untouched (her ship still sits at its berth).
+  let assert Ok(Nil) = sim.request_undock(s, char_p, 1000)
+  // ada is now in her ship's own space, at the ship-local helm.
+  let #(space_p, _epoch) =
+    receive_space_for(pilot, "ship:" <> int.to_string(ship_p))
+  assert space_p == "ship:" <> int.to_string(ship_p)
+  let #(_, _, crew) =
+    receive_walkers_for(pilot, "ship:" <> int.to_string(ship_p))
+  let assert Ok(CrewMember(x: x, y: y, seat: seat, ..)) =
+    list.find(crew, fn(c) { c.id == char_p })
+  assert seat == Some("helm_main")
+  assert x == 1.5
+  assert y == 2.5
+  // grace still walks the station space, which no longer grafts ship_p.
+  let #(space_w, _, ashore) =
+    receive_walkers_for(walker, "station:meridian_highport")
+  assert space_w == "station:meridian_highport"
+  assert list.any(ashore, fn(c) { c.id == char_w })
+  // grace's ship survives (she's still its crew); ada's left the berth.
+  let ids = receive_snapshot_ship_ids(walker)
+  assert list.contains(ids, ship_w)
+}
+
+pub fn undock_carries_visitors_and_transfers_crew_test() {
+  let s = start_sim()
+  let pilot = process.new_subject()
+  let visitor = process.new_subject()
+  let assert Ok(#(ship_p, char_p)) = sim.add_player(s, "ada", pilot, 1000)
+  let assert Ok(#(ship_v, char_v)) = sim.add_player(s, "grace", visitor, 1000)
+  // grace walks onto ada's ship (berth 0), stopping on ship tiles.
+  walk_visitor_onto_ada_ship(s, visitor, char_v)
+  // ada undocks: grace's body is on ada's tiles, so she leaves with the
+  // ship and becomes its crew; her old ship, now crewless, despawns.
+  let assert Ok(Nil) = sim.request_undock(s, char_p, 1000)
+  let #(_, _, crew) =
+    receive_walkers_for(visitor, "ship:" <> int.to_string(ship_p))
+  assert list.any(crew, fn(c) { c.id == char_v })
+  assert list.any(crew, fn(c) { c.id == char_p })
+  // The pilot's snapshot buffer accumulated (undrained) through grace's long
+  // walk, so drain generously to reach the post-undock frames.
+  assert_ship_leaves_snapshots(pilot, ship_v, 400)
+}
+
+pub fn spawn_station_fills_up_test() {
+  let s = start_sim()
+  // Meridian Highport authors three berths; the fourth login is refused.
+  let assert Ok(_) = sim.add_player(s, "a", process.new_subject(), 1000)
+  let assert Ok(_) = sim.add_player(s, "b", process.new_subject(), 1000)
+  let assert Ok(_) = sim.add_player(s, "c", process.new_subject(), 1000)
+  assert sim.add_player(s, "d", process.new_subject(), 1000)
+    == Error("station_full")
+}
+
+pub fn undock_frees_the_berth_test() {
+  let s = start_sim()
+  let client_a = process.new_subject()
+  let assert Ok(#(_, char_a)) = sim.add_player(s, "a", client_a, 1000)
+  let assert Ok(_) = sim.add_player(s, "b", process.new_subject(), 1000)
+  let assert Ok(_) = sim.add_player(s, "c", process.new_subject(), 1000)
+  let assert Ok(Nil) = sim.request_undock(s, char_a, 1000)
+  // a's departure freed a berth: a fourth login now succeeds.
+  let assert Ok(_) = sim.add_player(s, "d", process.new_subject(), 1000)
+}
+
+pub fn seat_occupancy_is_scoped_to_the_shared_space_test() {
+  let s = start_sim()
+  let client_a = process.new_subject()
+  let client_b = process.new_subject()
+  let assert Ok(#(ship_a, _char_a)) = sim.add_player(s, "ada", client_a, 1000)
+  let assert Ok(#(_ship_b, char_b)) = sim.add_player(s, "grace", client_b, 1000)
+  // Both crews share the station space, so ada's occupied helm is visible to
+  // grace's sit attempt. grace stands first, then tries to take ada's helm.
   let assert protocol.SeatResult(ok: True, ..) =
     sim.request_stand(s, char_b, 1000)
-  sim.set_move(s, char_b, 1.0, 0.0)
-
-  assert sim.request_board(s, char_b, ship_a, 1000)
-    == protocol.BoardResult(ok: True, reason: None, ship_id: ship_a)
-
-  // b lands at the spawn tile center and, since the buffered input was
-  // cleared, stays there across several interiors rather than walking off
-  // toward the engine room.
-  assert_stays_at_spawn_tile(client_b, ship_a, char_b, 10)
-}
-
-/// Assert `char_id` is at the spawn tile center ([5, 4] -> (5.5, 4.5)) in
-/// `count` consecutive interiors for `ship_id`.
-fn assert_stays_at_spawn_tile(
-  client: process.Subject(sim.ClientMsg),
-  ship_id: Int,
-  char_id: Int,
-  count: Int,
-) -> Nil {
-  case count {
-    0 -> Nil
-    _ -> {
-      let characters = receive_interior_for_ship(client, ship_id)
-      let assert Ok(CrewMember(x: x, y: y, ..)) =
-        list.find(characters, fn(c) { c.id == char_id })
-      assert x == 5.5
-      assert y == 4.5
-      assert_stays_at_spawn_tile(client, ship_id, char_id, count - 1)
-    }
-  }
-}
-
-/// `RequestSit`'s occupied check is scoped to the character's *current*
-/// ship (`c.ship_id == char.ship_id`) — nothing else end-to-end exercises
-/// that scoping. b boards a's ship (landing standing, per `handle_board`)
-/// and tries to take a's seat at the helm.
-pub fn request_sit_occupied_is_scoped_to_current_ship_test() {
-  let s = start_sim()
-  let client_a = process.new_subject()
-  let client_b = process.new_subject()
-  let #(ship_a, _char_a) = sim.add_player(s, "ada", client_a, 1000)
-  let #(_ship_b, char_b) = sim.add_player(s, "grace", client_b, 1000)
-
-  let assert protocol.BoardResult(ok: True, ..) =
-    sim.request_board(s, char_b, ship_a, 1000)
-
-  assert sim.request_sit(s, char_b, "helm_main", 1000)
-    == protocol.SeatResult(ok: False, reason: Some("occupied"), seat: None)
-}
-
-pub fn board_unknown_ship_test() {
-  let s = start_sim()
-  let client = process.new_subject()
-  let #(ship_id, char_id) = sim.add_player(s, "ada", client, 1000)
-
-  assert sim.request_board(s, char_id, 999, 1000)
-    == protocol.BoardResult(
-      ok: False,
-      reason: Some("unknown_ship"),
-      ship_id: ship_id,
-    )
-}
-
-pub fn board_same_ship_test() {
-  let s = start_sim()
-  let client = process.new_subject()
-  let #(ship_id, char_id) = sim.add_player(s, "ada", client, 1000)
-
-  assert sim.request_board(s, char_id, ship_id, 1000)
-    == protocol.BoardResult(
-      ok: False,
-      reason: Some("same_ship"),
-      ship_id: ship_id,
-    )
-}
-
-pub fn board_not_docked_together_test() {
-  let s = start_sim()
-  let client_a = process.new_subject()
-  let client_b = process.new_subject()
-  let #(ship_a, char_a) = sim.add_player(s, "ada", client_a, 1000)
-  let #(ship_b, char_b) = sim.add_player(s, "grace", client_b, 1000)
-
-  // a undocks (seated at the helm since login), so the two ships are no
-  // longer docked at the same station.
-  let assert Ok(Nil) = sim.request_undock(s, char_a, 1000)
-
-  assert sim.request_board(s, char_b, ship_a, 1000)
-    == protocol.BoardResult(
-      ok: False,
-      reason: Some("not_docked_together"),
-      ship_id: ship_b,
-    )
+  let helm_a = "s" <> int.to_string(ship_a) <> ":helm_main"
+  let result = sim.request_sit(s, char_b, helm_a, 1000)
+  assert result.ok == False
+  // Too far (grace is at berth 1, ada's helm is at berth 0) or occupied —
+  // either way the shared space resolved the console.
+  assert result.reason == Some("occupied") || result.reason == Some("too_far")
 }
 
 pub fn ship_despawns_when_last_character_disconnects_test() {
   let s = start_sim()
   let #(pid_a, client_a) = spawn_fake_client()
   let observer = process.new_subject()
-  let #(ship_a, _char_a) = sim.add_player(s, "ada", client_a, 1000)
-  let #(_ship_o, _char_o) = sim.add_player(s, "obs", observer, 1000)
+  let assert Ok(#(ship_a, _char_a)) = sim.add_player(s, "ada", client_a, 1000)
+  let assert Ok(#(_ship_o, _char_o)) = sim.add_player(s, "obs", observer, 1000)
 
-  // a's character was the only one aboard ship A: killing the connection
+  // a's character was the only one crewing ship A: killing the connection
   // removes the character and must despawn the ship.
   process.kill(pid_a)
   assert_ship_leaves_snapshots(observer, ship_a, 20)
@@ -464,20 +549,19 @@ pub fn ship_keeps_flying_when_pilot_disconnects_with_crew_aboard_test() {
   let s = start_sim()
   let #(pid_a, client_a) = spawn_fake_client()
   let client_b = process.new_subject()
-  let #(ship_a, char_a) = sim.add_player(s, "ada", client_a, 1000)
-  let #(ship_b, char_b) = sim.add_player(s, "grace", client_b, 1000)
+  let assert Ok(#(ship_a, char_a)) = sim.add_player(s, "ada", client_a, 1000)
+  let assert Ok(#(ship_b, char_b)) = sim.add_player(s, "grace", client_b, 1000)
 
-  // b crews a's ship (emptying and despawning ship B), then a undocks and
-  // disconnects mid-flight.
-  let result = sim.request_board(s, char_b, ship_a, 1000)
-  assert result.ok
+  // grace shanghais onto ada's ship (walk aboard + ada undocks), becoming
+  // its crew and emptying/despawning ship B. Then ada disconnects in flight.
+  walk_visitor_onto_ada_ship(s, client_b, char_b)
   let assert Ok(Nil) = sim.request_undock(s, char_a, 1000)
   process.kill(pid_a)
   assert wait_for_clients(s, 1, 100)
 
-  // The disconnect has been processed once b's interior shrinks to just
-  // their own character (the pilot's character is gone)...
-  wait_for_solo_crew(client_b, ship_a, char_b, 20)
+  // The disconnect has been processed once b's ship-space crew shrinks to
+  // just their own character (the pilot's character is gone)...
+  wait_for_solo_crew(client_b, "ship:" <> int.to_string(ship_a), char_b, 40)
 
   // ...and the ship survives its pilot: still in snapshots, while b's old
   // emptied ship stays gone.
@@ -486,20 +570,19 @@ pub fn ship_keeps_flying_when_pilot_disconnects_with_crew_aboard_test() {
   assert !list.contains(ids, ship_b)
 }
 
-/// Receive interiors for `ship_id` until the crew is exactly the one
-/// character `char_id` (skipping interiors buffered from before the other
-/// crew member was removed). Fails the test after `tries` interiors.
+/// Receive walkers for `space` until the crew is exactly the one character
+/// `char_id`. Fails the test after `tries` walkers.
 fn wait_for_solo_crew(
   client: process.Subject(sim.ClientMsg),
-  ship_id: Int,
+  space: String,
   char_id: Int,
   tries: Int,
 ) -> Nil {
-  let characters = receive_interior_for_ship(client, ship_id)
+  let #(_sp, _epoch, characters) = receive_walkers_for(client, space)
   case characters, tries {
     [CrewMember(id: only_id, ..)], _ if only_id == char_id -> Nil
     _, 0 -> panic as "crew never shrank to the surviving character"
-    _, _ -> wait_for_solo_crew(client, ship_id, char_id, tries - 1)
+    _, _ -> wait_for_solo_crew(client, space, char_id, tries - 1)
   }
 }
 
@@ -507,179 +590,53 @@ pub fn interior_fan_out_is_isolated_per_ship_test() {
   let s = start_sim()
   let client_a = process.new_subject()
   let client_b = process.new_subject()
-  let #(ship_a, _char_a) = sim.add_player(s, "ada", client_a, 1000)
-  let #(ship_b, _char_b) = sim.add_player(s, "grace", client_b, 1000)
+  let assert Ok(#(ship_a, char_a)) = sim.add_player(s, "ada", client_a, 1000)
+  let assert Ok(#(ship_b, char_b)) = sim.add_player(s, "grace", client_b, 1000)
 
-  // Two clients aboard different ships: every interior each receives must
-  // carry its own ship's id — a client never sees another ship's interior.
-  assert_interiors_only_for(client_a, ship_a, 5)
-  assert_interiors_only_for(client_b, ship_b, 5)
-}
-
-fn assert_interiors_only_for(
-  client: process.Subject(sim.ClientMsg),
-  ship_id: Int,
-  count: Int,
-) -> Nil {
-  case count {
-    0 -> Nil
-    _ -> {
-      let #(sid, _) = receive_interior(client)
-      assert sid == ship_id
-      assert_interiors_only_for(client, ship_id, count - 1)
-    }
-  }
-}
-
-pub fn disembark_lands_standing_at_concourse_spawn_test() {
-  let s = start_sim()
-  let client = process.new_subject()
-  let #(_ship, char) = sim.add_player(s, "ada", client, 1000)
-  let assert protocol.SeatResult(ok: True, ..) =
-    sim.request_stand(s, char, 1000)
-  walk_to_ship_airlock(s, client, char)
-  assert sim.request_disembark(s, char, 1000)
-    == protocol.DisembarkResult(
-      ok: True,
-      reason: None,
-      station_id: Some("meridian_highport"),
-    )
-  // Meridian Highport's concourse spawn tile is [4, 4] -> center (4.5, 4.5).
-  let #(station_id, characters) = receive_concourse(client)
-  assert station_id == "meridian_highport"
-  let assert Ok(CrewMember(x: x, y: y, seat: seat, ..)) =
-    list.find(characters, fn(c) { c.id == char })
-  assert x == 4.5
-  assert y == 4.5
-  assert seat == None
-}
-
-pub fn disembark_fails_while_flying_test() {
-  let s = start_sim()
-  let client = process.new_subject()
-  let #(_ship, char) = sim.add_player(s, "ada", client, 1000)
-  let assert Ok(Nil) = sim.request_undock(s, char, 1000)
-  assert sim.request_disembark(s, char, 1000)
-    == protocol.DisembarkResult(
-      ok: False,
-      reason: Some("not_docked"),
-      station_id: None,
-    )
-}
-
-pub fn disembark_fails_away_from_the_airlock_test() {
-  let s = start_sim()
-  let client = process.new_subject()
-  let #(_ship, char) = sim.add_player(s, "ada", client, 1000)
-  // Standing at the helm, ~4.4 tiles from the aft airlock: the deck and
-  // the concourse connect at their airlocks, not from anywhere aboard.
-  let assert protocol.SeatResult(ok: True, ..) =
-    sim.request_stand(s, char, 1000)
-  assert sim.request_disembark(s, char, 1000)
-    == protocol.DisembarkResult(
-      ok: False,
-      reason: Some("not_at_airlock"),
-      station_id: None,
-    )
-}
-
-pub fn board_from_concourse_fails_away_from_the_airlock_test() {
-  let s = start_sim()
-  let client = process.new_subject()
-  let #(ship_id, char) = sim.add_player(s, "ada", client, 1000)
-  let assert protocol.SeatResult(ok: True, ..) =
-    sim.request_stand(s, char, 1000)
-  walk_to_ship_airlock(s, client, char)
-  let assert protocol.DisembarkResult(ok: True, ..) =
-    sim.request_disembark(s, char, 1000)
-  // Walk north off the concourse airlock ([4, 4]) into the concourse
-  // proper, past airlock range (1.2 tiles).
-  sim.set_move(s, char, 0.0, -1.0)
-  wait_for_ashore_character(client, char, fn(_x, y) { y <=. 2.9 }, 60)
-  sim.set_move(s, char, 0.0, 0.0)
-  assert sim.request_board(s, char, ship_id, 1000)
-    == protocol.BoardResult(
-      ok: False,
-      reason: Some("not_at_airlock"),
-      ship_id: ship_id,
-    )
-}
-
-pub fn board_own_ship_back_from_concourse_test() {
-  let s = start_sim()
-  let client = process.new_subject()
-  let #(ship_id, char) = sim.add_player(s, "ada", client, 1000)
-  let assert protocol.SeatResult(ok: True, ..) =
-    sim.request_stand(s, char, 1000)
-  walk_to_ship_airlock(s, client, char)
-  let assert protocol.DisembarkResult(ok: True, ..) =
-    sim.request_disembark(s, char, 1000)
-  // Ashore, your own ship is a legal board target (M2's same_ship rule only
-  // applies aboard) — and the ship must have survived its crew going ashore.
-  // Disembarking lands on the concourse airlock, so boarding back is in
-  // range immediately.
-  assert sim.request_board(s, char, ship_id, 1000)
-    == protocol.BoardResult(ok: True, reason: None, ship_id: ship_id)
-  // Skip any stale pre-disembark interiors buffered during the walk: the
-  // post-board one reports the exact airlock (spawn tile) snap.
-  wait_for_character(client, char, fn(x, y) { x == 5.5 && y == 4.5 }, 60)
+  // Both undock (each seated at their own namespaced helm since login) and
+  // fly off in their own ships. Every walkers message each client receives
+  // must carry its own ship's space — never the other's.
+  let assert Ok(Nil) = sim.request_undock(s, char_a, 1000)
+  let assert Ok(Nil) = sim.request_undock(s, char_b, 1000)
+  let space_a = "ship:" <> int.to_string(ship_a)
+  let space_b = "ship:" <> int.to_string(ship_b)
+  let _ = receive_walkers_for(client_a, space_a)
+  let _ = receive_walkers_for(client_b, space_b)
+  assert_walkers_only_for(client_a, space_a, 5)
+  assert_walkers_only_for(client_b, space_b, 5)
 }
 
 pub fn ship_survives_whole_crew_ashore_test() {
   let s = start_sim()
   let client = process.new_subject()
   let observer = process.new_subject()
-  let #(ship_id, char) = sim.add_player(s, "ada", client, 1000)
-  let #(_obs_ship, _obs_char) = sim.add_player(s, "obs", observer, 1000)
-  let assert protocol.SeatResult(ok: True, ..) =
-    sim.request_stand(s, char, 1000)
-  walk_to_ship_airlock(s, client, char)
-  let assert protocol.DisembarkResult(ok: True, ..) =
-    sim.request_disembark(s, char, 1000)
-  // Crew ashore, zero bodies aboard: the ship stays in snapshots.
+  let assert Ok(#(ship_id, char)) = sim.add_player(s, "ada", client, 1000)
+  let assert Ok(#(_obs_ship, _obs_char)) =
+    sim.add_player(s, "obs", observer, 1000)
+  // ada walks off her ship onto the concourse floor: her body is ashore but
+  // her crew membership (ship_id) is unchanged, so the ship stays docked.
+  walk_to_broker(s, client, char)
   let ids = receive_snapshot_ship_ids(observer)
   assert list.contains(ids, ship_id)
-}
-
-pub fn concourse_fan_out_is_isolated_test() {
-  let s = start_sim()
-  let ashore_client = process.new_subject()
-  let aboard_client = process.new_subject()
-  let #(_ship_a, char_a) = sim.add_player(s, "ada", ashore_client, 1000)
-  let #(_ship_b, _char_b) = sim.add_player(s, "grace", aboard_client, 1000)
-  let assert protocol.SeatResult(ok: True, ..) =
-    sim.request_stand(s, char_a, 1000)
-  walk_to_ship_airlock(s, ashore_client, char_a)
-  let assert protocol.DisembarkResult(ok: True, ..) =
-    sim.request_disembark(s, char_a, 1000)
-  // ada (ashore) gets concourse messages; grace (aboard, same station's
-  // dock) must never see one.
-  let #(station_id, _) = receive_concourse(ashore_client)
-  assert station_id == "meridian_highport"
-  assert_no_concourse(aboard_client, 20)
 }
 
 pub fn buy_delivers_over_time_then_sell_pays_out_test() {
   let s = start_sim()
   let client = process.new_subject()
-  let #(ship_id, char) = sim.add_player(s, "ada", client, 1000)
-  let assert protocol.SeatResult(ok: True, ..) =
-    sim.request_stand(s, char, 1000)
-  walk_to_ship_airlock(s, client, char)
-  let assert protocol.DisembarkResult(ok: True, ..) =
-    sim.request_disembark(s, char, 1000)
-  // Spawn tile (4.5, 4.5) is 1.0 from broker_main at (4, 3) — inside the
-  // 1.2 sit range, no walking needed.
+  let assert Ok(#(ship_id, char)) = sim.add_player(s, "ada", client, 1000)
+  // Walk from the helm to the broker, then sit — one composite space, no
+  // disembark.
+  walk_to_broker(s, client, char)
   let assert protocol.SeatResult(ok: True, ..) =
     sim.request_sit(s, char, "broker_main", 1000)
 
   let buy = sim.request_buy(s, char, "machinery", 2, 1000)
   assert buy.ok
   assert buy.price >= 51 && buy.price <= 59
-  // Wallet debited immediately, before any goods land (robots need ~1 s
-  // for the first unit). Skip past the cargo backlog buffered while
-  // walking to the airlock: the first *debited* message is the one the
-  // buy produced, and its hold must still be empty.
+  // Wallet debited immediately, before any goods land (robots need ~1 s for
+  // the first unit). Skip past the cargo backlog buffered while walking: the
+  // first *debited* message is the one the buy produced, and its hold must
+  // still be empty.
   let CargoMsg(wallet: wallet, hold: hold_at_debit, ..) =
     wait_for_cargo(
       client,
@@ -689,8 +646,7 @@ pub fn buy_delivers_over_time_then_sell_pays_out_test() {
   assert wallet == 2000 - 2 * buy.price
   assert hold_at_debit == []
 
-  // Robots carry 1 unit/s: both units aboard within ~2 s (cargo arrives at
-  // 15 Hz; give it 60 messages ≈ 4 s of headroom).
+  // Robots carry 1 unit/s: both units aboard within ~2 s.
   let CargoMsg(hold: hold, transfers: transfers, ..) =
     wait_for_cargo(
       client,
@@ -715,49 +671,36 @@ pub fn buy_delivers_over_time_then_sell_pays_out_test() {
 
 pub fn undock_is_blocked_mid_transfer_test() {
   let s = start_sim()
-  let pilot = process.new_subject()
-  let quartermaster = process.new_subject()
-  let #(ship_a, char_pilot) = sim.add_player(s, "ada", pilot, 1000)
-  let #(_ship_b, char_qm) = sim.add_player(s, "grace", quartermaster, 1000)
-  // grace crews ada's ship, then goes ashore to the broker.
-  let assert protocol.BoardResult(ok: True, ..) =
-    sim.request_board(s, char_qm, ship_a, 1000)
-  let assert protocol.DisembarkResult(ok: True, ..) =
-    sim.request_disembark(s, char_qm, 1000)
+  let client = process.new_subject()
+  let assert Ok(#(ship_a, char)) = sim.add_player(s, "ada", client, 1000)
+  // Walk to the broker and start a long inbound transfer on ada's own ship.
+  walk_to_broker(s, client, char)
   let assert protocol.SeatResult(ok: True, ..) =
-    sim.request_sit(s, char_qm, "broker_main", 1000)
-  let buy = sim.request_buy(s, char_qm, "machinery", 8, 1000)
+    sim.request_sit(s, char, "broker_main", 1000)
+  let buy = sim.request_buy(s, char, "machinery", 20, 1000)
   assert buy.ok
-  // ada (still seated at the helm from login) cannot leave mid-load...
-  assert sim.request_undock(s, char_pilot, 1000)
-    == Error("transfer_in_progress")
-  // ...until the robots finish (8 units at 1 u/s; wait via grace's cargo
-  // feed — she's crew, so she gets it ashore).
-  let _ =
-    wait_for_cargo(quartermaster, fn(c) { c.hold == [#("machinery", 8)] }, 200)
-  let assert Ok(Nil) = sim.request_undock(s, char_pilot, 1000)
+  // Walk back to the helm and sit (the transfer keeps running while docked).
+  let assert protocol.SeatResult(ok: True, ..) =
+    sim.request_stand(s, char, 1000)
+  walk_broker_to_helm(s, client, char)
+  let assert protocol.SeatResult(ok: True, ..) =
+    sim.request_sit(s, char, "s" <> int.to_string(ship_a) <> ":helm_main", 1000)
+  // ada cannot leave mid-load...
+  assert sim.request_undock(s, char, 1000) == Error("transfer_in_progress")
+  // ...until the robots finish (20 units at 1 u/s).
+  let _ = wait_for_cargo(client, fn(c) { c.hold == [#("machinery", 20)] }, 600)
+  let assert Ok(Nil) = sim.request_undock(s, char, 1000)
 }
 
 pub fn trade_requires_broker_seat_test() {
   let s = start_sim()
   let client = process.new_subject()
-  let #(_ship, char) = sim.add_player(s, "ada", client, 1000)
-  let assert protocol.SeatResult(ok: True, ..) =
-    sim.request_stand(s, char, 1000)
-  // Aboard: no.
-  let aboard = sim.request_buy(s, char, "machinery", 1, 1000)
-  assert aboard
-    == protocol.TradeResult(
-      ok: False,
-      reason: Some("not_at_broker"),
-      commodity: "machinery",
-      quantity: 1,
-      price: 0,
-    )
-  // Ashore but standing: still no.
-  walk_to_ship_airlock(s, client, char)
-  let assert protocol.DisembarkResult(ok: True, ..) =
-    sim.request_disembark(s, char, 1000)
+  let assert Ok(#(_ship, char)) = sim.add_player(s, "ada", client, 1000)
+  // Seated at the helm (not a broker) in the station space: no.
+  let at_helm = sim.request_buy(s, char, "machinery", 1, 1000)
+  assert at_helm.reason == Some("not_at_broker")
+  // Standing on the concourse near the broker, but not seated: still no.
+  walk_to_broker(s, client, char)
   let standing = sim.request_buy(s, char, "machinery", 1, 1000)
   assert standing.reason == Some("not_at_broker")
 }
@@ -765,9 +708,8 @@ pub fn trade_requires_broker_seat_test() {
 pub fn request_market_resolves_ashore_and_docked_test() {
   let s = start_sim()
   let client = process.new_subject()
-  let #(_ship, char) = sim.add_player(s, "ada", client, 1000)
-  // Docked, aboard, seated at the helm: market is visible (cargo-console
-  // manifest use case).
+  let assert Ok(#(_ship, char)) = sim.add_player(s, "ada", client, 1000)
+  // Docked (OnStation in the composite): the station market is visible.
   let assert Ok(m) = sim.request_market(s, char, 1000)
   assert m.station_id == "meridian_highport"
   assert list.length(m.stores) == 4
