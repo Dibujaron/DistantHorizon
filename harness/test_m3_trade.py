@@ -13,15 +13,17 @@ meridian_highport, machinery base 55 +/- 4, starting wallet 2000, hold
 capacity 40, robot rate 1.0 unit/s, three berths.
 
 Composite geometry (verified by server/test/sim_test.gleam; y-down, tile
-units): first login claims berth 0, mooring (+1, 0), so the sparrow's helm
-tile (1,2) lands at composite center (2.5, 2.5) with seat "s{ship}:helm_main",
-and its airlock (spawn tile [5,4]) at composite (6, 4). A ship's airlock
-COLUMN in the composite is mooring_dx + 5 (sparrow spawn x = 5); its center is
-that + 0.5. The concourse floor is composite rows 6..8; broker_main sits at
-composite center (10.5, 7.5). Walk legs mirror sim_test.gleam's
-`walk_to_broker`: character radius 0.3, so descending the single-tile berth
-pinch needs the center at column + 0.4 or more (east of column + 0.4, THEN
-south). Walkers stream at 15 Hz, walk speed 3 tiles/s.
+units): berth assignment is seed-random among free berths (free_berth in
+sim.gleam), so a login's berth is never assumed -- every walk leg below
+derives its target column from the mooring the server actually reports. The
+sparrow's helm tile (1,2) lands at composite (mooring_dx + 1 + 0.5, 2.5) with
+seat "s{ship}:helm_main", and its airlock (spawn tile [5,4]) at composite
+column mooring_dx + 5. A ship's airlock COLUMN in the composite is thus
+mooring_dx + 5; its center is that + 0.5. The concourse floor is composite
+rows 6..8; broker_main sits at composite center (10.5, 7.5). Walk legs mirror
+sim_test.gleam's `walk_to_broker`: character radius 0.3, so descending the
+single-tile berth pinch needs the center at column + 0.4 or more (east of
+column + 0.4, THEN south). Walkers stream at 15 Hz, walk speed 3 tiles/s.
 """
 
 import math
@@ -150,16 +152,22 @@ async def _walk_to_broker(client: DHClient) -> None:
     await _descend_to_broker(client, SPAWN_STATION_SPACE, airlock_x)
 
 
-async def _walk_broker_to_helm(client: DHClient) -> None:
-    """Reverse of `_descend_to_broker` for a berth-0 character: from the
-    concourse floor near the broker back up the airlock column (6) onto the
-    deck and west to the helm at (2.5, 2.5)."""
-    await client.move(-1, 0)
-    await _wait_for_own_position(client, SPAWN_STATION_SPACE, lambda me: me.x <= 6.5)
+async def _walk_broker_to_helm(client: DHClient, airlock_x: float) -> None:
+    """Reverse of `_descend_to_broker`: from the concourse floor near the
+    broker back up the ship's own airlock column (from either side) onto
+    the deck and west to the helm at (airlock_x - 4, 2.5). `airlock_x`
+    comes from the ship's actual mooring -- never assumes berth 0."""
+    if airlock_x < BROKER_CENTER[0]:
+        await client.move(-1, 0)
+        await _wait_for_own_position(client, SPAWN_STATION_SPACE, lambda me: me.x <= airlock_x)
+    else:
+        await client.move(1, 0)
+        await _wait_for_own_position(client, SPAWN_STATION_SPACE, lambda me: me.x >= airlock_x)
     await client.move(0, -1)
     await _wait_for_own_position(client, SPAWN_STATION_SPACE, lambda me: me.y <= 2.6)
+    helm_x = airlock_x - 4.0
     await client.move(-1, 0)
-    await _wait_for_own_position(client, SPAWN_STATION_SPACE, lambda me: me.x <= 2.6)
+    await _wait_for_own_position(client, SPAWN_STATION_SPACE, lambda me: me.x <= helm_x + 0.1)
     await client.move(0, 0)
 
 
@@ -175,6 +183,7 @@ async def test_walk_ashore_and_back_is_just_walking(server):
         space = await client.next_space()
         assert space["space"] == SPAWN_STATION_SPACE
         assert space["you"]["seat"] == f"s{ship_id}:helm_main"
+        airlock_x = _airlock_center_x(_mooring_dx(space, ship_id))
 
         # Walk to the broker: _walk_to_broker asserts (strict_space) that
         # every walkers frame stayed the station composite.
@@ -185,7 +194,7 @@ async def test_walk_ashore_and_back_is_just_walking(server):
         # one uninterrupted station space, still plain movement.
         stand = await client.stand()
         assert stand["ok"], stand
-        await _walk_broker_to_helm(client)
+        await _walk_broker_to_helm(client, airlock_x)
         seated = await client.sit(f"s{ship_id}:helm_main")
         assert seated["ok"], seated
         assert seated["seat"] == f"s{ship_id}:helm_main"
@@ -307,8 +316,9 @@ async def test_pilot_holds_helm_while_quartermaster_trades(server):
     pilot_ship = pilot_welcome["ship_id"]
     qm_ship = qm_welcome["ship_id"]
     try:
-        # Both spawn docked (pilot berth 0, qm berth 1). Their login `space`
-        # messages carry the moorings we drive the walk legs from.
+        # Both spawn docked, at whichever berths free_berth assigned them.
+        # Their login `space` messages carry the moorings we drive the walk
+        # legs from.
         pilot_space = await pilot.next_space()
         assert pilot_space["space"] == SPAWN_STATION_SPACE
         qm_space = await qm.next_space()
@@ -354,7 +364,8 @@ async def test_pilot_holds_helm_while_quartermaster_trades(server):
         assert pilot_redock_space["space"] == SPAWN_STATION_SPACE
         # The pilot's helm seat is re-namespaced back to the ship on the join.
         assert pilot_redock_space["you"]["seat"] == f"s{pilot_ship}:helm_main"
-        # Berth is the lowest free index -- derive the mooring, never hardcode.
+        # Berth assignment is seed-random among free berths -- derive the
+        # mooring, never hardcode.
         redock_dx = _mooring_dx(pilot_redock_space, pilot_ship)
         redock_airlock = _airlock_center_x(redock_dx)
 

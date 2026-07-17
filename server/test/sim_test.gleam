@@ -7,6 +7,8 @@
 //// API and observe it the way clients do — through snapshot/space/walkers
 //// messages.
 
+import dh_server/composite
+import dh_server/noise
 import dh_server/protocol
 import dh_server/shipclass
 import dh_server/sim
@@ -283,39 +285,67 @@ fn walk_to_broker(
   sim.set_move(s, char, 0.0, 0.0)
 }
 
-/// Reverse of `walk_to_broker` for a berth-0 character: from the concourse
-/// floor near the broker back up ada's airlock column (6) onto her deck and
-/// west to the helm at (2.5, 2.5).
+/// Reverse of `walk_to_broker`: from the concourse floor near the broker
+/// back up the character's own airlock column and west to the helm at
+/// `(helm_x, 2.5)`. `helm_x` is whatever composite column the character's
+/// helm actually sits at (captured before walking away), so this works
+/// from any berth — never assumes berth 0.
 fn walk_broker_to_helm(
   s: process.Subject(sim.Msg),
   client: process.Subject(sim.ClientMsg),
   char: Int,
+  helm_x: Float,
 ) -> Nil {
-  sim.set_move(s, char, -1.0, 0.0)
-  wait_for_walker(client, char, fn(x, _y) { x <=. 6.5 }, 120)
+  // The airlock is always 4 tiles east of the helm regardless of berth.
+  let airlock_x = helm_x +. 4.0
+  case airlock_x <. 10.5 {
+    True -> {
+      sim.set_move(s, char, -1.0, 0.0)
+      wait_for_walker(client, char, fn(x, _y) { x <=. airlock_x }, 120)
+    }
+    False -> {
+      sim.set_move(s, char, 1.0, 0.0)
+      wait_for_walker(client, char, fn(x, _y) { x >=. airlock_x }, 120)
+    }
+  }
   sim.set_move(s, char, 0.0, -1.0)
   wait_for_walker(client, char, fn(_x, y) { y <=. 2.6 }, 120)
   sim.set_move(s, char, -1.0, 0.0)
-  wait_for_walker(client, char, fn(x, _y) { x <=. 2.6 }, 120)
+  wait_for_walker(client, char, fn(x, _y) { x <=. helm_x +. 0.1 }, 120)
   sim.set_move(s, char, 0.0, 0.0)
 }
 
-/// A berth-1 visitor walks onto ada's (berth-0) deck: stand, east down her
-/// own airlock column (16), south to the floor, west to ada's airlock
-/// column (6), north onto ada's ship tiles (composite y <= 4).
-fn walk_visitor_onto_ada_ship(
+/// A visitor walks onto another ship's deck, wherever both ships' berths
+/// landed: stand, east down the visitor's own airlock column, south to the
+/// floor, along the floor to the target ship's airlock column (from either
+/// side), north onto its tiles (composite y <= 4). `target_helm_x` is the
+/// target ship's helm column, e.g. read off a shared `walkers` message.
+fn walk_visitor_onto_ship(
   s: process.Subject(sim.Msg),
   client: process.Subject(sim.ClientMsg),
   char: Int,
+  target_helm_x: Float,
 ) -> Nil {
   let assert protocol.SeatResult(ok: True, ..) =
     sim.request_stand(s, char, 1000)
+  let #(x0, _y0) = wait_for_position(client, char, 60)
+  let helm_col = float.round(float.floor(x0))
+  let own_airlock_x = int.to_float(helm_col + 4) +. 0.5
   sim.set_move(s, char, 1.0, 0.0)
-  wait_for_walker(client, char, fn(x, _y) { x >=. 16.4 }, 120)
+  wait_for_walker(client, char, fn(x, _y) { x >=. own_airlock_x -. 0.1 }, 120)
   sim.set_move(s, char, 0.0, 1.0)
   wait_for_walker(client, char, fn(_x, y) { y >=. 7.2 }, 120)
-  sim.set_move(s, char, -1.0, 0.0)
-  wait_for_walker(client, char, fn(x, _y) { x <=. 6.5 }, 200)
+  let target_airlock_x = target_helm_x +. 4.0
+  case target_airlock_x <. own_airlock_x {
+    True -> {
+      sim.set_move(s, char, -1.0, 0.0)
+      wait_for_walker(client, char, fn(x, _y) { x <=. target_airlock_x }, 200)
+    }
+    False -> {
+      sim.set_move(s, char, 1.0, 0.0)
+      wait_for_walker(client, char, fn(x, _y) { x >=. target_airlock_x }, 200)
+    }
+  }
   sim.set_move(s, char, 0.0, -1.0)
   wait_for_walker(client, char, fn(_x, y) { y <=. 3.6 }, 120)
   sim.set_move(s, char, 0.0, 0.0)
@@ -397,6 +427,49 @@ fn assert_walkers_only_for(
   }
 }
 
+/// The berth sim.gleam's `free_berth` would pick when every berth at
+/// `station_id` is free: the same hash it uses
+/// (`noise.seed_string(seed, "<station_id>:<ship_id>") mod free_count`)
+/// indexed directly into `[0, free_count)`, since the free-berth list is
+/// the identity range when nothing is taken yet.
+fn expected_berth(
+  world_seed: Int,
+  station_id: String,
+  ship_id: Int,
+  free_count: Int,
+) -> Int {
+  let key = station_id <> ":" <> int.to_string(ship_id)
+  let assert Ok(pick) =
+    int.modulo(noise.seed_string(world_seed, key), free_count)
+  pick
+}
+
+/// The composite-frame center of `ship_id`'s helm when moored at `berth`,
+/// by replicating production's own `composite.build` + `find_mooring`
+/// rather than duplicating the mooring arithmetic (berth column, spawn
+/// offset, frame-shift) as magic numbers in the test.
+fn composite_helm_position(
+  w: world.World,
+  class: shipclass.ShipClass,
+  ship_id: Int,
+  station_id: String,
+  berth: Int,
+) -> #(Float, Float) {
+  let assert Ok(station) = world.get_station(w, station_id)
+  let assert Some(concourse) = station.concourse
+  let assert Ok(built) =
+    composite.build(concourse, station.berths, [
+      composite.DockedShip(ship_id: ship_id, berth: berth, plan: class.plan),
+    ])
+  let assert Ok(mooring) = composite.find_mooring(built, ship_id)
+  let assert Ok(helm) =
+    list.find(class.plan.consoles, fn(c) { c.id == "helm_main" })
+  #(
+    int.to_float(helm.x + mooring.dx) +. 0.5,
+    int.to_float(helm.y + mooring.dy) +. 0.5,
+  )
+}
+
 pub fn login_lands_in_the_station_space_seated_at_own_helm_test() {
   let s = start_sim()
   let client = process.new_subject()
@@ -410,9 +483,25 @@ pub fn login_lands_in_the_station_space_seated_at_own_helm_test() {
   let assert Ok(CrewMember(x: x, y: y, seat: seat, ..)) =
     list.find(characters, fn(c) { c.id == char_id })
   assert seat == Some("s" <> int.to_string(ship_id) <> ":helm_main")
-  // Berth 0 mooring offset (1,0): helm tile (1,2) -> composite center (2.5, 2.5).
-  assert x == 2.5
-  assert y == 2.5
+  // Every berth is free at the very first login, so free_berth's pick is a
+  // direct hash(seed, "meridian_highport:<ship_id>") mod 3 into
+  // [berth_0, berth_1, berth_2]. Derive the picked berth and its mooring
+  // (rather than assume berth 0) so this stays correct if the seed or the
+  // hash ever changes which berth ship 1 lands on.
+  let assert Ok(w) = world.load("worlds/m1_system.json")
+  let assert Ok(class) = shipclass.load("classes/sparrow.json")
+  let assert Ok(station) = world.get_station(w, "meridian_highport")
+  let berth =
+    expected_berth(
+      w.seed,
+      "meridian_highport",
+      ship_id,
+      list.length(station.berths),
+    )
+  let #(expected_x, expected_y) =
+    composite_helm_position(w, class, ship_id, "meridian_highport", berth)
+  assert x == expected_x
+  assert y == expected_y
 }
 
 pub fn dock_while_docked_is_already_docked_test() {
@@ -489,8 +578,10 @@ pub fn undock_carries_visitors_and_transfers_crew_test() {
   let visitor = process.new_subject()
   let assert Ok(#(ship_p, char_p)) = sim.add_player(s, "ada", pilot, 1000)
   let assert Ok(#(ship_v, char_v)) = sim.add_player(s, "grace", visitor, 1000)
-  // grace walks onto ada's ship (berth 0), stopping on ship tiles.
-  walk_visitor_onto_ada_ship(s, visitor, char_v)
+  // grace walks onto ada's ship, wherever its berth landed, stopping on
+  // ship tiles.
+  let #(pilot_x, _pilot_y) = wait_for_position(visitor, char_p, 60)
+  walk_visitor_onto_ship(s, visitor, char_v, pilot_x)
   // ada undocks: grace's body is on ada's tiles, so she leaves with the
   // ship and becomes its crew; her old ship, now crewless, despawns.
   let assert Ok(Nil) = sim.request_undock(s, char_p, 1000)
@@ -507,10 +598,12 @@ pub fn body_on_a_despawning_mooring_is_refloored_test() {
   let s = start_sim()
   let #(pid_a, client_a) = spawn_fake_client()
   let client_b = process.new_subject()
-  let assert Ok(#(_ship_a, _char_a)) = sim.add_player(s, "ada", client_a, 1000)
+  let assert Ok(#(_ship_a, char_a)) = sim.add_player(s, "ada", client_a, 1000)
   let assert Ok(#(_ship_b, char_b)) = sim.add_player(s, "grace", client_b, 1000)
-  // grace walks onto ada's *docked* ship (berth 0) and stops on its tiles.
-  walk_visitor_onto_ada_ship(s, client_b, char_b)
+  // grace walks onto ada's *docked* ship, wherever its berth landed, and
+  // stops on its tiles.
+  let #(pilot_x, _pilot_y) = wait_for_position(client_b, char_a, 60)
+  walk_visitor_onto_ship(s, client_b, char_b, pilot_x)
   // ada disconnects: her crewless docked ship despawns and the composite
   // rebuilds without its mooring, so the tiles grace is standing on become
   // void. rebuild_space must re-floor her to the concourse spawn tile
@@ -560,6 +653,61 @@ pub fn undock_frees_the_berth_test() {
   let assert Ok(_) = sim.add_player(s, "d", process.new_subject(), 1000)
 }
 
+pub fn free_berth_is_seed_random_among_free_berths_test() {
+  let s = start_sim()
+  let assert Ok(w) = world.load("worlds/m1_system.json")
+  let assert Ok(class) = shipclass.load("classes/sparrow.json")
+  let assert Ok(station) = world.get_station(w, "meridian_highport")
+  let free_count = list.length(station.berths)
+
+  // Undocking before the next login puts every berth free again, so each
+  // of these three logins hits free_berth's "all free" case: pick =
+  // hash(seed, "meridian_highport:<ship_id>") mod free_count, indexed
+  // straight into [berth_0, berth_1, berth_2] — exactly the scenario the
+  // feature targets ("I'm always assigned to Berth 1").
+  let client_1 = process.new_subject()
+  let assert Ok(#(ship_1, char_1)) = sim.add_player(s, "p1", client_1, 1000)
+  let #(_space, _epoch, chars_1) = receive_walkers(client_1)
+  let assert Ok(CrewMember(x: x1, y: y1, ..)) =
+    list.find(chars_1, fn(c) { c.id == char_1 })
+  let assert Ok(Nil) = sim.request_undock(s, char_1, 1000)
+
+  let client_2 = process.new_subject()
+  let assert Ok(#(ship_2, char_2)) = sim.add_player(s, "p2", client_2, 1000)
+  let #(_space, _epoch, chars_2) =
+    receive_walkers_for(client_2, "station:meridian_highport")
+  let assert Ok(CrewMember(x: x2, y: y2, ..)) =
+    list.find(chars_2, fn(c) { c.id == char_2 })
+  let assert Ok(Nil) = sim.request_undock(s, char_2, 1000)
+
+  let client_3 = process.new_subject()
+  let assert Ok(#(ship_3, char_3)) = sim.add_player(s, "p3", client_3, 1000)
+  let #(_space, _epoch, chars_3) =
+    receive_walkers_for(client_3, "station:meridian_highport")
+  let assert Ok(CrewMember(x: x3, y: y3, ..)) =
+    list.find(chars_3, fn(c) { c.id == char_3 })
+
+  let berth_1 = expected_berth(w.seed, "meridian_highport", ship_1, free_count)
+  let berth_2 = expected_berth(w.seed, "meridian_highport", ship_2, free_count)
+  let berth_3 = expected_berth(w.seed, "meridian_highport", ship_3, free_count)
+
+  // The sim's actual pick matches the hash formula, not just "somewhere
+  // walkable" — assert exact composite coordinates for the derived berth.
+  let #(ex1, ey1) =
+    composite_helm_position(w, class, ship_1, "meridian_highport", berth_1)
+  let #(ex2, ey2) =
+    composite_helm_position(w, class, ship_2, "meridian_highport", berth_2)
+  let #(ex3, ey3) =
+    composite_helm_position(w, class, ship_3, "meridian_highport", berth_3)
+  assert x1 == ex1 && y1 == ey1
+  assert x2 == ex2 && y2 == ey2
+  assert x3 == ex3 && y3 == ey3
+
+  // Pinned regression for world seed 20260712 (worlds/m1_system.json): the
+  // actual berth triple ships 1, 2, 3 land on when every berth is free.
+  assert #(berth_1, berth_2, berth_3) == #(0, 0, 1)
+}
+
 pub fn seat_occupancy_is_scoped_to_the_shared_space_test() {
   let s = start_sim()
   let client_a = process.new_subject()
@@ -573,8 +721,8 @@ pub fn seat_occupancy_is_scoped_to_the_shared_space_test() {
   let helm_a = "s" <> int.to_string(ship_a) <> ":helm_main"
   let result = sim.request_sit(s, char_b, helm_a, 1000)
   assert result.ok == False
-  // Too far (grace is at berth 1, ada's helm is at berth 0) or occupied —
-  // either way the shared space resolved the console.
+  // Too far (grace is docked at a different berth than ada's helm) or
+  // occupied — either way the shared space resolved the console.
   assert result.reason == Some("occupied") || result.reason == Some("too_far")
 }
 
@@ -600,7 +748,8 @@ pub fn ship_keeps_flying_when_pilot_disconnects_with_crew_aboard_test() {
 
   // grace shanghais onto ada's ship (walk aboard + ada undocks), becoming
   // its crew and emptying/despawning ship B. Then ada disconnects in flight.
-  walk_visitor_onto_ada_ship(s, client_b, char_b)
+  let #(pilot_x, _pilot_y) = wait_for_position(client_b, char_a, 60)
+  walk_visitor_onto_ship(s, client_b, char_b, pilot_x)
   let assert Ok(Nil) = sim.request_undock(s, char_a, 1000)
   process.kill(pid_a)
   assert wait_for_clients(s, 1, 100)
@@ -719,6 +868,9 @@ pub fn undock_is_blocked_mid_transfer_test() {
   let s = start_sim()
   let client = process.new_subject()
   let assert Ok(#(ship_a, char)) = sim.add_player(s, "ada", client, 1000)
+  // Capture the helm's composite column (whatever berth it landed on)
+  // before walking away, to find the way back later.
+  let #(helm_x, _helm_y) = wait_for_position(client, char, 60)
   // Walk to the broker and start a long inbound transfer on ada's own ship.
   walk_to_broker(s, client, char)
   let assert protocol.SeatResult(ok: True, ..) =
@@ -728,7 +880,7 @@ pub fn undock_is_blocked_mid_transfer_test() {
   // Walk back to the helm and sit (the transfer keeps running while docked).
   let assert protocol.SeatResult(ok: True, ..) =
     sim.request_stand(s, char, 1000)
-  walk_broker_to_helm(s, client, char)
+  walk_broker_to_helm(s, client, char, helm_x)
   let assert protocol.SeatResult(ok: True, ..) =
     sim.request_sit(s, char, "s" <> int.to_string(ship_a) <> ":helm_main", 1000)
   // ada cannot leave mid-load...

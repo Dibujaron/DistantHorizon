@@ -46,6 +46,7 @@ import dh_server/clock
 import dh_server/composite
 import dh_server/deckplan
 import dh_server/market
+import dh_server/noise
 import dh_server/protocol
 import dh_server/ship.{type Ship}
 import dh_server/shipclass.{type ShipClass}
@@ -349,7 +350,9 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
         // every snapshot. Don't spawn; the reply can't be received anyway.
         Error(Nil) -> actor.continue(state)
         Ok(pid) ->
-          case free_berth(state, state.world.spawn_station) {
+          case
+            free_berth(state, state.next_ship_id, state.world.spawn_station)
+          {
             Error(_) -> {
               process.send(reply, Error("station_full"))
               actor.continue(state)
@@ -453,7 +456,13 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
         False ->
           with_helm_ship(state, character_id, reply, fn(state, found) {
             let t = int.to_float(state.tick) *. ship.dt
-            case ship.try_dock(found, state.world, t, free_berth(state, _)) {
+            case
+              ship.try_dock(found, state.world, t, free_berth(
+                state,
+                found.id,
+                _,
+              ))
+            {
               Error(reason) -> {
                 process.send(reply, Error(reason))
                 actor.continue(state)
@@ -1159,9 +1168,17 @@ fn docked_ships_at(
   })
 }
 
-/// Lowest free berth index at `station_id`, or why not (`"no_berths"` /
-/// `"berths_full"`).
-fn free_berth(state: State, station_id: String) -> Result(Int, String) {
+/// A seed-random free berth index at `station_id` for `ship_id`, or why not
+/// (`"no_berths"` / `"berths_full"`). Pure pick, no RNG state: hash
+/// `(world.seed, "<station_id>:<ship_id>")` through noise's SplitMix64 and
+/// mod it into the ordered free-berth list — same inputs always land the
+/// same ship on the same berth, but different ships spread across berths
+/// instead of everyone piling onto berth 0.
+fn free_berth(
+  state: State,
+  ship_id: Int,
+  station_id: String,
+) -> Result(Int, String) {
   case world.get_station(state.world, station_id) {
     Error(Nil) -> Error("no_berths")
     Ok(station) ->
@@ -1175,33 +1192,38 @@ fn free_berth(state: State, station_id: String) -> Result(Int, String) {
                 _ -> Error(Nil)
               }
             })
-          case first_free_index(list.length(berths), taken) {
-            Ok(index) -> Ok(index)
-            Error(Nil) -> Error("berths_full")
+          case free_indices(list.length(berths), taken) {
+            [] -> Error("berths_full")
+            free -> {
+              let key = station_id <> ":" <> int.to_string(ship_id)
+              let assert Ok(pick) =
+                int.modulo(
+                  noise.seed_string(state.world.seed, key),
+                  list.length(free),
+                )
+              let assert Ok(index) = free |> list.drop(pick) |> list.first
+              Ok(index)
+            }
           }
         }
       }
   }
 }
 
-/// The lowest index in `[0, count)` not present in `taken`, or `Error(Nil)`
-/// when every index is taken. (The pinned gleam_stdlib 1.0.3 has no
-/// `list.range`, so this walks indices directly.)
-fn first_free_index(count: Int, taken: List(Int)) -> Result(Int, Nil) {
-  first_free_index_from(0, count, taken)
+/// Every index in `[0, count)` not present in `taken`, ascending. (The
+/// pinned gleam_stdlib 1.0.3 has no `list.range`, so this walks indices
+/// directly.)
+fn free_indices(count: Int, taken: List(Int)) -> List(Int) {
+  free_indices_from(0, count, taken)
 }
 
-fn first_free_index_from(
-  index: Int,
-  count: Int,
-  taken: List(Int),
-) -> Result(Int, Nil) {
+fn free_indices_from(index: Int, count: Int, taken: List(Int)) -> List(Int) {
   case index >= count {
-    True -> Error(Nil)
+    True -> []
     False ->
       case list.contains(taken, index) {
-        True -> first_free_index_from(index + 1, count, taken)
-        False -> Ok(index)
+        True -> free_indices_from(index + 1, count, taken)
+        False -> [index, ..free_indices_from(index + 1, count, taken)]
       }
   }
 }

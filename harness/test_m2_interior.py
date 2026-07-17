@@ -20,14 +20,18 @@ they drain the walkers/snapshot streams until a condition holds, bounded in
 server ticks or message counts, so a stalled server fails fast.
 
 Composite geometry (verified by server/test/sim_test.gleam; y-down, tile
-units): berth 0's mooring is (+1, 0), so the sparrow's ship-local tiles shift
-+1 in x. helm_main tile (1,2) -> composite center (2.5, 2.5); cargo_main
-(6,1) -> (7.5, 1.5); the airlock/spawn tile [5,4] -> (6.5, 4.5). A ship's
-airlock column in the composite is mooring_dx + 5, center + 0.5. The concourse
-floor is composite rows 6..8. Walk speed 3.0 tiles/s, character radius 0.3.
-Composite row 2 moors the ship's ".########." row into columns 1..10, so a
-character walking east down it pins where its circle meets the wall tile
-x=10: center x = 10 - 0.3 = 9.7, give or take one 0.05-tile step.
+units): berth assignment is seed-random among free berths (free_berth in
+sim.gleam), so a ship's mooring offset is never assumed -- tests derive it
+from the `space` message's `moorings` list (`_mooring_dx`/`_helm_center`
+below). A ship-local tile (tx, ty) lands at composite (tx + dx, ty + dy) for
+its mooring's (dx, dy): helm_main tile (1,2), cargo_main (6,1), and the
+airlock/spawn tile [5,4] all shift by the same offset. A ship's airlock
+column in the composite is mooring_dx + 5, center + 0.5. The concourse floor
+is composite rows 6..8, unaffected by berth (only the column shifts). Walk
+speed 3.0 tiles/s, character radius 0.3. Composite row 2 moors the ship's
+".########." row into columns dx+1..dx+10, so a character walking east down
+it pins where its circle meets the wall tile x=dx+10: center x = dx+10 - 0.3,
+give or take one 0.05-tile step.
 """
 
 from __future__ import annotations
@@ -51,12 +55,6 @@ CHAR_RADIUS = 0.3  # tiles, matches character.gleam
 SPAWN_STATION = "meridian_highport"
 SPAWN_STATION_SPACE = f"station:{SPAWN_STATION}"
 
-HELM_CENTER = (2.5, 2.5)  # helm_main (1,2) moored (+1,0)
-CARGO_CONSOLE_CENTER = (7.5, 1.5)  # cargo_main (6,1) moored (+1,0)
-AIRLOCK_CENTER = (6.5, 4.5)  # spawn/airlock tile [5,4] moored (+1,0)
-SHIP_LOCAL_SPAWN_CENTER = (5.5, 4.5)  # the same tile back in ship-local frame
-
-
 def _airlock_center_x(mooring_dx: int) -> float:
     """Composite x-center of a ship's airlock column (sparrow spawn x=5)."""
     return float(mooring_dx + 5) + 0.5
@@ -66,6 +64,19 @@ def _mooring_dx(space: dict, ship_id: int) -> int:
     for mooring in space["moorings"]:
         if mooring["ship_id"] == ship_id:
             return int(mooring["dx"])
+    raise AssertionError(f"ship {ship_id} not moored in space {space.get('space')!r}")
+
+
+def _helm_center(space: dict, ship_id: int) -> tuple[float, float]:
+    """Composite center of `ship_id`'s helm_main (ship-local tile (1, 2)),
+    from the mooring the server actually reports -- berth assignment is
+    seed-random among free berths, so this is never assumed."""
+    for mooring in space["moorings"]:
+        if mooring["ship_id"] == ship_id:
+            return (
+                float(mooring["dx"] + 1) + 0.5,
+                float(mooring["dy"] + 2) + 0.5,
+            )
     raise AssertionError(f"ship {ship_id} not moored in space {space.get('space')!r}")
 
 
@@ -224,18 +235,20 @@ async def test_spawn_state(server):
         assert tile_walkable(ship_class, *ship_class["spawn_tile"])
 
         # The space message names the spawn station's composite and seats us
-        # at our own namespaced helm, offset by the berth-0 mooring.
+        # at our own namespaced helm, offset by whichever berth free_berth
+        # assigned (seed-random among free berths -- never assumed).
         space = await client.next_space()
         assert space["space"] == SPAWN_STATION_SPACE
         assert space["you"]["seat"] == f"s{ship_id}:helm_main"
+        helm_x, helm_y = _helm_center(space, ship_id)
 
         walkers = await client.next_walkers(SPAWN_STATION_SPACE)
         me = client.character_in(walkers, client.character_id)
         assert me is not None
         assert me.name == "gale_spawn"
         assert me.seat == f"s{ship_id}:helm_main"
-        assert me.x == pytest.approx(HELM_CENTER[0])
-        assert me.y == pytest.approx(HELM_CENTER[1])
+        assert me.x == pytest.approx(helm_x)
+        assert me.y == pytest.approx(helm_y)
 
 
 async def test_stand_walk_collide(server):
@@ -245,10 +258,18 @@ async def test_stand_walk_collide(server):
     the wall leaves the character exactly put. Collision is checked against
     the composite plan the space message carries."""
     async with DHClient(name="m2t2") as client:
-        await client.login("hana_walk", "pw_hana")
+        welcome = await client.login("hana_walk", "pw_hana")
         char_id = client.character_id
         space = await client.next_space()
         plan = space["plan"]
+        # Berth assignment is seed-random among free berths: derive this
+        # ship's mooring column rather than assume berth 0. Only x shifts
+        # with the berth; the helm row (y=2.5) is stable across all of them.
+        dx = _mooring_dx(space, welcome["ship_id"])
+        cargo_x = float(dx + 5) + 0.5
+        wall_x = float(dx + 9)
+        near_wall_x = wall_x - 0.4
+        contact_x = wall_x - CHAR_RADIUS
 
         stood = await client.stand()
         assert stood["ok"] is True
@@ -256,8 +277,8 @@ async def test_stand_walk_collide(server):
         assert stood["seat"] is None
 
         # Walk due east along composite row 2 ("...########..."): from the
-        # helm center x=2.5 through the corridor into the cargo hold and on
-        # until pinned against the engine-room east wall (composite tile 10).
+        # helm center through the corridor into the cargo hold and on until
+        # pinned against the engine-room east wall (composite tile wall_x).
         # The y axis has zero input, so y must hold exactly at 2.5 throughout.
         await client.move(1.0, 0.0)
 
@@ -272,22 +293,22 @@ async def test_stand_walk_collide(server):
         await walkers_until(
             client,
             SPAWN_STATION_SPACE,
-            lambda w: record(w).x >= 6.5,
+            lambda w: record(w).x >= cargo_x,
             max_ticks=600,
-            what="walked east into the cargo hold (x >= 6.5)",
+            what=f"walked east into the cargo hold (x >= {cargo_x})",
         )
         near_wall = await walkers_until(
             client,
             SPAWN_STATION_SPACE,
-            lambda w: record(w).x >= 9.6,
+            lambda w: record(w).x >= near_wall_x,
             max_ticks=600,
-            what="pinned against the east wall (x >= 9.6)",
+            what=f"pinned against the east wall (x >= {near_wall_x})",
         )
 
         # Still pushing east: wait until the position is identical across two
         # samples half a second apart (the wall pin exactly rejects every
         # candidate step, so "stopped" means bit-for-bit equal). The pin
-        # lands within one 0.05-tile step of the 10.0 - radius contact point.
+        # lands within one 0.05-tile step of the wall_x - radius contact point.
         me1 = client.character_in(near_wall, char_id)
         tick = near_wall["tick"]
         for _ in range(10):
@@ -301,8 +322,8 @@ async def test_stand_walk_collide(server):
             me1, tick = me2, later["tick"]
         else:
             pytest.fail(f"character never pinned against the wall: {samples[-3:]}")
-        assert me2.x == pytest.approx(10.0 - CHAR_RADIUS, abs=WALK_SPEED / TICK_RATE)
-        assert me2.x <= 10.0 - CHAR_RADIUS + 1e-9
+        assert me2.x == pytest.approx(contact_x, abs=WALK_SPEED / TICK_RATE)
+        assert me2.x <= contact_x + 1e-9
 
         await client.move(0.0, 0.0)
 
@@ -343,8 +364,9 @@ async def test_seat_rules(server):
         assert stood_again["reason"] == "not_seated"
         assert stood_again["seat"] is None
 
-        # cargo_main is at composite (7.5, 1.5), the character at the helm
-        # center (2.5, 2.5): distance ~5.1 tiles, far beyond the 1.2 range.
+        # cargo_main sits ~5.1 tiles from the helm in ship-local terms
+        # (mooring offset cancels out between two consoles on the same
+        # ship), far beyond the 1.2 range.
         too_far = await client.sit(cargo)
         assert too_far["ok"] is False
         assert too_far["reason"] == "too_far"
@@ -391,24 +413,29 @@ async def test_one_flies_one_walks(server):
         world = welcome_a["world"]
         dt = welcome_a["dt"]
 
-        # Airlock columns from the login moorings (A logs in first -> lower
-        # berth -> west of B, so B can walk west along the floor to reach it).
+        # Airlock columns from the login moorings -- berth assignment is
+        # seed-random among free berths, so which of A/B lands east or west
+        # of the other is never assumed, only derived.
         space_a = await client_a.next_space()
         space_b = await client_b.next_space()
         a_airlock = _airlock_center_x(_mooring_dx(space_a, ship_a))
         b_airlock = _airlock_center_x(_mooring_dx(space_b, ship_b))
-        assert a_airlock < b_airlock, (a_airlock, b_airlock)
 
         # B stands and walks off her own deck, along the concourse floor, and
-        # up onto A's deck (down her airlock column, west along the floor,
-        # north onto A's ship tiles, composite y <= 3.6).
+        # up onto A's deck (down her airlock column, along the floor toward
+        # A's from whichever side, north onto A's ship tiles, composite
+        # y <= 3.6).
         assert (await client_b.stand())["ok"]
         await client_b.move(1, 0)
         await walk_until_own(client_b, SPAWN_STATION_SPACE, lambda me: me.x >= b_airlock - 0.1)
         await client_b.move(0, 1)
         await walk_until_own(client_b, SPAWN_STATION_SPACE, lambda me: me.y >= 7.2)
-        await client_b.move(-1, 0)
-        await walk_until_own(client_b, SPAWN_STATION_SPACE, lambda me: me.x <= a_airlock)
+        if a_airlock < b_airlock:
+            await client_b.move(-1, 0)
+            await walk_until_own(client_b, SPAWN_STATION_SPACE, lambda me: me.x <= a_airlock)
+        else:
+            await client_b.move(1, 0)
+            await walk_until_own(client_b, SPAWN_STATION_SPACE, lambda me: me.x >= a_airlock)
         await client_b.move(0, -1)
         await walk_until_own(client_b, SPAWN_STATION_SPACE, lambda me: me.y <= 3.6)
         await client_b.move(0, 0)
