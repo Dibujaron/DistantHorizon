@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "account_closure_2",
   "name": "Recovery Detail",
-  "flavor": "The factor is pleased, and there is a follow-on. Three recovery specialists need a quiet ride out to a Freehold berth where a certain hull is about to change owners. They are polite, professional, and heavily insured. The account holder will not be expecting them, which is the point.",
+  "flavor": "The factor is pleased, and offers you a follow-on opportunity. Three recovery specialists need a quiet ride out to a Freehold berth where a certain hull is about to change owners. They are polite, professional, and heavily insured. The account holder will not be expecting them.",
   "acquisition": "triggered",
   "slots": {
     "company": { "from": "parent.company" },
