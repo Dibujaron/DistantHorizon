@@ -295,6 +295,14 @@ Resolved or refined while writing the implementation plan:
   substitute bound-slot display names at offer time ("Water for ${dest}") — templates
   can't hardcode place names their slots bind generically.
 
+**Follow-up round (dibujaron review, 2026-07-17, post-merge PR):**
+
+- **`built_by` predicate** — station's builder as a manufacturer id. `void_abolished` now
+  binds *any* Apogee Grand-built station rather than a station id lore.md never
+  established; yards-build-stations is already canon, so the ambiguity dissolves.
+- **Coherence tests added:** broker acquisition ⇒ `offer_broker` slot declared; every
+  `parent.X` binding must exist in ALL triggering parents (slot refs and `parent.item.X`).
+
 **Deferred TODOs (dibujaron, mid-implementation 2026-07-16):**
 
 - **Dialogue.** Quests currently carry only a single `flavor` string. Dialogue points
@@ -306,6 +314,10 @@ Resolved or refined while writing the implementation plan:
   they do, an event becomes an additional trigger source posting these same templates
   (likely an `event` acquisition mode or an event-side trigger list). Not modeled in
   schema v1.
+- **Trigger resolution: chance, delay, weighted choice.** Triggers currently fire
+  immediately and always. Eventually: `chance` (probabilistic follow-up), `delay_s`
+  (a fuse before the child posts), and weighted one-of-N selection — a trigger that
+  picks one child quest from several options by weight (generalizes `chance`).
 - **Substitutable variables in flavor text** (eventually dialogue too). Hardcoded names
   like "Jaya Okafor" should instead be drawn from constrained name pools — possibly
   generated — e.g. `${name:wake}`. Constraints beyond faction affiliation: race at least
