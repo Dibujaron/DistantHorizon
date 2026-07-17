@@ -44,7 +44,7 @@ Every file has the same shape: schema version, a `tags` block of file-wide defau
 - **Tag axes:**
   - `type`: `character | ship` (required)
   - `part`: `given | family | full | title | pattern` (required)
-  - `race`: `human | selkie | voidborn | senti` (character only)
+  - `race`: `human | selkie | grafter | senti` (character only)
   - `faction`: a faction id (open string in the schema; validated at test time
     against the canonical faction constants in `names.gleam` — world files carry
     no factions yet, so code constants are the authority until they do)
@@ -124,7 +124,7 @@ Cultural alignment — address style is a property of the character's culture:
 - **Gendered address** (she/he, Mr./Ms.): the core — UCE and Company — and the Wake.
   Signatory law's obsession with the *natural-born human* is the tell: a society whose
   supreme legal category is inherited embodiment keeps its inherited categories.
-- **Neutral address** (ey, Mx.): voidborn/grafter communities — when bodies are
+- **Neutral address** (ey, Mx.): grafter communities (the void-born lineage above all) — when bodies are
   instruments, unused categories get spaced (indifference, not ideology) — and the
   Senti, who **popularized ey**: there is no way to force em into a binary. ("It" is
   reserved for non-sentient robots, and is a slur when aimed at a Senti.)
@@ -161,7 +161,7 @@ are already moddable.
   `${dest}`. Demonstrates ship pools, `role_is`, and that the machinery isn't secretly
   character-shaped (no gender, no parts, different patterns).
 - **Name pools** (base set, all reviewable as lore): human given/family generics;
-  wake-, freehold-, company-, uce-flavored family pools; selkie names; voidborn
+  wake-, freehold-, company-, uce-flavored family pools; selkie names; grafter
   names; senti designations; titles; character patterns; ship names (some
   role-tagged); ship patterns. Sized to feel alive but stay reviewable.
 

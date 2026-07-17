@@ -17,7 +17,7 @@
 - JSON Schemas use draft-06: first line of every schema is `"$schema": "http://json-schema.org/draft-06/schema#"`.
 - Canon pronouns (never improvise others): `ey / em / eir / eirs / emself`, grammatically singular ("ey keeps"). Gendered renders: she/her/her/hers/herself, he/him/his/his/himself.
 - Domain vocabularies, verbatim (single source in code = `names.gleam` constants; the closed ones are mirrored as enums in `names.schema.json`):
-  - races: `human`, `selkie`, `voidborn`, `senti`
+  - races: `human`, `selkie`, `grafter`, `senti`
   - factions: `uce`, `freehold`, `company`, `wake`, `breakers`
   - wealth: `low`, `mid`, `high`
   - genders: `female`, `male`, `neutral`
@@ -27,7 +27,7 @@
 - Typed boundaries: parse JSON into named Gleam types at the edge (`Entry`, `Tags`, `Person`, `Ship`, `Constraint`); do not pass raw dicts/dynamics past the `names` module's public API.
 - Commit style: conventional commits as in recent history (`feat(quests): …`, `test(server): …`). End every commit message with the line: `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
 - Gender roll weights when unpinned: 475/475/50 tickets (47.5% female / 47.5% male / 5% neutral).
-- Address styles (code constant in `names.gleam`, v1): race `senti` or `voidborn` → always neutral; else faction `uce`/`company`/`wake` → gendered; faction `freehold`/`breakers` → mixed (seeded per-character coin flip); anything else → gendered with a `// TODO(lore)` comment (Selkie address style is deliberately undecided).
+- Address styles (code constant in `names.gleam`, v1): race `senti` or `grafter` → always neutral; else faction `uce`/`company`/`wake` → gendered; faction `freehold`/`breakers` → mixed (seeded per-character coin flip); anything else → gendered with a `// TODO(lore)` comment (Selkie address style is deliberately undecided).
 
 ---
 
@@ -35,7 +35,7 @@
 
 **Files:**
 - Create: `server/schemas/names.schema.json`
-- Create: `server/names/titles.json`, `server/names/character_patterns.json`, `server/names/human_given.json`, `server/names/human_family.json`, `server/names/wake_family.json`, `server/names/uce_family.json`, `server/names/freehold_family.json`, `server/names/company_family.json`, `server/names/voidborn_given.json`, `server/names/voidborn_family.json`, `server/names/selkie_given.json`, `server/names/senti_designations.json`, `server/names/ship_names.json`, `server/names/ship_patterns.json`
+- Create: `server/names/titles.json`, `server/names/character_patterns.json`, `server/names/human_given.json`, `server/names/human_family.json`, `server/names/wake_family.json`, `server/names/uce_family.json`, `server/names/freehold_family.json`, `server/names/company_family.json`, `server/names/grafter_given.json`, `server/names/grafter_family.json`, `server/names/selkie_given.json`, `server/names/senti_designations.json`, `server/names/ship_names.json`, `server/names/ship_patterns.json`
 - Test: `server/test/names_schema_test.gleam`
 
 **Interfaces:**
@@ -160,7 +160,7 @@ Create `server/schemas/names.schema.json`:
     }
   },
   "definitions": {
-    "race": { "enum": ["human", "selkie", "voidborn", "senti"] },
+    "race": { "enum": ["human", "selkie", "grafter", "senti"] },
     "wealth": { "enum": ["low", "mid", "high"] },
     "gender": { "enum": ["female", "male", "neutral"] },
     "ship_role": {
@@ -204,7 +204,7 @@ Create each file exactly as follows.
   "tags": { "type": "character", "part": "pattern" },
   "entries": [
     { "name": "${given} ${family}", "tags": { "race": "human" } },
-    { "name": "${given} ${family}", "tags": { "race": "voidborn" } },
+    { "name": "${given} ${family}", "tags": { "race": "grafter" } },
     { "name": "${given}", "tags": { "race": "selkie" } },
     { "name": "${full}", "tags": { "race": "senti" } }
   ]
@@ -244,8 +244,8 @@ Create each file exactly as follows.
   "schema": 1,
   "tags": { "type": "character", "part": "family", "faction": "wake" },
   "entries": [
-    "Okafor", "Ilesanmi", "Adeyemi", "Nwosu", "Banjoko", "Ekwueme",
-    "Osakwe", "Anyanwu", "Obiaka", "Chidozie"
+    "Okafor", "Ilesanmi", "Halvorsen", "Anand", "Petrossian", "Sandoval",
+    "Kiuru", "Vasari", "Tennant", "Reyes-Okafor"
   ]
 }
 ```
@@ -257,8 +257,8 @@ Create each file exactly as follows.
   "schema": 1,
   "tags": { "type": "character", "part": "family", "faction": "uce" },
   "entries": [
-    "Voss", "Ashworth", "Renard", "Whitlock", "Hargrove", "Castellan",
-    "Strand", "Halloran",
+    "Voss", "Castellan", "Okonjo", "Balakrishnan", "Ferreira", "Nakamura",
+    "Aldana", "Strand",
     { "name": "Montclair", "tags": { "wealth": "high" } },
     { "name": "Aurelian-Hale", "tags": { "wealth": "high" } }
   ]
@@ -272,8 +272,8 @@ Create each file exactly as follows.
   "schema": 1,
   "tags": { "type": "character", "part": "family", "faction": "freehold" },
   "entries": [
-    "Calder", "Stroud", "Teague", "Okoro", "Brandt", "Iyer", "Maddox",
-    "Soto", "Grady", "Reyes-Calder"
+    "Calder", "Stroud", "Okoro", "Brandt", "Iyer", "Maddox", "Soto",
+    "Varga", "Onishi", "Reyes-Calder"
   ]
 }
 ```
@@ -285,18 +285,18 @@ Create each file exactly as follows.
   "schema": 1,
   "tags": { "type": "character", "part": "family", "faction": "company" },
   "entries": [
-    "Pemberton", "Ashcroft", "Chalmers", "Worthing", "Fairweather",
-    "Standish", "Holloway", "Prewitt", "Grantham", "Marsh"
+    "Pemberton", "Chalmers", "Iyengar", "Whitcombe", "Faruqi", "Marsh",
+    "Vidal", "Standish", "Okoye", "Grantham"
   ]
 }
 ```
 
-`server/names/voidborn_given.json`:
+`server/names/grafter_given.json`:
 
 ```json
 {
   "schema": 1,
-  "tags": { "type": "character", "part": "given", "race": "voidborn" },
+  "tags": { "type": "character", "part": "given", "race": "grafter" },
   "entries": [
     "Sable", "Vex", "Arc", "Nadir", "Ash", "Cade", "Onyx", "Ren", "Lux",
     "Vela", "Corin", "Sol"
@@ -304,12 +304,12 @@ Create each file exactly as follows.
 }
 ```
 
-`server/names/voidborn_family.json`:
+`server/names/grafter_family.json`:
 
 ```json
 {
   "schema": 1,
-  "tags": { "type": "character", "part": "family", "race": "voidborn" },
+  "tags": { "type": "character", "part": "family", "race": "grafter" },
   "entries": [
     "Farside", "Hollow", "Ballast", "Kessler", "Umbra", "Drift",
     "Perigee", "Ullage", "Lagrange", "Spindle"
@@ -473,7 +473,7 @@ import simplifile
 /// schemas/names.schema.json; factions and manufacturers are open strings
 /// there and cross-checked against these at test time (world files carry no
 /// factions yet, so these constants are the authority until they do).
-pub const races = ["human", "selkie", "voidborn", "senti"]
+pub const races = ["human", "selkie", "grafter", "senti"]
 
 pub const factions = ["uce", "freehold", "company", "wake", "breakers"]
 
@@ -1061,14 +1061,14 @@ pub fn possible_effective_genders_test() {
     )
   assert list.sort(names.possible_effective_genders(frontier), string.compare)
     == ["female", "neutral"]
-  let voidborn =
+  let grafter =
     names.CharacterAttrs(
-      race: "voidborn",
+      race: "grafter",
       faction: "freehold",
       wealth: "low",
       gender: "male",
     )
-  assert names.possible_effective_genders(voidborn) == ["neutral"]
+  assert names.possible_effective_genders(grafter) == ["neutral"]
 }
 
 pub fn generate_from_real_pools_test() {
@@ -1098,7 +1098,7 @@ Append to `server/src/dh_server/names.gleam` (add `import gleam/bit_array`, `imp
 ```gleam
 /// A generated character principal: attributes plus rendered name material.
 /// effective_gender is the address-style-adjusted gender that titles and
-/// pronouns render with (a voidborn woman is still a woman; prose calls em
+/// pronouns render with (a grafter woman is still a woman; prose calls em
 /// ey).
 pub type Person {
   Person(
@@ -1247,7 +1247,7 @@ fn render_pattern(
 /// faction; mixed cultures return both and generation flips a seeded coin.
 pub fn possible_address_styles(race: String, faction: String) -> List(String) {
   case race {
-    "senti" | "voidborn" -> ["neutral"]
+    "senti" | "grafter" -> ["neutral"]
     _ ->
       case faction {
         "uce" | "company" | "wake" -> ["gendered"]
@@ -1914,7 +1914,7 @@ with:
 
         "race_is": {
           "$ref": "#/definitions/ref_string",
-          "description": "Generation leaf (character slots): human | selkie | voidborn | senti."
+          "description": "Generation leaf (character slots): human | selkie | grafter | senti."
         },
         "wealth_is": {
           "$ref": "#/definitions/ref_string",
@@ -2043,7 +2043,7 @@ git commit -m "feat(quests): character/ship generated slots, generation leaves, 
 }
 ```
 
-(Race deliberately unpinned: a Selkie, Senti, or voidborn keeper of the Wake is a legitimate — and interesting — roll. Pronoun prose is authored in ey/em/eir and renders she/he for gendered rolls; note "kept" agrees with every pronoun because the canon neutral is grammatically singular.)
+(Race deliberately unpinned: a Selkie, Senti, or grafter keeper of the Wake is a legitimate — and interesting — roll. Pronoun prose is authored in ey/em/eir and renders she/he for gendered rolls; note "kept" agrees with every pronoun because the canon neutral is grammatically singular.)
 
 - [ ] **Step 2: Replace `server/quests/void_abolished.json`**
 
@@ -2414,11 +2414,11 @@ pub fn quest_principals_are_coverable_test() {
 - [ ] **Step 2: Run tests**
 
 Run the global test command.
-Expected: PASS. If `quest_principals_are_coverable_test` panics, the message names the quest, slot, attribute assignment, and part with an empty pool — fix by adding pool entries or patterns for that combination in `server/names/` (never by weakening the test). Known-good by construction: every race has a pattern; given/family pools exist for human (generic), voidborn (race-tagged), selkie (given-only single-name pattern), senti (full designations); wake/uce/freehold/company have family pools but generic race-tagged family pools cover all factions anyway; titles cover all three genders.
+Expected: PASS. If `quest_principals_are_coverable_test` panics, the message names the quest, slot, attribute assignment, and part with an empty pool — fix by adding pool entries or patterns for that combination in `server/names/` (never by weakening the test). Known-good by construction: every race has a pattern; given/family pools exist for human (generic), grafter (race-tagged), selkie (given-only single-name pattern), senti (full designations); wake/uce/freehold/company have family pools but generic race-tagged family pools cover all factions anyway; titles cover all three genders.
 
 - [ ] **Step 3: Force one red run to prove the coverage test bites**
 
-Temporarily edit `server/names/senti_designations.json`, changing `"race": "senti"` to `"race": "voidborn"` in its `tags`. Run the global test command.
+Temporarily edit `server/names/senti_designations.json`, changing `"race": "senti"` to `"race": "grafter"` in its `tags`. Run the global test command.
 Expected: FAIL — `quest_principals_are_coverable_test` panics with `a_body_that_can_die.json slot imri: empty pool for part full …` (or `no pattern matches`). Revert the edit (`git checkout -- server/names/senti_designations.json`), re-run, confirm PASS. This guards against the coverage test being vacuously green.
 
 - [ ] **Step 4: Commit**
