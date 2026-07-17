@@ -2,9 +2,10 @@
   "schema": 1,
   "id": "a_body_that_can_die",
   "name": "A Body That Can Die",
-  "flavor": "The message reaches you third-hand, the way these things do: a mind needs moving. IMRI is a person in every court that matters and cargo on every manifest that counts, and out on the border there is a notary who owes somebody a favor and can paper a captaincy — if the substrate arrives before the favor expires, and before anyone official opens the crate to check that it is what it declares. IMRI, for their part, is very good company, and would prefer not to be inspected. There is no backup. There is never a backup.",
+  "flavor": "The message reaches you third-hand, the way these things do: a mind needs moving. ${imri} is a person in every court that matters and cargo on every manifest that counts, and out on the border there is a notary who owes somebody a favor and can paper a captaincy — if the substrate arrives before the favor expires, and before anyone official opens the crate to check that it is what it declares. ${imri}, for ${imri.eir} part, is very good company, and would prefer not to be inspected. There is no backup. There is never a backup.",
   "acquisition": "rumor",
   "slots": {
+    "imri": { "kind": "character", "constraints": { "race_is": "senti" } },
     "notary_port": { "kind": "station", "constraints": { "faction_is": "freehold" } },
     "notary": {
       "kind": "broker",
@@ -21,7 +22,8 @@
   "items": [
     {
       "id": "senti",
-      "name": "IMRI — Registered Instrument, Itinerant Mind",
+      "principal": "imri",
+      "name": "${imri} — Registered Instrument, Itinerant Mind",
       "space": "berth",
       "units": 1
     }
