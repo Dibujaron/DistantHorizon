@@ -1,5 +1,5 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-06/schema#",
   "$id": "https://distanthorizon.dev/schemas/world.schema.json",
   "title": "World document",
   "description": "One star system (star, planets, stations), loaded at server startup. Derived from the Gleam decoders in server/src/dh_server/world.gleam (world_decoder/station_decoder/body_decoder/commodity_decoder/market_entry_decoder/orbit_decoder) and server/src/dh_server/deckplan.gleam (decoder) — those decoders are the source of truth; this schema is documentation and a typo-catcher, not a substitute for them. additionalProperties is false at every object level even though the decoders themselves ignore unknown fields, precisely so this schema can catch typos the decoders would silently swallow. Note: every field typed 'number' here backs a Gleam decode.float field, which REJECTS bare JSON integers (e.g. 5 is invalid, 5.0 is required) — JSON Schema draft 2020-12 cannot distinguish 1 from 1.0, so that constraint is documented here rather than enforced.",

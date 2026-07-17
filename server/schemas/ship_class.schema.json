@@ -1,5 +1,5 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-06/schema#",
   "$id": "https://distanthorizon.dev/schemas/ship_class.schema.json",
   "title": "Ship class document",
   "description": "A hull's deck plan plus the cargo characteristics M3 trading needs. Derived from the Gleam decoders in server/src/dh_server/shipclass.gleam (ship_class_decoder/cargo_decoder/handling_decoder) and server/src/dh_server/deckplan.gleam (decoder, embedded at the top level via decode.then) — those decoders are the source of truth; this schema is documentation and a typo-catcher, not a substitute for them. additionalProperties is false at every object level even though the decoders themselves ignore unknown fields, precisely so this schema can catch typos the decoders would silently swallow.",
