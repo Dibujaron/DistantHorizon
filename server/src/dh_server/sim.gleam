@@ -157,7 +157,9 @@ pub fn set_controls(
 }
 
 /// Attempt to dock the character's ship at the nearest in-range station
-/// (blocking call). `Error("not_at_helm")` unless seated at the helm.
+/// (blocking call). `Error("already_docked")` if already docked and seated
+/// at that ship's namespaced helm; `Error("not_at_helm")` if not seated at
+/// a helm at all.
 pub fn request_dock(
   sim: Subject(Msg),
   character_id: Int,
@@ -443,47 +445,54 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
     }
 
     RequestDock(character_id, reply) ->
-      with_helm_ship(state, character_id, reply, fn(state, found) {
-        let t = int.to_float(state.tick) *. ship.dt
-        case ship.try_dock(found, state.world, t, free_berth(state, _)) {
-          Error(reason) -> {
-            process.send(reply, Error(reason))
-            actor.continue(state)
-          }
-          Ok(docked) -> {
-            let assert ship.Docked(station_id, _) = docked.dock
-            let state =
-              State(..state, ships: replace_ship(state.ships, docked))
-              |> rebuild_space(station_id)
-            // Join: every crew body aboard steps into the composite frame,
-            // seats namespaced, positions offset by the new graft.
-            let assert Ok(space) = find_space(state.spaces, station_id)
-            let assert Ok(graft) =
-              composite.find_graft(space.composite, docked.id)
-            let characters =
-              list.map(state.characters, fn(c) {
-                case c.ship_id == docked.id && c.place == character.Aboard {
-                  False -> c
-                  True ->
-                    character.Character(
-                      ..c,
-                      place: character.OnStation(station_id),
-                      x: c.x +. int.to_float(graft.dx),
-                      y: c.y +. int.to_float(graft.dy),
-                      seat: option.map(c.seat, composite.namespace_id(
-                        docked.id,
-                        _,
-                      )),
-                    )
-                }
-              })
-            let state = State(..state, characters: characters)
-            process.send(reply, Ok(Nil))
-            push_space(state, protocol.StationSpace(station_id))
-            actor.continue(state)
-          }
+      case already_docked_at_helm(state, character_id) {
+        True -> {
+          process.send(reply, Error("already_docked"))
+          actor.continue(state)
         }
-      })
+        False ->
+          with_helm_ship(state, character_id, reply, fn(state, found) {
+            let t = int.to_float(state.tick) *. ship.dt
+            case ship.try_dock(found, state.world, t, free_berth(state, _)) {
+              Error(reason) -> {
+                process.send(reply, Error(reason))
+                actor.continue(state)
+              }
+              Ok(docked) -> {
+                let assert ship.Docked(station_id, _) = docked.dock
+                let state =
+                  State(..state, ships: replace_ship(state.ships, docked))
+                  |> rebuild_space(station_id)
+                // Join: every crew body aboard steps into the composite frame,
+                // seats namespaced, positions offset by the new graft.
+                let assert Ok(space) = find_space(state.spaces, station_id)
+                let assert Ok(graft) =
+                  composite.find_graft(space.composite, docked.id)
+                let characters =
+                  list.map(state.characters, fn(c) {
+                    case c.ship_id == docked.id && c.place == character.Aboard {
+                      False -> c
+                      True ->
+                        character.Character(
+                          ..c,
+                          place: character.OnStation(station_id),
+                          x: c.x +. int.to_float(graft.dx),
+                          y: c.y +. int.to_float(graft.dy),
+                          seat: option.map(c.seat, composite.namespace_id(
+                            docked.id,
+                            _,
+                          )),
+                        )
+                    }
+                  })
+                let state = State(..state, characters: characters)
+                process.send(reply, Ok(Nil))
+                push_space(state, protocol.StationSpace(station_id))
+                actor.continue(state)
+              }
+            }
+          })
+      }
 
     RequestUndock(character_id, reply) -> {
       let fail = fn(reason) {
@@ -697,11 +706,43 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
   }
 }
 
+/// `RequestDock` pre-check: is this character already docked, seated at a
+/// helm console in the station composite? Mirrors the seat-resolution logic
+/// `RequestUndock` uses (`OnStation` + namespaced seat + helm-kind console +
+/// the target ship still present) but only needs a yes/no answer, since a
+/// docked pilot asking to dock again should get `"already_docked"` rather
+/// than falling through to `with_helm_ship`'s `Aboard`-only gate, which
+/// would otherwise misread the namespaced seat as "not at helm".
+fn already_docked_at_helm(state: State, character_id: Int) -> Bool {
+  case find_character(state.characters, character_id) {
+    Error(Nil) -> False
+    Ok(char) ->
+      case char.place, char.seat {
+        character.OnStation(_), Some(seat_id) ->
+          case composite.parse_namespaced(seat_id) {
+            Error(Nil) -> False
+            Ok(#(target_ship_id, console_id)) ->
+              case deckplan.find_console(state.class.plan, console_id) {
+                Error(Nil) -> False
+                Ok(console) if console.kind != "helm" -> False
+                Ok(_) ->
+                  case find_ship(state.ships, target_ship_id) {
+                    Error(Nil) -> False
+                    Ok(_) -> True
+                  }
+              }
+          }
+        _, _ -> False
+      }
+  }
+}
+
 /// Helm-seat gating for `RequestDock`: resolve the character, require it to
 /// be aboard (flying) and seated at a helm-kind console, resolve its ship,
 /// then hand both to `next`. Replies `Error("not_at_helm")` /
 /// `Error("not_docked")` and leaves state untouched on any resolution
-/// failure. (Undock has its own composite-frame gating.)
+/// failure. Called only after `already_docked_at_helm` rules out the
+/// already-docked case. (Undock has its own composite-frame gating.)
 fn with_helm_ship(
   state: State,
   character_id: Int,

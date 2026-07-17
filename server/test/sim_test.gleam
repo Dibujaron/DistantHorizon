@@ -415,6 +415,16 @@ pub fn login_lands_in_the_station_space_seated_at_own_helm_test() {
   assert y == 2.5
 }
 
+pub fn dock_while_docked_is_already_docked_test() {
+  let s = start_sim()
+  let client = process.new_subject()
+  let assert Ok(#(_ship_id, char_id)) = sim.add_player(s, "ada", client, 1000)
+  // Login spawns docked, seated at the ship's own namespaced helm
+  // ("s{ship_id}:helm_main"). Requesting dock from there must report
+  // already-docked, not misread the namespaced seat as "not at helm".
+  let assert Error("already_docked") = sim.request_dock(s, char_id, 1000)
+}
+
 pub fn two_docked_crews_share_one_space_test() {
   let s = start_sim()
   let client_a = process.new_subject()
