@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "id": "keep_the_wake",
+  "name": "Keep the Wake",
+  "flavor": "Jaya Okafor kept the Wake for fifty-one years of hauling and never once made it home. Her congregation asks a small thing of whoever is already heading that way: carry her the rest of it. There is no hurry. She would not want the burn wasted. But mind the still days — she kept them all her life, and she will keep them now.",
+  "acquisition": "broker",
+  "slots": {
+    "wake": { "kind": "faction", "constraints": { "id": "wake" } },
+    "cathedral": { "kind": "station", "constraints": { "id": "cathedral_of_the_wake" } },
+    "offer_broker": {
+      "kind": "broker",
+      "constraints": { "faction_is": "${wake}", "not": { "station_is": "${cathedral}" } }
+    },
+    "congregation": {
+      "kind": "broker",
+      "constraints": { "faction_is": "${wake}", "station_is": "${cathedral}" }
+    }
+  },
+  "eligibility": { "rep_at_least": { "target": "${wake}", "value": 0 } },
+  "conduct": { "no_flight_on_holy_days": { "while_aboard": "remains" } },
+  "completion": {
+    "docked_at": "${cathedral}",
+    "deliver_item": { "item": "remains", "to": "${congregation}" }
+  },
+  "items": [
+    { "id": "remains", "name": "Sealed Remains — J. Okafor", "space": "hold", "units": 1 }
+  ],
+  "rewards": {
+    "credits": 150,
+    "rep": [{ "target": "${wake}", "delta": 25 }]
+  }
+}

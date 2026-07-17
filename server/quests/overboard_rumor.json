@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "id": "overboard_rumor",
+  "name": "Overboard",
+  "flavor": "A Guild dockhand, three drinks deep and getting deeper, mentions a container that went over the side during a transfer that officially never happened, off a manifest that officially never existed. It's still out there, holding station off the crane line where nobody official cares to look. Cargo with no owner is cargo with any owner. Any broker will take it. Nobody will ask where it came from — which is a different thing, you understand, from nobody knowing.",
+  "acquisition": "rumor",
+  "slots": {
+    "site": { "kind": "station", "constraints": { "has_crane": true } },
+    "buyer": { "kind": "broker" }
+  },
+  "completion": {
+    "deliver_item": { "item": "container", "to": "${buyer}" }
+  },
+  "items": [
+    {
+      "id": "container",
+      "name": "Unmarked Container",
+      "space": "hold",
+      "units": 8,
+      "pickup_at": "${site}"
+    }
+  ],
+  "rewards": {
+    "credits": 2200,
+    "rep": [{ "target": "guild", "delta": -5 }]
+  }
+}

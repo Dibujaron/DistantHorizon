@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "id": "a_body_that_can_die",
+  "name": "A Body That Can Die",
+  "flavor": "The message reaches you third-hand, the way these things do: a mind needs moving. IMRI is a person in every court that matters and cargo on every manifest that counts, and out on the border there is a notary who owes somebody a favor and can paper a captaincy — if the substrate arrives before the favor expires, and before anyone official opens the crate to check that it is what it declares. IMRI, for their part, is very good company, and would prefer not to be inspected. There is no backup. There is never a backup.",
+  "acquisition": "rumor",
+  "slots": {
+    "notary_port": { "kind": "station", "constraints": { "faction_is": "freehold" } },
+    "notary": {
+      "kind": "broker",
+      "constraints": { "faction_is": "freehold", "station_is": "${notary_port}" }
+    }
+  },
+  "eligibility": { "min_passenger_berths": 1 },
+  "conduct": { "no_inspection": { "while_aboard": "senti" } },
+  "completion": {
+    "docked_at": "${notary_port}",
+    "deliver_item": { "item": "senti", "to": "${notary}" }
+  },
+  "deadline_s": 3600,
+  "items": [
+    {
+      "id": "senti",
+      "name": "IMRI — Registered Instrument, Itinerant Mind",
+      "space": "berth",
+      "units": 1
+    }
+  ],
+  "rewards": {
+    "credits": 800,
+    "rep": [
+      { "target": "bureau", "delta": 20 },
+      { "target": "company", "delta": -10 }
+    ],
+    "meta_unlock": "senti_start"
+  }
+}

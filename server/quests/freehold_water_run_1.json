@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "id": "freehold_water_run_1",
+  "name": "Water for ${dest}",
+  "flavor": "The condensers at ${dest} are down and the Compact's nearest help is weeks out. Somebody with a hold full of water gets there first, or nobody does. The broker is not dressing it up: this is the whole settlement on one delivery, and the fee is what they could scrape.",
+  "acquisition": "broker",
+  "slots": {
+    "patron": { "kind": "faction", "constraints": { "id": "freehold" } },
+    "dest": {
+      "kind": "station",
+      "constraints": {
+        "faction_is": "${patron}",
+        "imports": "water",
+        "settlement_class": "outpost"
+      }
+    },
+    "recipient": {
+      "kind": "broker",
+      "constraints": { "faction_is": "${patron}", "station_is": "${dest}" }
+    },
+    "offer_broker": {
+      "kind": "broker",
+      "constraints": { "faction_is": "${patron}", "not": { "station_is": "${dest}" } }
+    }
+  },
+  "eligibility": {
+    "rep_at_least": { "target": "${patron}", "value": 0 },
+    "any": [{ "min_cargo_units": 40 }, { "min_container_slots": 2 }]
+  },
+  "completion": {
+    "docked_at": "${dest}",
+    "deliver_commodity": { "commodity": "water", "units": 40, "to": "${recipient}" }
+  },
+  "fail_when": { "settlement_dead": "${dest}" },
+  "deadline_s": 1800,
+  "rewards": {
+    "credits": 900,
+    "rep": [{ "target": "${patron}", "delta": 15 }]
+  },
+  "effects": {
+    "on_failed": { "settlement_dies": "${dest}" },
+    "on_expired": { "settlement_dies": "${dest}" }
+  },
+  "on_complete": [
+    { "quest": "freehold_water_run_2a", "offer": { "mode": "open" } }
+  ],
+  "on_failed": [
+    { "quest": "freehold_water_run_2b", "offer": { "mode": "open" } }
+  ],
+  "on_expired": [
+    { "quest": "freehold_water_run_2b", "offer": { "mode": "open" } }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "account_closure_3",
+  "name": "Lot 47",
+  "flavor": "The hull is the Company's again, and so is everything inside it that isn't nailed to a person. Twelve units of a family's life, crated and manifested for auction. The recovery detail will load it. The family will watch. You will fly. The money is very good, and the factor has made a note of how little you asked about it.",
+  "acquisition": "triggered",
+  "slots": {
+    "company": { "from": "parent.company" },
+    "seizure_site": { "from": "parent.seizure_site" },
+    "auction_house": {
+      "kind": "station",
+      "constraints": { "faction_is": "${company}", "has_crane": true }
+    },
+    "auctioneer": {
+      "kind": "broker",
+      "constraints": { "faction_is": "${company}", "station_is": "${auction_house}" }
+    }
+  },
+  "eligibility": {
+    "any": [{ "min_cargo_units": 12 }, { "min_container_slots": 1 }]
+  },
+  "completion": {
+    "docked_at": "${auction_house}",
+    "deliver_item": { "item": "seized_goods", "to": "${auctioneer}" }
+  },
+  "deadline_s": 2400,
+  "items": [
+    {
+      "id": "seized_goods",
+      "name": "Household Effects — Lot 47",
+      "space": "hold",
+      "units": 12,
+      "pickup_at": "${seizure_site}"
+    }
+  ],
+  "rewards": {
+    "credits": 2600,
+    "rep": [
+      { "target": "${company}", "delta": 25 },
+      { "target": "freehold", "delta": -30 }
+    ]
+  }
+}
