@@ -531,10 +531,10 @@ pub fn body_on_a_despawning_mooring_is_refloored_test() {
 // direct sim_test: it needs a ship despawned by the transfer while docked at
 // a station OTHER than where the undock happens, i.e. that ship's entire crew
 // standing on the departing ship's mooring at station S1 while their own ship
-// sits docked at S2. Every path to a body at S1 that is crew of a ship at S2
-// requires flying that ship to S2 with its crew's bodies left behind at S1 —
-// impossible with single-crew ships and this world's berth counts (solis has
-// one berth). The fix mirrors ClientDown's despawned_station_ids computation
+// sits docked at S2. Constructible in principle (a shanghaied visitor can take
+// the vacated helm and fly the ship to another station), but that requires
+// scripted inter-station piloting this suite has never done — impractical
+// here, not impossible. The fix mirrors ClientDown's despawned_station_ids computation
 // (see the ClientDown handler in sim.gleam), which the disconnect-despawn
 // tests above exercise as the shared shape; FINDING 2's re-floor (now inside
 // rebuild_space) protects any body left on such a remote ghost mooring.
