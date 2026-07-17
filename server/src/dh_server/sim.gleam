@@ -8,22 +8,29 @@
 //// Every `snapshot_every` ticks (15 Hz) it serializes one exterior snapshot
 //// and fans it out to every registered client subject, and separately
 //// serializes per-scope messages fanned out only to the clients they
-//// concern — the interest-management boundary from DESIGN.md: `interior`
-//// per crewed ship to bodies currently aboard, `concourse` per occupied
-//// station to bodies currently standing there, `cargo` per crewed ship to
-//// its whole crew (by membership, wherever their bodies are), and `market`
-//// per occupied station's market to that station's concourse occupants.
+//// concern — the interest-management boundary from DESIGN.md: `walkers` per
+//// occupied space (a flying ship's interior, or a station's stitched
+//// composite) to the bodies currently in it, `cargo` per crewed ship to its
+//// whole crew (by membership, wherever their bodies are), and `market` per
+//// occupied station's market to that station's occupants.
+////
+//// Stitched interiors (M3.1): each concourse keeps one `StationSpace` — its
+//// composite plan (concourse + every docked ship moored at a berth) and a
+//// monotonically increasing epoch, rebuilt on every dock/undock/despawn. A
+//// body's place is `Aboard` (in a *flying* ship's frame) or `OnStation`
+//// (in a station's composite frame, which covers standing aboard a *docked*
+//// ship). Crew membership (`ship_id`) transfers only at the undock split:
+//// bodies standing on ship X's moored tiles leave with X.
 ////
 //// A WebSocket handler process joins the simulation by calling
-//// `add_player`, which spawns it a ship docked at the world's spawn
-//// station, a character seated at that ship's helm, and registers it for
-//// snapshots in one call. `helm`/`dock`/`undock`/`move`/`sit`/`stand`/
-//// `board`/`disembark`/`buy`/`sell` are all routed by character id; the sim
-//// resolves the character's current ship (and place — aboard or ashore on
-//// a station concourse) itself, so a character's ship can change (via
-//// `board`) without the caller needing to track it. Helm control
-//// (`SetControls`, dock, undock) additionally requires the body to be
-//// aboard, not just seated at the console.
+//// `add_player`, which claims a free berth at the spawn station (refusing
+//// with `Error("station_full")` when none is free), spawns it a ship docked
+//// there, a character seated at that ship's namespaced helm in the station
+//// composite, and registers it for snapshots in one call.
+//// `helm`/`dock`/`undock`/`move`/`sit`/`stand`/`buy`/`sell` are all routed
+//// by character id. Helm control (`SetControls`, dock) additionally
+//// requires the body to be aboard (flying); undock requires being seated at
+//// a docked ship's namespaced helm in the station composite.
 ////
 //// The sim monitors each handler process and, on exit (cleanly or by
 //// crashing), removes its character and despawns any ship left with zero
@@ -31,13 +38,15 @@
 //// whether their bodies are aboard or ashore — so a pilot who disconnects
 //// mid-flight leaves a walking crewmate on a still-flying ship, a ship
 //// whose whole crew has gone ashore stays alive, and the last crew member
-//// leaving (by disconnect or by boarding another ship) despawns it.
+//// leaving despawns it and rebuilds the station space without its mooring.
 
 import dh_server/cargo
 import dh_server/character.{type Character}
 import dh_server/clock
+import dh_server/composite
 import dh_server/deckplan
 import dh_server/market
+import dh_server/noise
 import dh_server/protocol
 import dh_server/ship.{type Ship}
 import dh_server/shipclass.{type ShipClass}
@@ -65,13 +74,14 @@ const us_per_second = 1_000_000
 pub opaque type Msg {
   /// Advance the simulation by one step (self-scheduled).
   Tick
-  /// A WebSocket connection has logged in: spawn it a ship docked at the
-  /// spawn station, a character seated at that ship's helm, and register it
-  /// for snapshots.
+  /// A WebSocket connection has logged in: claim a free berth at the spawn
+  /// station (or refuse with `Error("station_full")`), spawn it a ship
+  /// docked there, a character seated at that ship's namespaced helm, and
+  /// register it for snapshots.
   AddPlayer(
     name: String,
     client: Subject(ClientMsg),
-    reply: Subject(#(Int, Int)),
+    reply: Subject(Result(#(Int, Int), String)),
   )
   /// Set a character's helm input. Ignored unless the character is seated
   /// at a helm-kind console of a flying ship.
@@ -90,19 +100,10 @@ pub opaque type Msg {
   )
   /// Stand a seated character up.
   RequestStand(character_id: Int, reply: Subject(protocol.SeatResult))
-  /// Attempt to move a character to another ship docked at the same
-  /// station as their own.
-  RequestBoard(
-    character_id: Int,
-    ship_id: Int,
-    reply: Subject(protocol.BoardResult),
-  )
   /// A monitored client handler process exited (cleanly or by crashing).
   ClientDown(down: process.Down)
   /// Reply with current tick statistics.
   GetStats(reply: Subject(stats.StatsReply))
-  /// Step off the ship onto the docked station's concourse.
-  RequestDisembark(character_id: Int, reply: Subject(protocol.DisembarkResult))
   /// Buy `quantity` of `commodity` at the broker the character is seated at.
   RequestBuy(
     character_id: Int,
@@ -130,16 +131,18 @@ pub type ClientMsg {
   SendText(String)
 }
 
-/// Spawn a new ship docked at the world's spawn station, a character named
-/// `name` seated at its helm, and register `client` to receive snapshots
-/// and interior updates for as long as its owning process lives. Returns
-/// `#(ship_id, character_id)`.
+/// Claim a free berth at the world's spawn station and spawn a new ship
+/// docked there, a character named `name` seated at its namespaced helm in
+/// the station composite, and register `client` to receive snapshots and
+/// walker updates for as long as its owning process lives. Returns
+/// `Ok(#(ship_id, character_id))`, or `Error("station_full")` when the
+/// spawn station has no free berth.
 pub fn add_player(
   sim: Subject(Msg),
   name: String,
   client: Subject(ClientMsg),
   timeout_ms: Int,
-) -> #(Int, Int) {
+) -> Result(#(Int, Int), String) {
   process.call(sim, waiting: timeout_ms, sending: AddPlayer(name, client, _))
 }
 
@@ -155,7 +158,9 @@ pub fn set_controls(
 }
 
 /// Attempt to dock the character's ship at the nearest in-range station
-/// (blocking call). `Error("not_at_helm")` unless seated at the helm.
+/// (blocking call). `Error("already_docked")` if already docked and seated
+/// at that ship's namespaced helm; `Error("not_at_helm")` if not seated at
+/// a helm at all.
 pub fn request_dock(
   sim: Subject(Msg),
   character_id: Int,
@@ -208,37 +213,9 @@ pub fn request_stand(
   process.call(sim, waiting: timeout_ms, sending: RequestStand(character_id, _))
 }
 
-/// Attempt to board `ship_id` (blocking call): allowed when the
-/// character's current ship and the target ship are both docked at the
-/// same station.
-pub fn request_board(
-  sim: Subject(Msg),
-  character_id: Int,
-  ship_id: Int,
-  timeout_ms: Int,
-) -> protocol.BoardResult {
-  process.call(sim, waiting: timeout_ms, sending: RequestBoard(
-    character_id,
-    ship_id,
-    _,
-  ))
-}
-
 /// Ask the sim for its current tick statistics (blocking call).
 pub fn get_stats(sim: Subject(Msg), timeout_ms: Int) -> stats.StatsReply {
   process.call(sim, waiting: timeout_ms, sending: GetStats)
-}
-
-/// Step off the ship onto the docked station's concourse (blocking call).
-pub fn request_disembark(
-  sim: Subject(Msg),
-  character_id: Int,
-  timeout_ms: Int,
-) -> protocol.DisembarkResult {
-  process.call(sim, waiting: timeout_ms, sending: RequestDisembark(
-    character_id,
-    _,
-  ))
 }
 
 /// Buy at the seated broker (blocking call).
@@ -292,6 +269,14 @@ type Client {
   )
 }
 
+/// One station's walkable space: its composite plan and a monotonically
+/// increasing epoch, bumped on every rebuild (dock, undock, despawn).
+/// Clients use the epoch to drop in-flight walker updates serialized
+/// against a previous frame.
+type StationSpace {
+  StationSpace(station_id: String, epoch: Int, composite: composite.Composite)
+}
+
 type State {
   State(
     self: Subject(Msg),
@@ -309,6 +294,8 @@ type State {
     markets: List(market.Market),
     price_epoch: Int,
     regen_epoch: Int,
+    /// One composite space per concourse, rebuilt on dock/undock/despawn.
+    spaces: List(StationSpace),
   )
 }
 
@@ -333,6 +320,7 @@ pub fn start(
         markets: market.init(world),
         price_epoch: 0,
         regen_epoch: 0,
+        spaces: initial_spaces(world),
       )
     process.send(subject, Tick)
     // Receive our own messages plus Down notifications for every monitor
@@ -357,44 +345,82 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
 
     AddPlayer(name, client, reply) -> {
       case process.subject_owner(client) {
-        Ok(pid) -> {
-          let t = int.to_float(state.tick) *. ship.dt
-          let new_ship = ship.spawn_docked(state.next_ship_id, state.world, t)
-          let new_character =
-            character.spawn_seated_at_helm(
-              state.next_character_id,
-              name,
-              new_ship.id,
-              state.class.plan,
-            )
-          let state =
-            State(
-              ..state,
-              ships: [new_ship, ..state.ships],
-              next_ship_id: state.next_ship_id + 1,
-              characters: [new_character, ..state.characters],
-              next_character_id: state.next_character_id + 1,
-              clients: [
-                Client(
-                  monitor: process.monitor(pid),
-                  subject: client,
-                  character_id: new_character.id,
-                ),
-                ..state.clients
-              ],
-            )
-          process.send(reply, #(new_ship.id, new_character.id))
-          io.println_error(
-            "client connected ("
-            <> int.to_string(list.length(state.clients))
-            <> ")",
-          )
-          actor.continue(state)
-        }
         // A subject whose owner is already dead will never fire ClientDown,
         // so spawning a ship for it would leave an un-cleanable ghost in
         // every snapshot. Don't spawn; the reply can't be received anyway.
         Error(Nil) -> actor.continue(state)
+        Ok(pid) ->
+          case
+            free_berth(state, state.next_ship_id, state.world.spawn_station)
+          {
+            Error(_) -> {
+              process.send(reply, Error("station_full"))
+              actor.continue(state)
+            }
+            Ok(berth) -> {
+              let t = int.to_float(state.tick) *. ship.dt
+              let new_ship =
+                ship.spawn_docked(state.next_ship_id, state.world, t, berth)
+              // Rebuild the spawn station's composite with the new mooring
+              // before placing the character in the composite frame.
+              let state =
+                rebuild_space(
+                  State(
+                    ..state,
+                    ships: [new_ship, ..state.ships],
+                    next_ship_id: state.next_ship_id + 1,
+                  ),
+                  state.world.spawn_station,
+                )
+              let assert Ok(space) =
+                find_space(state.spaces, state.world.spawn_station)
+              let assert Ok(mooring) =
+                composite.find_mooring(space.composite, new_ship.id)
+              let assert Ok(helm) =
+                deckplan.find_console_of_kind(state.class.plan, "helm")
+              let #(hx, hy) =
+                deckplan.tile_center(helm.x + mooring.dx, helm.y + mooring.dy)
+              let new_character =
+                character.Character(
+                  id: state.next_character_id,
+                  name: name,
+                  ship_id: new_ship.id,
+                  place: character.OnStation(state.world.spawn_station),
+                  x: hx,
+                  y: hy,
+                  seat: Some(composite.namespace_id(new_ship.id, helm.id)),
+                  move_dx: 0.0,
+                  move_dy: 0.0,
+                )
+              let state =
+                State(
+                  ..state,
+                  characters: [new_character, ..state.characters],
+                  next_character_id: state.next_character_id + 1,
+                  clients: [
+                    Client(
+                      monitor: process.monitor(pid),
+                      subject: client,
+                      character_id: new_character.id,
+                    ),
+                    ..state.clients
+                  ],
+                )
+              process.send(reply, Ok(#(new_ship.id, new_character.id)))
+              // Everyone in the spawn station's space (including the new
+              // client) gets the new plan: a ship just moored on.
+              push_space(
+                state,
+                protocol.StationSpace(state.world.spawn_station),
+              )
+              io.println_error(
+                "client connected ("
+                <> int.to_string(list.length(state.clients))
+                <> ")",
+              )
+              actor.continue(state)
+            }
+          }
       }
     }
 
@@ -422,38 +448,89 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
     }
 
     RequestDock(character_id, reply) ->
-      with_helm_ship(state, character_id, reply, fn(state, found) {
-        let t = int.to_float(state.tick) *. ship.dt
-        case ship.try_dock(found, state.world, t) {
-          Ok(updated) -> {
-            process.send(reply, Ok(Nil))
-            actor.continue(
-              State(..state, ships: replace_ship(state.ships, updated)),
-            )
-          }
-          Error(reason) -> {
-            process.send(reply, Error(reason))
-            actor.continue(state)
-          }
+      case already_docked_at_helm(state, character_id) {
+        True -> {
+          process.send(reply, Error("already_docked"))
+          actor.continue(state)
         }
-      })
+        False ->
+          with_helm_ship(state, character_id, reply, fn(state, found) {
+            let t = int.to_float(state.tick) *. ship.dt
+            case
+              ship.try_dock(found, state.world, t, free_berth(
+                state,
+                found.id,
+                _,
+              ))
+            {
+              Error(reason) -> {
+                process.send(reply, Error(reason))
+                actor.continue(state)
+              }
+              Ok(docked) -> {
+                let assert ship.Docked(station_id, _) = docked.dock
+                let state =
+                  State(..state, ships: replace_ship(state.ships, docked))
+                  |> rebuild_space(station_id)
+                // Join: every crew body aboard steps into the composite frame,
+                // seats namespaced, positions offset by the new mooring.
+                let assert Ok(space) = find_space(state.spaces, station_id)
+                let assert Ok(mooring) =
+                  composite.find_mooring(space.composite, docked.id)
+                let characters =
+                  list.map(state.characters, fn(c) {
+                    case c.ship_id == docked.id && c.place == character.Aboard {
+                      False -> c
+                      True ->
+                        character.Character(
+                          ..c,
+                          place: character.OnStation(station_id),
+                          x: c.x +. int.to_float(mooring.dx),
+                          y: c.y +. int.to_float(mooring.dy),
+                          seat: option.map(c.seat, composite.namespace_id(
+                            docked.id,
+                            _,
+                          )),
+                        )
+                    }
+                  })
+                let state = State(..state, characters: characters)
+                process.send(reply, Ok(Nil))
+                push_space(state, protocol.StationSpace(station_id))
+                actor.continue(state)
+              }
+            }
+          })
+      }
 
-    RequestUndock(character_id, reply) ->
-      with_helm_ship(state, character_id, reply, fn(state, found) {
-        let t = int.to_float(state.tick) *. ship.dt
-        case ship.undock(found, state.world, t) {
-          Ok(updated) -> {
-            process.send(reply, Ok(Nil))
-            actor.continue(
-              State(..state, ships: replace_ship(state.ships, updated)),
-            )
+    RequestUndock(character_id, reply) -> {
+      let fail = fn(reason) {
+        process.send(reply, Error(reason))
+        actor.continue(state)
+      }
+      case find_character(state.characters, character_id) {
+        Error(Nil) -> fail("not_docked")
+        Ok(char) ->
+          case char.place, char.seat {
+            character.OnStation(station_id), Some(seat_id) ->
+              case composite.parse_namespaced(seat_id) {
+                Error(Nil) -> fail("not_at_helm")
+                Ok(#(target_ship_id, console_id)) ->
+                  case deckplan.find_console(state.class.plan, console_id) {
+                    Error(Nil) -> fail("not_at_helm")
+                    Ok(console) if console.kind != "helm" -> fail("not_at_helm")
+                    Ok(_) ->
+                      case find_ship(state.ships, target_ship_id) {
+                        Error(Nil) -> fail("not_docked")
+                        Ok(target) ->
+                          handle_undock_split(state, station_id, target, reply)
+                      }
+                  }
+              }
+            _, _ -> fail("not_at_helm")
           }
-          Error(reason) -> {
-            process.send(reply, Error(reason))
-            actor.continue(state)
-          }
-        }
-      })
+      }
+    }
 
     SetMove(character_id, dx, dy) -> {
       let characters =
@@ -573,23 +650,6 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
       }
     }
 
-    RequestBoard(character_id, target_ship_id, reply) -> {
-      case find_character(state.characters, character_id) {
-        Error(Nil) -> {
-          process.send(
-            reply,
-            protocol.BoardResult(
-              ok: False,
-              reason: Some("unknown_ship"),
-              ship_id: 0,
-            ),
-          )
-          actor.continue(state)
-        }
-        Ok(char) -> handle_board(state, char, target_ship_id, reply)
-      }
-    }
-
     ClientDown(process.ProcessDown(monitor: monitor, ..)) -> {
       let #(down, remaining) =
         list.partition(state.clients, fn(c) { c.monitor == monitor })
@@ -602,12 +662,27 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
         list.map(characters, fn(c) { c.ship_id }) |> list.unique
       let ships =
         list.filter(state.ships, fn(s) { list.contains(crewed_ship_ids, s.id) })
+      // Every station that just lost a docked mooring rebuilds and re-pushes
+      // its plan (computed from the pre-filter ships against the surviving
+      // crew ids).
+      let despawned_station_ids =
+        list.filter_map(state.ships, fn(s) {
+          case list.contains(crewed_ship_ids, s.id), s.dock {
+            False, ship.Docked(station_id, _) -> Ok(station_id)
+            _, _ -> Error(Nil)
+          }
+        })
+        |> list.unique
+      let state =
+        State(..state, clients: remaining, ships: ships, characters: characters)
+      let state = list.fold(despawned_station_ids, state, rebuild_space)
+      list.each(despawned_station_ids, fn(sid) {
+        push_space(state, protocol.StationSpace(sid))
+      })
       io.println_error(
         "client disconnected (" <> int.to_string(list.length(remaining)) <> ")",
       )
-      actor.continue(
-        State(..state, clients: remaining, ships: ships, characters: characters),
-      )
+      actor.continue(state)
     }
     // We only monitor processes, never ports.
     ClientDown(process.PortDown(..)) -> actor.continue(state)
@@ -615,23 +690,6 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
     GetStats(reply) -> {
       process.send(reply, stats_reply(state))
       actor.continue(state)
-    }
-
-    RequestDisembark(character_id, reply) -> {
-      case find_character(state.characters, character_id) {
-        Error(Nil) -> {
-          process.send(
-            reply,
-            protocol.DisembarkResult(
-              ok: False,
-              reason: Some("not_aboard"),
-              station_id: None,
-            ),
-          )
-          actor.continue(state)
-        }
-        Ok(char) -> handle_disembark(state, char, reply)
-      }
     }
 
     RequestBuy(character_id, commodity, quantity, reply) ->
@@ -657,11 +715,43 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
   }
 }
 
-/// Shared helm-seat gating for `RequestDock`/`RequestUndock`: resolve the
-/// character, require it to be seated at a helm-kind console, resolve its
-/// ship, then hand both to `next`. Replies `Error("not_at_helm")` /
+/// `RequestDock` pre-check: is this character already docked, seated at a
+/// helm console in the station composite? Mirrors the seat-resolution logic
+/// `RequestUndock` uses (`OnStation` + namespaced seat + helm-kind console +
+/// the target ship still present) but only needs a yes/no answer, since a
+/// docked pilot asking to dock again should get `"already_docked"` rather
+/// than falling through to `with_helm_ship`'s `Aboard`-only gate, which
+/// would otherwise misread the namespaced seat as "not at helm".
+fn already_docked_at_helm(state: State, character_id: Int) -> Bool {
+  case find_character(state.characters, character_id) {
+    Error(Nil) -> False
+    Ok(char) ->
+      case char.place, char.seat {
+        character.OnStation(_), Some(seat_id) ->
+          case composite.parse_namespaced(seat_id) {
+            Error(Nil) -> False
+            Ok(#(target_ship_id, console_id)) ->
+              case deckplan.find_console(state.class.plan, console_id) {
+                Error(Nil) -> False
+                Ok(console) if console.kind != "helm" -> False
+                Ok(_) ->
+                  case find_ship(state.ships, target_ship_id) {
+                    Error(Nil) -> False
+                    Ok(_) -> True
+                  }
+              }
+          }
+        _, _ -> False
+      }
+  }
+}
+
+/// Helm-seat gating for `RequestDock`: resolve the character, require it to
+/// be aboard (flying) and seated at a helm-kind console, resolve its ship,
+/// then hand both to `next`. Replies `Error("not_at_helm")` /
 /// `Error("not_docked")` and leaves state untouched on any resolution
-/// failure.
+/// failure. Called only after `already_docked_at_helm` rules out the
+/// already-docked case. (Undock has its own composite-frame gating.)
 fn with_helm_ship(
   state: State,
   character_id: Int,
@@ -694,179 +784,99 @@ fn with_helm_ship(
   }
 }
 
-fn handle_board(
+/// Undock `target` from `station_id`: bodies standing on its moored tiles
+/// leave with it (and become its crew), bodies on station tiles stay. Ships
+/// left crewless by the transfer despawn, the station space rebuilds
+/// without the departed moorings, and both sides get their new plan.
+fn handle_undock_split(
   state: State,
-  char: Character,
-  target_ship_id: Int,
-  reply: Subject(protocol.BoardResult),
-) -> actor.Next(State, Msg) {
-  let fail = fn(reason) {
-    process.send(
-      reply,
-      protocol.BoardResult(
-        ok: False,
-        reason: Some(reason),
-        ship_id: char.ship_id,
-      ),
-    )
-    actor.continue(state)
-  }
-  case find_ship(state.ships, target_ship_id) {
-    Error(Nil) -> fail("unknown_ship")
-    Ok(target) ->
-      case char.place {
-        // Ashore: board any ship docked at this station, your own included
-        // — but only from the concourse airlock, the counterpart of the
-        // walk-to-the-airlock disembark gate.
-        character.OnStation(station_id) ->
-          case target.dock == ship.Docked(station_id) {
-            False -> fail("not_docked_here")
-            True -> {
-              // Standing on a concourse implies the station has one.
-              let assert Ok(station) =
-                world.get_station(state.world, station_id)
-              let assert Some(concourse) = station.concourse
-              case character.near_airlock(char, concourse) {
-                False -> fail("not_at_airlock")
-                True -> complete_board(state, char, target, reply)
-              }
-            }
-          }
-        // Aboard (the M2 flow): cross to another ship co-docked with yours.
-        character.Aboard ->
-          case char.ship_id == target_ship_id {
-            True -> fail("same_ship")
-            False -> {
-              let assert Ok(current) = find_ship(state.ships, char.ship_id)
-              case docked_at_same_station(current, target) {
-                False -> fail("not_docked_together")
-                True -> complete_board(state, char, target, reply)
-              }
-            }
-          }
-      }
-  }
-}
-
-/// Move `char` aboard `target`: crew membership transfers, body lands
-/// standing at the spawn tile with buffered input cleared (input held at
-/// the transition was aimed at the old deck), and a ship left with zero
-/// crew despawns.
-fn complete_board(
-  state: State,
-  char: Character,
+  station_id: String,
   target: Ship,
-  reply: Subject(protocol.BoardResult),
+  reply: Subject(Result(Nil, String)),
 ) -> actor.Next(State, Msg) {
-  let old_ship_id = char.ship_id
-  let #(sx, sy) = character.spawn_position(state.class.plan)
-  let boarded =
-    character.Character(
-      ..char,
-      ship_id: target.id,
-      place: character.Aboard,
-      x: sx,
-      y: sy,
-      seat: None,
-      move_dx: 0.0,
-      move_dy: 0.0,
-    )
-  let characters = replace_character(state.characters, boarded)
-  // Despawn on zero *crew* (ship_id references) — a ship whose whole crew
-  // is ashore stays alive; one whose last crew member transferred away
-  // does not.
-  let old_ship_still_crewed =
-    list.any(characters, fn(c) { c.ship_id == old_ship_id })
-  let ships = case old_ship_still_crewed {
-    True -> state.ships
-    False -> list.filter(state.ships, fn(s) { s.id != old_ship_id })
+  let t = int.to_float(state.tick) *. ship.dt
+  case ship.undock(target, state.world, t) {
+    Error(reason) -> {
+      process.send(reply, Error(reason))
+      actor.continue(state)
+    }
+    Ok(flying) -> {
+      // Split against the *current* (pre-rebuild) frame's mooring.
+      let assert Ok(space) = find_space(state.spaces, station_id)
+      let assert Ok(mooring) =
+        composite.find_mooring(space.composite, target.id)
+      let characters =
+        list.map(state.characters, fn(c) {
+          let departing =
+            c.place == character.OnStation(station_id)
+            && composite.tile_on_mooring(mooring, state.class.plan, c.x, c.y)
+          case departing {
+            False -> c
+            True ->
+              character.Character(
+                ..c,
+                ship_id: target.id,
+                place: character.Aboard,
+                x: c.x -. int.to_float(mooring.dx),
+                y: c.y -. int.to_float(mooring.dy),
+                seat: strip_namespace(c.seat),
+              )
+          }
+        })
+      // Crew transfer may have emptied other ships (their last crew member
+      // left standing on the departing deck): despawn them.
+      let surviving = replace_ship(state.ships, flying)
+      let crewed_ship_ids =
+        list.map(characters, fn(c) { c.ship_id }) |> list.unique
+      let ships =
+        list.filter(surviving, fn(s) { list.contains(crewed_ship_ids, s.id) })
+      // A ship despawned by the transfer while docked at a *different*
+      // station leaves that station's composite with a ghost mooring. Mirror
+      // ClientDown: rebuild+re-push every such remote station too (the local
+      // station is rebuilt below). rebuild_space's snap re-floors any body
+      // that was standing on those remote moorings.
+      let despawned_station_ids =
+        list.filter_map(surviving, fn(s) {
+          case list.contains(crewed_ship_ids, s.id), s.dock {
+            False, ship.Docked(sid, _) if sid != station_id -> Ok(sid)
+            _, _ -> Error(Nil)
+          }
+        })
+        |> list.unique
+      let state =
+        rebuild_space(
+          State(..state, ships: ships, characters: characters),
+          station_id,
+        )
+      let state = list.fold(despawned_station_ids, state, rebuild_space)
+      process.send(reply, Ok(Nil))
+      push_space(state, protocol.StationSpace(station_id))
+      push_space(state, protocol.ShipSpace(target.id))
+      list.each(despawned_station_ids, fn(sid) {
+        push_space(state, protocol.StationSpace(sid))
+      })
+      actor.continue(state)
+    }
   }
-  process.send(
-    reply,
-    protocol.BoardResult(ok: True, reason: None, ship_id: target.id),
-  )
-  actor.continue(State(..state, characters: characters, ships: ships))
 }
 
-/// The station whose market the character may inspect: the concourse
-/// they're standing in, or the station their ship is docked at while
-/// they're aboard.
-fn market_station_for(state: State, char: Character) -> Result(String, Nil) {
+/// `"s3:helm_main"` -> `"helm_main"`; plain ids and `None` pass through.
+fn strip_namespace(seat: option.Option(String)) -> option.Option(String) {
+  option.map(seat, fn(id) {
+    case composite.parse_namespaced(id) {
+      Ok(#(_, base)) -> base
+      Error(Nil) -> id
+    }
+  })
+}
+
+/// The station whose market the character may inspect: the composite they
+/// are standing in (docked crews are `OnStation`). `Aboard` means flying,
+/// so there is no station market.
+fn market_station_for(_state: State, char: Character) -> Result(String, Nil) {
   case char.place {
     character.OnStation(station_id) -> Ok(station_id)
-    character.Aboard ->
-      case find_ship(state.ships, char.ship_id) {
-        Error(Nil) -> Error(Nil)
-        Ok(s) ->
-          case s.dock {
-            ship.Docked(station_id) -> Ok(station_id)
-            ship.Flying -> Error(Nil)
-          }
-      }
-  }
-}
-
-fn handle_disembark(
-  state: State,
-  char: Character,
-  reply: Subject(protocol.DisembarkResult),
-) -> actor.Next(State, Msg) {
-  let fail = fn(reason) {
-    process.send(
-      reply,
-      protocol.DisembarkResult(
-        ok: False,
-        reason: Some(reason),
-        station_id: None,
-      ),
-    )
-    actor.continue(state)
-  }
-  case char.place {
-    character.OnStation(_) -> fail("not_aboard")
-    character.Aboard ->
-      case find_ship(state.ships, char.ship_id) {
-        Error(Nil) -> fail("not_aboard")
-        Ok(s) ->
-          case s.dock {
-            ship.Flying -> fail("not_docked")
-            ship.Docked(station_id) ->
-              // The deck and the concourse connect at their airlocks: you
-              // walk to your ship's airlock and step through, you don't
-              // teleport off from anywhere aboard.
-              case character.near_airlock(char, state.class.plan) {
-                False -> fail("not_at_airlock")
-                True -> {
-                  let assert Ok(station) =
-                    world.get_station(state.world, station_id)
-                  case station.concourse {
-                    None -> fail("no_concourse")
-                    Some(plan) -> {
-                      let ashore =
-                        character.disembark_to(char, plan, station_id)
-                      process.send(
-                        reply,
-                        protocol.DisembarkResult(
-                          ok: True,
-                          reason: None,
-                          station_id: Some(station_id),
-                        ),
-                      )
-                      actor.continue(
-                        State(
-                          ..state,
-                          characters: replace_character(
-                            state.characters,
-                            ashore,
-                          ),
-                        ),
-                      )
-                    }
-                  }
-                }
-              }
-          }
-      }
+    character.Aboard -> Error(Nil)
   }
 }
 
@@ -911,8 +921,12 @@ fn handle_trade(
             True ->
               case find_ship(state.ships, char.ship_id) {
                 Error(Nil) -> fail("ship_not_docked")
-                Ok(s) ->
-                  case s.dock == ship.Docked(station_id) {
+                Ok(s) -> {
+                  let ship_docked_here = case s.dock {
+                    ship.Docked(sid, _) -> sid == station_id
+                    ship.Flying -> False
+                  }
+                  case ship_docked_here {
                     False -> fail("ship_not_docked")
                     True -> {
                       let assert Ok(station) =
@@ -951,6 +965,7 @@ fn handle_trade(
                       }
                     }
                   }
+                }
               }
           }
         }
@@ -1065,13 +1080,6 @@ fn do_sell(
   }
 }
 
-fn docked_at_same_station(a: Ship, b: Ship) -> Bool {
-  case a.dock, b.dock {
-    ship.Docked(station_a), ship.Docked(station_b) -> station_a == station_b
-    _, _ -> False
-  }
-}
-
 fn find_ship(ships: List(Ship), ship_id: Int) -> Result(Ship, Nil) {
   list.find(ships, fn(s) { s.id == ship_id })
 }
@@ -1104,15 +1112,244 @@ fn replace_character(
   })
 }
 
-/// The deck plan under the character's feet: their crew ship's plan when
-/// aboard, the station concourse when ashore.
+/// The deck plan under the character's feet: their flying ship's plan when
+/// aboard, the station's composite plan when standing in a station space.
 fn plan_for(state: State, char: Character) -> Result(deckplan.DeckPlan, Nil) {
   case char.place {
     character.Aboard -> Ok(state.class.plan)
     character.OnStation(station_id) ->
-      case world.get_station(state.world, station_id) {
+      case find_space(state.spaces, station_id) {
         Error(Nil) -> Error(Nil)
-        Ok(station) -> option.to_result(station.concourse, Nil)
+        Ok(space) -> Ok(space.composite.plan)
+      }
+  }
+}
+
+/// One composite space per concourse, built empty at startup (world
+/// validation guarantees an empty build succeeds). Stations without a
+/// concourse get no space and can never be docked at.
+fn initial_spaces(world: World) -> List(StationSpace) {
+  list.filter_map(world.stations, fn(station) {
+    case station.concourse {
+      None -> Error(Nil)
+      Some(concourse) ->
+        case composite.build(concourse, station.berths, []) {
+          Ok(built) ->
+            Ok(StationSpace(station_id: station.id, epoch: 0, composite: built))
+          Error(_) -> Error(Nil)
+        }
+    }
+  })
+}
+
+fn find_space(
+  spaces: List(StationSpace),
+  station_id: String,
+) -> Result(StationSpace, Nil) {
+  list.find(spaces, fn(s) { s.station_id == station_id })
+}
+
+/// Ships docked at `station_id`, as composite inputs.
+fn docked_ships_at(
+  state: State,
+  station_id: String,
+) -> List(composite.DockedShip) {
+  list.filter_map(state.ships, fn(s) {
+    case s.dock {
+      ship.Docked(sid, berth) if sid == station_id ->
+        // M4 (multi-class refit): state.class.plan is the single-hull assumption.
+        Ok(composite.DockedShip(
+          ship_id: s.id,
+          berth: berth,
+          plan: state.class.plan,
+        ))
+      _ -> Error(Nil)
+    }
+  })
+}
+
+/// A seed-random free berth index at `station_id` for `ship_id`, or why not
+/// (`"no_berths"` / `"berths_full"`). Pure pick, no RNG state: hash
+/// `(world.seed, "<station_id>:<ship_id>")` through noise's SplitMix64 and
+/// mod it into the ordered free-berth list — same inputs always land the
+/// same ship on the same berth, but different ships spread across berths
+/// instead of everyone piling onto berth 0.
+fn free_berth(
+  state: State,
+  ship_id: Int,
+  station_id: String,
+) -> Result(Int, String) {
+  case world.get_station(state.world, station_id) {
+    Error(Nil) -> Error("no_berths")
+    Ok(station) ->
+      case station.berths {
+        [] -> Error("no_berths")
+        berths -> {
+          let taken =
+            list.filter_map(state.ships, fn(s) {
+              case s.dock {
+                ship.Docked(sid, berth) if sid == station_id -> Ok(berth)
+                _ -> Error(Nil)
+              }
+            })
+          case free_indices(list.length(berths), taken) {
+            [] -> Error("berths_full")
+            free -> {
+              let key = station_id <> ":" <> int.to_string(ship_id)
+              let assert Ok(pick) =
+                int.modulo(
+                  noise.seed_string(state.world.seed, key),
+                  list.length(free),
+                )
+              let assert Ok(index) = free |> list.drop(pick) |> list.first
+              Ok(index)
+            }
+          }
+        }
+      }
+  }
+}
+
+/// Every index in `[0, count)` not present in `taken`, ascending. (The
+/// pinned gleam_stdlib 1.0.3 has no `list.range`, so this walks indices
+/// directly.)
+fn free_indices(count: Int, taken: List(Int)) -> List(Int) {
+  free_indices_from(0, count, taken)
+}
+
+fn free_indices_from(index: Int, count: Int, taken: List(Int)) -> List(Int) {
+  case index >= count {
+    True -> []
+    False ->
+      case list.contains(taken, index) {
+        True -> free_indices_from(index + 1, count, taken)
+        False -> [index, ..free_indices_from(index + 1, count, taken)]
+      }
+  }
+}
+
+/// Rebuild `station_id`'s composite from the ships in `state`, bump its
+/// epoch, and translate every body standing in that space by the frame
+/// shift (uniform: berth-relative layout is stable, only the normalization
+/// shift moves). Panics only if the rebuild fails, which world validation +
+/// berth spacing make impossible for authored layouts.
+fn rebuild_space(state: State, station_id: String) -> State {
+  case world.get_station(state.world, station_id) {
+    Error(Nil) -> state
+    Ok(station) ->
+      case station.concourse {
+        None -> state
+        Some(concourse) -> {
+          let assert Ok(built) =
+            composite.build(
+              concourse,
+              station.berths,
+              docked_ships_at(state, station_id),
+            )
+          let #(old_dx, old_dy) = case find_space(state.spaces, station_id) {
+            Ok(old) -> #(old.composite.concourse_dx, old.composite.concourse_dy)
+            Error(Nil) -> #(0, 0)
+          }
+          let shift_x = int.to_float(built.concourse_dx - old_dx)
+          let shift_y = int.to_float(built.concourse_dy - old_dy)
+          // A body standing on a ship mooring that just despawned lands in
+          // void on the new composite (its tiles are gone). Rather than
+          // leave it soft-locked — character.step rejects every move out of
+          // a non-walkable circle — snap it to the concourse spawn tile,
+          // dropping any now-ghost seat and pending move input.
+          let #(spawn_tx, spawn_ty) = built.plan.spawn_tile
+          let #(spawn_x, spawn_y) = deckplan.tile_center(spawn_tx, spawn_ty)
+          let characters =
+            list.map(state.characters, fn(c) {
+              case c.place == character.OnStation(station_id) {
+                False -> c
+                True -> {
+                  let moved =
+                    character.Character(
+                      ..c,
+                      x: c.x +. shift_x,
+                      y: c.y +. shift_y,
+                    )
+                  case character.can_stand_at(built.plan, moved.x, moved.y) {
+                    True -> moved
+                    False ->
+                      character.Character(
+                        ..moved,
+                        x: spawn_x,
+                        y: spawn_y,
+                        seat: None,
+                        move_dx: 0.0,
+                        move_dy: 0.0,
+                      )
+                  }
+                }
+              }
+            })
+          let epoch = case find_space(state.spaces, station_id) {
+            Ok(old) -> old.epoch + 1
+            Error(Nil) -> 1
+          }
+          let spaces =
+            list.map(state.spaces, fn(s) {
+              case s.station_id == station_id {
+                True -> StationSpace(station_id, epoch, built)
+                False -> s
+              }
+            })
+          State(..state, characters: characters, spaces: spaces)
+        }
+      }
+  }
+}
+
+/// Push a personalized `space` message to every client whose character is
+/// in `space_id`'s scope right now.
+fn push_space(state: State, space_id: protocol.SpaceId) -> Nil {
+  list.each(state.clients, fn(client) {
+    case find_character(state.characters, client.character_id) {
+      Error(Nil) -> Nil
+      Ok(char) -> {
+        let in_scope = case space_id, char.place {
+          protocol.StationSpace(sid), character.OnStation(here) -> sid == here
+          protocol.ShipSpace(ship_id), character.Aboard ->
+            char.ship_id == ship_id
+          _, _ -> False
+        }
+        case in_scope {
+          False -> Nil
+          True ->
+            case space_message_for(state, char) {
+              Error(Nil) -> Nil
+              Ok(text) -> process.send(client.subject, SendText(text))
+            }
+        }
+      }
+    }
+  })
+}
+
+/// The `space` message for one character's current place.
+fn space_message_for(state: State, char: Character) -> Result(String, Nil) {
+  case char.place {
+    character.Aboard ->
+      Ok(protocol.encode_space(
+        protocol.ShipSpace(char.ship_id),
+        0,
+        state.class.plan,
+        [],
+        char,
+      ))
+    character.OnStation(station_id) ->
+      case find_space(state.spaces, station_id) {
+        Error(Nil) -> Error(Nil)
+        Ok(space) ->
+          Ok(protocol.encode_space(
+            protocol.StationSpace(station_id),
+            space.epoch,
+            space.composite.plan,
+            space.composite.moorings,
+            char,
+          ))
       }
   }
 }
@@ -1158,7 +1395,7 @@ fn run_tick(state: State) -> actor.Next(State, Msg) {
       let #(done, markets) = acc
       case s.transfers, s.dock {
         [], _ -> #([s, ..done], markets)
-        [_, ..], ship.Docked(station_id) -> {
+        [_, ..], ship.Docked(station_id, _) -> {
           let #(stepped, deliveries) = cargo.step_transfers(s)
           let markets =
             list.fold(deliveries, markets, fn(markets, delivery) {
@@ -1194,16 +1431,15 @@ fn run_tick(state: State) -> actor.Next(State, Msg) {
   }
 
   // 2. Broadcast at 15 Hz (skip serialization with no listeners): one
-  // shared exterior snapshot to everyone, plus one interior message per
-  // crewed ship fanned out only to that ship's crew.
+  // shared exterior snapshot to everyone, plus one `walkers` message per
+  // occupied space fanned out only to that space's occupants.
   case tick % snapshot_every == 0 && state.clients != [] {
     True -> {
       let snapshot = protocol.encode_snapshot(tick, ships)
       list.each(state.clients, fn(client) {
         process.send(client.subject, SendText(snapshot))
       })
-      broadcast_interiors(state.clients, characters, tick)
-      broadcast_concourses(state.clients, characters, tick)
+      broadcast_walkers(state.clients, characters, state.spaces, tick)
       broadcast_cargo(
         state.clients,
         characters,
@@ -1243,74 +1479,59 @@ fn run_tick(state: State) -> actor.Next(State, Msg) {
   actor.continue(state)
 }
 
-/// Serialize one `interior` message per crewed ship and send it only to
-/// the clients whose character is currently aboard that ship.
-fn broadcast_interiors(
+/// One `walkers` message per occupied space, sent only to that space's
+/// occupants: flying ships' crews get their ship space, everyone at a
+/// docked station (aboard moored ships or on the concourse floor alike)
+/// shares the station space.
+fn broadcast_walkers(
   clients: List(Client),
   characters: List(Character),
+  spaces: List(StationSpace),
   tick: Int,
 ) -> Nil {
-  let aboard = list.filter(characters, fn(c) { c.place == character.Aboard })
-  let crewed_ship_ids = list.map(aboard, fn(c) { c.ship_id }) |> list.unique
-  let texts =
-    list.map(crewed_ship_ids, fn(ship_id) {
-      let crew = list.filter(aboard, fn(c) { c.ship_id == ship_id })
-      #(ship_id, protocol.encode_interior(tick, ship_id, crew))
-    })
-  list.each(clients, fn(client) {
-    case find_character(characters, client.character_id) {
-      Error(Nil) -> Nil
-      Ok(char) ->
-        case char.place {
-          character.OnStation(_) -> Nil
-          character.Aboard ->
-            case list.find(texts, fn(t) { t.0 == char.ship_id }) {
-              Error(Nil) -> Nil
-              Ok(#(_, text)) -> process.send(client.subject, SendText(text))
-            }
-        }
-    }
-  })
-}
-
-/// One `concourse` message per occupied station, sent only to the clients
-/// whose character is standing in it.
-fn broadcast_concourses(
-  clients: List(Client),
-  characters: List(Character),
-  tick: Int,
-) -> Nil {
-  let ashore =
-    list.filter_map(characters, fn(c) {
+  let keyed =
+    list.map(characters, fn(c) {
       case c.place {
-        character.OnStation(station_id) -> Ok(#(station_id, c))
-        character.Aboard -> Error(Nil)
+        character.Aboard -> #(protocol.ShipSpace(c.ship_id), c)
+        character.OnStation(station_id) -> #(
+          protocol.StationSpace(station_id),
+          c,
+        )
       }
     })
-  let station_ids = list.map(ashore, fn(pair) { pair.0 }) |> list.unique
+  let space_ids = list.map(keyed, fn(pair) { pair.0 }) |> list.unique
   let texts =
-    list.map(station_ids, fn(station_id) {
+    list.map(space_ids, fn(space_id) {
       let occupants =
-        list.filter_map(ashore, fn(pair) {
-          case pair.0 == station_id {
+        list.filter_map(keyed, fn(pair) {
+          case pair.0 == space_id {
             True -> Ok(pair.1)
             False -> Error(Nil)
           }
         })
-      #(station_id, protocol.encode_concourse(tick, station_id, occupants))
+      let epoch = case space_id {
+        protocol.ShipSpace(_) -> 0
+        protocol.StationSpace(station_id) ->
+          case find_space(spaces, station_id) {
+            Ok(space) -> space.epoch
+            Error(Nil) -> 0
+          }
+      }
+      #(space_id, protocol.encode_walkers(tick, space_id, epoch, occupants))
     })
   list.each(clients, fn(client) {
     case find_character(characters, client.character_id) {
       Error(Nil) -> Nil
-      Ok(char) ->
-        case char.place {
-          character.Aboard -> Nil
-          character.OnStation(station_id) ->
-            case list.find(texts, fn(t) { t.0 == station_id }) {
-              Error(Nil) -> Nil
-              Ok(#(_, text)) -> process.send(client.subject, SendText(text))
-            }
+      Ok(char) -> {
+        let key = case char.place {
+          character.Aboard -> protocol.ShipSpace(char.ship_id)
+          character.OnStation(station_id) -> protocol.StationSpace(station_id)
         }
+        case list.find(texts, fn(t) { t.0 == key }) {
+          Error(Nil) -> Nil
+          Ok(#(_, text)) -> process.send(client.subject, SendText(text))
+        }
+      }
     }
   })
 }

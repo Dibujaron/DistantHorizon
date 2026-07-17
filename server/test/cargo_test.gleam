@@ -20,7 +20,7 @@ fn test_ship() -> ship.Ship {
     vy: 0.0,
     heading: 0.0,
     controls: ship.Controls(rotate: 0.0, thrust: 0.0),
-    dock: ship.Docked("meridian_highport"),
+    dock: ship.Docked("meridian_highport", 0),
     wallet: 2000,
     hold: dict.new(),
     transfers: [],

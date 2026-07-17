@@ -56,7 +56,8 @@ pub type Controls {
 /// Whether a ship is flying freely or pinned to a station.
 pub type DockState {
   Flying
-  Docked(station_id: String)
+  /// Docked and holding a claimed berth index on that station's concourse.
+  Docked(station_id: String, berth: Int)
 }
 
 pub type Ship {
@@ -82,8 +83,8 @@ fn cos(x: Float) -> Float
 fn sin(x: Float) -> Float
 
 /// A new ship, docked at `world.spawn_station`, pinned to that station's
-/// position and velocity at sim time `t`.
-pub fn spawn_docked(id: Int, world: World, t: Float) -> Ship {
+/// position and velocity at sim time `t`, holding the given berth index.
+pub fn spawn_docked(id: Int, world: World, t: Float, berth: Int) -> Ship {
   let station_id = world.spawn_station
   let #(x, y) = world.station_position(world, station_id, t)
   let #(vx, vy) = world.station_velocity(world, station_id, t)
@@ -95,7 +96,7 @@ pub fn spawn_docked(id: Int, world: World, t: Float) -> Ship {
     vy: vy,
     heading: 0.0,
     controls: Controls(rotate: 0.0, thrust: 0.0),
-    dock: Docked(station_id),
+    dock: Docked(station_id, berth),
     wallet: starting_wallet,
     hold: dict.new(),
     transfers: [],
@@ -119,7 +120,7 @@ pub fn set_controls(ship: Ship, rotate: Float, thrust: Float) -> Ship {
 /// controls; a flying ship integrates thrust + gravity.
 pub fn step(ship: Ship, world: World, t: Float) -> Ship {
   case ship.dock {
-    Docked(station_id) -> {
+    Docked(station_id, _) -> {
       let #(x, y) = world.station_position(world, station_id, t)
       let #(vx, vy) = world.station_velocity(world, station_id, t)
       Ship(..ship, x: x, y: y, vx: vx, vy: vy)
@@ -141,10 +142,18 @@ pub fn step(ship: Ship, world: World, t: Float) -> Ship {
 /// Attempt to dock at the nearest station within its `dock_radius`.
 /// `Error("already_docked")` if already docked, `Error("out_of_range")` if
 /// no station is within range, `Error("too_fast")` if the relative speed to
-/// the nearest in-range station exceeds `max_dock_speed`.
-pub fn try_dock(ship: Ship, world: World, t: Float) -> Result(Ship, String) {
+/// the nearest in-range station exceeds `max_dock_speed` (checked before
+/// claiming a berth); otherwise `claim_berth` is called with the in-range
+/// station's id and its result (a claimed berth index, or a refusal reason
+/// such as `"berths_full"` / `"no_berths"`) is forwarded as-is.
+pub fn try_dock(
+  ship: Ship,
+  world: World,
+  t: Float,
+  claim_berth: fn(String) -> Result(Int, String),
+) -> Result(Ship, String) {
   case ship.dock {
-    Docked(_) -> Error("already_docked")
+    Docked(_, _) -> Error("already_docked")
     Flying ->
       case nearest_in_range(ship, world, t) {
         None -> Error("out_of_range")
@@ -152,17 +161,22 @@ pub fn try_dock(ship: Ship, world: World, t: Float) -> Result(Ship, String) {
           let relative_speed = distance(ship.vx, ship.vy, svx, svy)
           case relative_speed >. max_dock_speed {
             True -> Error("too_fast")
-            // Zero the helm on dock: helm input is ignored while docked, so
-            // any controls left set here would silently survive the stay
-            // and fire again on the first step after undock.
             False ->
-              Ok(
-                Ship(
-                  ..ship,
-                  controls: Controls(rotate: 0.0, thrust: 0.0),
-                  dock: Docked(station_id),
-                ),
-              )
+              case claim_berth(station_id) {
+                Error(reason) -> Error(reason)
+                // Zero the helm on dock: helm input is ignored while
+                // docked, so any controls left set here would silently
+                // survive the stay and fire again on the first step after
+                // undock.
+                Ok(berth) ->
+                  Ok(
+                    Ship(
+                      ..ship,
+                      controls: Controls(rotate: 0.0, thrust: 0.0),
+                      dock: Docked(station_id, berth),
+                    ),
+                  )
+              }
           }
         }
       }
@@ -176,8 +190,8 @@ pub fn try_dock(ship: Ship, world: World, t: Float) -> Result(Ship, String) {
 pub fn undock(ship: Ship, world: World, t: Float) -> Result(Ship, String) {
   case ship.dock {
     Flying -> Error("not_docked")
-    Docked(_) if ship.transfers != [] -> Error("transfer_in_progress")
-    Docked(station_id) -> {
+    Docked(_, _) if ship.transfers != [] -> Error("transfer_in_progress")
+    Docked(station_id, _) -> {
       let #(sx, sy) = world.station_position(world, station_id, t)
       let #(svx, svy) = world.station_velocity(world, station_id, t)
       Ok(Ship(..ship, x: sx, y: sy, vx: svx, vy: svy, dock: Flying))

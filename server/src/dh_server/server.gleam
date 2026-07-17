@@ -4,11 +4,14 @@
 //// a valid `login`; the given `Authenticator` decides success/failure. On
 //// success the connection's ship and character are spawned via
 //// `sim.add_player` and it moves to `LoggedIn`, at which point
-//// `helm`/`dock`/`undock`/`move`/`sit`/`stand`/`board`/`disembark`/`buy`/`sell`/`get_market` take effect.
-//// `get_stats` works in both states. `LoggedIn.ship_id` tracks the
-//// character's current ship and is updated after every `board` attempt
-//// (even a failed one, to the character's unchanged current ship) so that
-//// `helm`/`dock`/`undock` always resolve against a session-local ship id.
+//// `helm`/`dock`/`undock`/`move`/`sit`/`stand`/`buy`/`sell`/`get_market` take
+//// effect. `get_stats` works in both states. `sim.add_player` can also
+//// refuse the login with `Error("station_full")` when the spawn station has
+//// no free berth, in which case the connection stays `PreLogin` and receives
+//// an `error` frame. `LoggedIn.ship_id` is the character's *spawn* ship: set
+//// once at login and never updated afterward, so it is informational only
+//// (e.g. for the welcome frame) — every other route resolves the
+//// character's current ship sim-side by `character_id`, not by this field.
 //// The sim pushes serialized snapshots/interiors as `SendText` messages,
 //// which the handler forwards down the socket.
 
@@ -144,22 +147,34 @@ fn handle_client_text(
         LoggedIn(_, _, _) -> session
         PreLogin(client) ->
           case authenticator(username, password) {
-            Ok(account_id) -> {
-              let #(ship_id, character_id) =
-                sim.add_player(sim_subject, username, client, 1000)
-              let _ =
-                mist.send_text_frame(
-                  conn,
-                  protocol.encode_welcome(
-                    account_id,
-                    ship_id,
-                    character_id,
-                    world,
-                    class,
-                  ),
-                )
-              LoggedIn(client, ship_id, character_id)
-            }
+            Ok(account_id) ->
+              case sim.add_player(sim_subject, username, client, 1000) {
+                Error(reason) -> {
+                  let _ =
+                    mist.send_text_frame(
+                      conn,
+                      protocol.encode_error(
+                        reason,
+                        "no free berth at the spawn station",
+                      ),
+                    )
+                  session
+                }
+                Ok(#(ship_id, character_id)) -> {
+                  let _ =
+                    mist.send_text_frame(
+                      conn,
+                      protocol.encode_welcome(
+                        account_id,
+                        ship_id,
+                        character_id,
+                        world,
+                        class,
+                      ),
+                    )
+                  LoggedIn(client, ship_id, character_id)
+                }
+              }
             Error(auth.InvalidCredentials) -> {
               let _ =
                 mist.send_text_frame(
@@ -182,7 +197,7 @@ fn handle_client_text(
           }
       }
 
-    // Helm/dock/undock/move/sit/stand/board are ignored until logged in.
+    // Helm/dock/undock/move/sit/stand are ignored until logged in.
     Ok(protocol.Helm(rotate, thrust)) ->
       case session {
         PreLogin(_) -> session
@@ -241,31 +256,6 @@ fn handle_client_text(
           let result = sim.request_stand(sim_subject, character_id, 1000)
           let _ =
             mist.send_text_frame(conn, protocol.encode_seat_result(result))
-          session
-        }
-      }
-
-    Ok(protocol.Board(target_ship_id)) ->
-      case session {
-        PreLogin(_) -> session
-        LoggedIn(client, _, character_id) -> {
-          let result =
-            sim.request_board(sim_subject, character_id, target_ship_id, 1000)
-          let _ =
-            mist.send_text_frame(conn, protocol.encode_board_result(result))
-          // `ship_id` is "your ship after the attempt": updated whether the
-          // board succeeded or not (a failed attempt leaves it unchanged).
-          LoggedIn(client, result.ship_id, character_id)
-        }
-      }
-
-    Ok(protocol.Disembark) ->
-      case session {
-        PreLogin(_) -> session
-        LoggedIn(_, _, character_id) -> {
-          let result = sim.request_disembark(sim_subject, character_id, 1000)
-          let _ =
-            mist.send_text_frame(conn, protocol.encode_disembark_result(result))
           session
         }
       }

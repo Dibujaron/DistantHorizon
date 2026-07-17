@@ -1,18 +1,32 @@
-"""M3 integration tests: trade on foot.
+"""M3.1 integration tests: trade on foot in the stitched station space.
 
-Exercises the full loop over the wire: walk off the docked ship onto the
-station concourse, sit at a broker, buy with a timed robot transfer, watch
-the hold fill through `cargo` messages, sell it back, and prove undock is
-blocked mid-transfer. World numbers come from server/worlds/m1_system.json:
-spawn station meridian_highport, concourse spawn [4,4] exactly 1.0 tiles
-from broker_main, machinery base 55 +/- 4, starting wallet 2000, hold
-capacity 40, robot rate 1.0 unit/s.
+Exercises the full loop over the wire: from the helm seat, stand and walk
+the composite (concourse + docked-ship moorings) to a broker, sit, buy with a
+timed robot transfer, watch the hold fill through `cargo` messages, sell it
+back, and prove undock is blocked mid-transfer. Under M3.1 there is no
+`board`/`disembark` any more: a docked ship's deck and the concourse are one
+stitched space, so crossing between them is plain `move` input. Login seats
+you at your own namespaced helm in that space already.
 
-Crossing between ship and concourse happens at the airlocks (the spawn
-tile of each plan; reason "not_at_airlock" otherwise), so going ashore
-means standing up at the helm and physically walking to the sparrow's aft
-airlock first — see _walk_to_ship_airlock.
+World numbers come from server/worlds/m1_system.json: spawn station
+meridian_highport, machinery base 55 +/- 4, starting wallet 2000, hold
+capacity 40, robot rate 1.0 unit/s, three berths.
+
+Composite geometry (verified by server/test/sim_test.gleam; y-down, tile
+units): berth assignment is seed-random among free berths (free_berth in
+sim.gleam), so a login's berth is never assumed -- every walk leg below
+derives its target column from the mooring the server actually reports. The
+sparrow's helm tile (1,2) lands at composite (mooring_dx + 1 + 0.5, 2.5) with
+seat "s{ship}:helm_main", and its airlock (spawn tile [5,4]) at composite
+column mooring_dx + 5. A ship's airlock COLUMN in the composite is thus
+mooring_dx + 5; its center is that + 0.5. The concourse floor is composite
+rows 6..8; broker_main sits at composite center (10.5, 7.5). Walk legs mirror
+sim_test.gleam's `walk_to_broker`: character radius 0.3, so descending the
+single-tile berth pinch needs the center at column + 0.4 or more (east of
+column + 0.4, THEN south). Walkers stream at 15 Hz, walk speed 3 tiles/s.
 """
+
+import math
 
 import pytest
 
@@ -21,8 +35,26 @@ from dh_client import DHClient
 pytestmark = pytest.mark.asyncio
 
 SPAWN_STATION = "meridian_highport"
+SPAWN_STATION_SPACE = f"station:{SPAWN_STATION}"
 MACHINERY_MIN, MACHINERY_MAX = 51, 59  # base 55, elasticity 4
 STARTING_WALLET = 2000
+
+BROKER_CENTER = (10.5, 7.5)  # broker_main: concourse (10,3) moored to (10,7)
+CONCOURSE_FLOOR_Y = 7.2  # a y >= here is safely on the concourse floor (rows 6..8)
+
+
+def _airlock_center_x(mooring_dx: int) -> float:
+    """Composite x-center of a ship's airlock column: the sparrow spawns at
+    ship-local x=5, so the airlock column is mooring_dx + 5, center + 0.5."""
+    return float(mooring_dx + 5) + 0.5
+
+
+def _mooring_dx(space: dict, ship_id: int) -> int:
+    """The dx of `ship_id`'s mooring in a `space` message (its berth offset)."""
+    for mooring in space["moorings"]:
+        if mooring["ship_id"] == ship_id:
+            return int(mooring["dx"])
+    raise AssertionError(f"ship {ship_id} not moored in space {space.get('space')!r}")
 
 
 async def _login(server, name: str) -> tuple[DHClient, dict]:
@@ -32,92 +64,140 @@ async def _login(server, name: str) -> tuple[DHClient, dict]:
     return client, welcome
 
 
-async def _wait_for_own_position(client: DHClient, feed: str, predicate, max_messages: int = 90) -> dict:
-    """Poll `interior` or `concourse` messages until our own character's
-    position satisfies `predicate`. 90 messages is 6 s at 15 Hz — double
-    the longest walk leg in these tests."""
-    getter = client.next_interior if feed == "interior" else client.next_concourse
+async def _own_position(client: DHClient, space: str, max_messages: int = 120):
+    """Drain walkers for `space` until our own character first appears,
+    returning its CharacterView."""
     me = None
     for _ in range(max_messages):
-        message = await getter()
+        message = await client.next_walkers()
+        if message.get("space") != space:
+            continue
+        me = client.character_in(message, client.character_id)
+        if me is not None:
+            return me
+    raise AssertionError(f"character never appeared in walkers for {space!r}")
+
+
+async def _wait_for_own_position(
+    client: DHClient,
+    space: str,
+    predicate,
+    max_messages: int = 120,
+    strict_space: bool = True,
+):
+    """Drain `walkers` until our own character's position satisfies
+    `predicate`. With `strict_space` (default) every frame must be for
+    `space` -- proving no dock/undock swapped us into another space
+    mid-walk. Without it, frames for other spaces are skipped (draining
+    stale frames buffered across a dock/undock rebuild). 120 messages is 8 s
+    at 15 Hz; the longest single leg here is ~5 tiles (~1.7 s of walking)."""
+    me = None
+    for _ in range(max_messages):
+        message = await client.next_walkers()
+        if message.get("space") != space:
+            if strict_space:
+                raise AssertionError(
+                    f"walkers space changed to {message.get('space')!r}; "
+                    f"expected {space!r} throughout"
+                )
+            continue
         me = client.character_in(message, client.character_id)
         if me is not None and predicate(me):
             return me
     raise AssertionError(f"character never reached expected position; last: {me}")
 
 
-async def _walk_to_ship_airlock(client: DHClient) -> None:
-    """From standing at the helm, walk east along the deck then south into
-    the aft airlock (spawn tile [5,4] -> center (5.5, 4.5)). Thresholds sit
-    ~0.2 tiles short of the target; the overshoot before the stop lands is
-    well inside the 1.2-tile airlock range."""
+async def _descend_to_broker(
+    client: DHClient,
+    space: str,
+    airlock_x: float,
+    strict_space: bool = True,
+) -> None:
+    """From standing on a ship's deck near its airlock column, walk down
+    through the airlock and berth stub onto the concourse floor, then along
+    the floor to broker_main. Mirrors sim_test.gleam's `walk_to_broker`
+    legs: east to center on the airlock column (clearing the single-tile
+    pinch), south to the floor, then east/west to the broker column."""
     await client.move(1, 0)
-    await _wait_for_own_position(client, "interior", lambda me: me.x >= 5.3)
+    await _wait_for_own_position(
+        client, space, lambda me: me.x >= airlock_x - 0.1, strict_space=strict_space
+    )
     await client.move(0, 1)
-    await _wait_for_own_position(client, "interior", lambda me: me.y >= 4.3)
+    await _wait_for_own_position(
+        client, space, lambda me: me.y >= CONCOURSE_FLOOR_Y, strict_space=strict_space
+    )
+    if airlock_x < BROKER_CENTER[0]:
+        await client.move(1, 0)
+        await _wait_for_own_position(
+            client, space, lambda me: me.x >= BROKER_CENTER[0] - 0.1,
+            max_messages=200, strict_space=strict_space,
+        )
+    else:
+        await client.move(-1, 0)
+        await _wait_for_own_position(
+            client, space, lambda me: me.x <= BROKER_CENTER[0] + 0.1,
+            max_messages=200, strict_space=strict_space,
+        )
     await client.move(0, 0)
 
 
-async def _go_ashore(client: DHClient) -> dict:
-    """Stand up (login seats you at the helm), walk to the airlock, and
-    step off the ship."""
+async def _walk_to_broker(client: DHClient) -> None:
+    """Stand up (login seats you at your own helm) and walk to broker_main
+    entirely by move input. Derives the airlock column from our own helm
+    position, so it works from any berth."""
     stand = await client.stand()
     assert stand["ok"], stand
-    await _walk_to_ship_airlock(client)
-    result = await client.disembark()
-    assert result["ok"], result
-    assert result["station_id"] == SPAWN_STATION
-    return result
+    me = await _own_position(client, SPAWN_STATION_SPACE)
+    airlock_x = _airlock_center_x(math.floor(me.x) - 1)  # helm col = mooring_dx + 1
+    await _descend_to_broker(client, SPAWN_STATION_SPACE, airlock_x)
 
 
-async def test_disembark_walk_and_return(server):
-    async with DHClient(name="m3_walker") as client:
-        welcome = await client.login("m3_walker", "pw")
+async def _walk_broker_to_helm(client: DHClient, airlock_x: float) -> None:
+    """Reverse of `_descend_to_broker`: from the concourse floor near the
+    broker back up the ship's own airlock column (from either side) onto
+    the deck and west to the helm at (airlock_x - 4, 2.5). `airlock_x`
+    comes from the ship's actual mooring -- never assumes berth 0."""
+    if airlock_x < BROKER_CENTER[0]:
+        await client.move(-1, 0)
+        await _wait_for_own_position(client, SPAWN_STATION_SPACE, lambda me: me.x <= airlock_x)
+    else:
+        await client.move(1, 0)
+        await _wait_for_own_position(client, SPAWN_STATION_SPACE, lambda me: me.x >= airlock_x)
+    await client.move(0, -1)
+    await _wait_for_own_position(client, SPAWN_STATION_SPACE, lambda me: me.y <= 2.6)
+    helm_x = airlock_x - 4.0
+    await client.move(-1, 0)
+    await _wait_for_own_position(client, SPAWN_STATION_SPACE, lambda me: me.x <= helm_x + 0.1)
+    await client.move(0, 0)
+
+
+async def test_walk_ashore_and_back_is_just_walking(server):
+    """M3.1: going ashore is plain walking. Login lands us seated at our own
+    namespaced helm in the station composite; we walk to the broker and back
+    up onto the ship, and every `walkers` frame the whole time stays the same
+    station space -- there is no board/disembark round-trip any more."""
+    async with DHClient(name="m31_walker") as client:
+        welcome = await client.login("m31_walker", "pw")
         ship_id = welcome["ship_id"]
 
-        # Standing at the helm you can't just step off the ship: the deck
-        # and the concourse connect at their airlocks.
+        space = await client.next_space()
+        assert space["space"] == SPAWN_STATION_SPACE
+        assert space["you"]["seat"] == f"s{ship_id}:helm_main"
+        airlock_x = _airlock_center_x(_mooring_dx(space, ship_id))
+
+        # Walk to the broker: _walk_to_broker asserts (strict_space) that
+        # every walkers frame stayed the station composite.
+        await _walk_to_broker(client)
+        assert (await client.sit("broker_main"))["ok"]  # we reached the broker tile
+
+        # Walk back up onto the ship and sit at our own helm again -- still
+        # one uninterrupted station space, still plain movement.
         stand = await client.stand()
         assert stand["ok"], stand
-        blocked = await client.disembark()
-        assert not blocked["ok"] and blocked["reason"] == "not_at_airlock"
-
-        await _walk_to_ship_airlock(client)
-        result = await client.disembark()
-        assert result["ok"], result
-        assert result["station_id"] == SPAWN_STATION
-
-        # We appear in the concourse feed, standing at the spawn tile.
-        concourse = await client.next_concourse()
-        assert concourse["station_id"] == SPAWN_STATION
-        me = client.character_in(concourse, client.character_id)
-        assert me is not None
-        assert me.seat is None
-        assert (me.x, me.y) == (4.5, 4.5)
-
-        # Walk north into the concourse proper, past airlock range, and
-        # stop: boarding is refused until we come back to the airlock.
-        await client.move(0, -1)
-        me = await _wait_for_own_position(client, "concourse", lambda me: me.y <= 2.9)
-        await client.move(0, 0)
-        assert me.y < 4.5
-        blocked = await client.board(ship_id)
-        assert not blocked["ok"] and blocked["reason"] == "not_at_airlock"
-
-        # Walk back down onto the concourse airlock and board our own ship
-        # back; we land at the ship's airlock (its spawn tile).
-        await client.move(0, 1)
-        await _wait_for_own_position(client, "concourse", lambda me: me.y >= 4.2)
-        await client.move(0, 0)
-        board = await client.board(ship_id)
-        assert board["ok"], board
-        assert board["ship_id"] == ship_id
-        # Skip any stale pre-disembark interiors buffered during the walk:
-        # the post-board one reports the exact airlock (spawn tile) snap.
-        me = await _wait_for_own_position(
-            client, "interior", lambda me: (me.x, me.y) == (5.5, 4.5)
-        )
-        assert me.seat is None
+        await _walk_broker_to_helm(client, airlock_x)
+        seated = await client.sit(f"s{ship_id}:helm_main")
+        assert seated["ok"], seated
+        assert seated["seat"] == f"s{ship_id}:helm_main"
 
 
 async def test_market_visible_while_docked_aboard(server):
@@ -136,7 +216,7 @@ async def test_market_visible_while_docked_aboard(server):
 async def test_buy_delivers_over_time(server):
     async with DHClient(name="m3_buyer") as client:
         await client.login("m3_buyer", "pw")
-        await _go_ashore(client)
+        await _walk_to_broker(client)
         sit = await client.sit("broker_main")
         assert sit["ok"], sit
 
@@ -147,8 +227,7 @@ async def test_buy_delivers_over_time(server):
         assert MACHINERY_MIN <= price <= MACHINERY_MAX
 
         # Wallet debited up front; goods arrive over ~3 s (1 unit/s). Skip
-        # the cargo backlog buffered while walking to the airlock: the
-        # first debited message is the one this buy produced.
+        # any cargo buffered before the debit landed.
         cargo = await client.next_cargo()
         for _ in range(120):
             if cargo["wallet"] != STARTING_WALLET:
@@ -167,7 +246,7 @@ async def test_buy_delivers_over_time(server):
 async def test_sell_pays_on_delivery(server):
     async with DHClient(name="m3_seller") as client:
         await client.login("m3_seller", "pw")
-        await _go_ashore(client)
+        await _walk_to_broker(client)
         assert (await client.sit("broker_main"))["ok"]
 
         buy = await client.buy("machinery", 2)
@@ -193,12 +272,12 @@ async def test_trade_validation_reasons(server):
     async with DHClient(name="m3_rules") as client:
         await client.login("m3_rules", "pw")
 
-        # Aboard: not at a broker.
+        # Seated at the helm (not a broker): no.
         trade = await client.buy("machinery", 1)
         assert not trade["ok"] and trade["reason"] == "not_at_broker"
 
-        await _go_ashore(client)
-        # Standing on the concourse: still not seated at a broker.
+        await _walk_to_broker(client)
+        # Standing on the concourse near the broker, but not seated: still no.
         trade = await client.buy("machinery", 1)
         assert not trade["ok"] and trade["reason"] == "not_at_broker"
 
@@ -228,28 +307,95 @@ async def test_trade_validation_reasons(server):
 
 
 async def test_pilot_holds_helm_while_quartermaster_trades(server):
-    """M3 exit criterion: one crew member buys on the concourse while the
-    pilot sits at the helm; undock is blocked until the robots finish."""
-    pilot, pilot_welcome = await _login(server, "m3_pilot")
-    qm, _qm_welcome = await _login(server, "m3_qm")
+    """M3.1 exit criterion: a quartermaster shanghais onto the pilot's ship,
+    the pilot undocks and RE-DOCKS (the crew-join re-moor path, which has no
+    server-side test of its own), then the qm trades ashore while the pilot
+    holds the helm; undock is blocked until the robots finish."""
+    pilot, pilot_welcome = await _login(server, "m31_pilot")
+    qm, qm_welcome = await _login(server, "m31_qm")
+    pilot_ship = pilot_welcome["ship_id"]
+    qm_ship = qm_welcome["ship_id"]
     try:
-        # The quartermaster crews the pilot's ship (both spawn docked at
-        # Meridian Highport), then goes ashore to the broker.
-        board = await qm.board(pilot_welcome["ship_id"])
-        assert board["ok"], board
-        ashore = await qm.disembark()
-        assert ashore["ok"], ashore
+        # Both spawn docked, at whichever berths free_berth assigned them.
+        # Their login `space` messages carry the moorings we drive the walk
+        # legs from.
+        pilot_space = await pilot.next_space()
+        assert pilot_space["space"] == SPAWN_STATION_SPACE
+        qm_space = await qm.next_space()
+        assert qm_space["space"] == SPAWN_STATION_SPACE
+        qm_own_airlock = _airlock_center_x(_mooring_dx(qm_space, qm_ship))
+        pilot_airlock = _airlock_center_x(_mooring_dx(pilot_space, pilot_ship))
+
+        # The qm stands and walks off her own deck, along the concourse, and
+        # up onto the pilot's deck (down her airlock column, west along the
+        # floor, north onto the pilot's ship tiles).
+        stand = await qm.stand()
+        assert stand["ok"], stand
+        await qm.move(1, 0)
+        await _wait_for_own_position(
+            qm, SPAWN_STATION_SPACE, lambda me: me.x >= qm_own_airlock - 0.1
+        )
+        await qm.move(0, 1)
+        await _wait_for_own_position(
+            qm, SPAWN_STATION_SPACE, lambda me: me.y >= CONCOURSE_FLOOR_Y
+        )
+        await qm.move(-1, 0)
+        await _wait_for_own_position(
+            qm, SPAWN_STATION_SPACE, lambda me: me.x <= pilot_airlock, max_messages=200
+        )
+        await qm.move(0, -1)
+        await _wait_for_own_position(
+            qm, SPAWN_STATION_SPACE, lambda me: me.y <= 3.6
+        )
+        await qm.move(0, 0)
+
+        # The pilot undocks: the qm stands on the pilot's tiles, so she is
+        # carried off as the pilot's crew (shanghai); her old ship, now
+        # crewless, despawns. Pilot + qm now share the pilot's ship space.
+        undock = await pilot.undock()
+        assert undock["ok"], undock
+
+        # The pilot re-docks -- the crew-join re-moor path. dock()'s
+        # dock_result drains the stale ship `space` buffered from the undock,
+        # so the next `space` is the station composite the redock rebuilt.
+        redock = await pilot.dock()
+        assert redock["ok"], redock
+        pilot_redock_space = await pilot.next_space()
+        assert pilot_redock_space["space"] == SPAWN_STATION_SPACE
+        # The pilot's helm seat is re-namespaced back to the ship on the join.
+        assert pilot_redock_space["you"]["seat"] == f"s{pilot_ship}:helm_main"
+        # Berth assignment is seed-random among free berths -- derive the
+        # mooring, never hardcode.
+        redock_dx = _mooring_dx(pilot_redock_space, pilot_ship)
+        redock_airlock = _airlock_center_x(redock_dx)
+
+        # Both bodies re-enter the station space's walkers on the redock.
+        both = {pilot.character_id, qm.character_id}
+        for _ in range(200):
+            frame = await pilot.next_walkers()
+            if frame.get("space") != SPAWN_STATION_SPACE:
+                continue
+            if both <= {c["id"] for c in frame["characters"]}:
+                break
+        else:
+            raise AssertionError("both bodies never re-appeared in station walkers")
+
+        # The qm (standing on the re-moored deck) walks to the broker; stale
+        # ship-space frames from the flight are drained (strict_space=False).
+        await _descend_to_broker(
+            qm, SPAWN_STATION_SPACE, redock_airlock, strict_space=False
+        )
         assert (await qm.sit("broker_main"))["ok"]
 
         buy = await qm.buy("machinery", 8)
         assert buy["ok"], buy
 
-        # The pilot (seated at the helm since login) cannot leave mid-load.
+        # The pilot (back at the helm) cannot leave mid-load.
         blocked = await pilot.undock()
         assert not blocked["ok"]
         assert blocked["reason"] == "transfer_in_progress"
 
-        # The quartermaster is crew, so cargo reaches them ashore.
+        # The qm is crew, so cargo reaches her ashore.
         cargo = await qm.next_cargo()
         for _ in range(240):  # 8 s load + headroom at 15 Hz
             if qm.hold_quantity(cargo, "machinery") == 8 and not cargo["transfers"]:

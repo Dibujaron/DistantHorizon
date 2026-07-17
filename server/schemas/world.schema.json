@@ -1,0 +1,219 @@
+{
+  "$schema": "http://json-schema.org/draft-06/schema#",
+  "$id": "https://distanthorizon.dev/schemas/world.schema.json",
+  "title": "World document",
+  "description": "One star system (star, planets, stations), loaded at server startup. Derived from the Gleam decoders in server/src/dh_server/world.gleam (world_decoder/station_decoder/body_decoder/commodity_decoder/market_entry_decoder/orbit_decoder) and server/src/dh_server/deckplan.gleam (decoder) — those decoders are the source of truth; this schema is documentation and a typo-catcher, not a substitute for them. additionalProperties is false at every object level even though the decoders themselves ignore unknown fields, precisely so this schema can catch typos the decoders would silently swallow. Note: every field typed 'number' here backs a Gleam decode.float field, which REJECTS bare JSON integers (e.g. 5 is invalid, 5.0 is required) — JSON Schema draft 2020-12 cannot distinguish 1 from 1.0, so that constraint is documented here rather than enforced.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "name", "seed", "bodies", "stations", "spawn_station"],
+  "properties": {
+    "schema": { "type": "integer" },
+    "name": { "type": "string" },
+    "seed": { "type": "integer" },
+    "commodities": {
+      "type": "array",
+      "description": "Optional field (decode.optional_field, default []).",
+      "items": { "$ref": "#/$defs/commodity" }
+    },
+    "bodies": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/body" }
+    },
+    "stations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/station" }
+    },
+    "spawn_station": {
+      "type": "string",
+      "description": "Must reference an existing station id (enforced by the Gleam decoder's validate step, not by this schema)."
+    }
+  },
+  "$defs": {
+    "orbit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["radius", "period_s", "phase"],
+      "properties": {
+        "radius": {
+          "type": "number",
+          "description": "decode.float: JSON value must have a decimal point (e.g. 4000.0), a bare integer is rejected."
+        },
+        "period_s": {
+          "type": "number",
+          "description": "decode.float: JSON value must have a decimal point, a bare integer is rejected."
+        },
+        "phase": {
+          "type": "number",
+          "description": "decode.float: JSON value must have a decimal point, a bare integer is rejected."
+        }
+      }
+    },
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "kind", "parent", "orbit", "radius", "mu"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "description": "Free-form in the decoder (no enum, e.g. \"star\"/\"planet\" are conventions, not constraints); left open here."
+        },
+        "parent": {
+          "type": ["string", "null"],
+          "description": "decode.field + decode.optional: the key is required, but its value may be null (no parent, e.g. the star) or a body id string."
+        },
+        "orbit": {
+          "description": "decode.field + decode.optional: the key is required, but its value may be null (no orbit, e.g. the star) or an orbit object.",
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/orbit" }
+          ]
+        },
+        "radius": {
+          "type": "number",
+          "description": "decode.float: JSON value must have a decimal point, a bare integer is rejected."
+        },
+        "mu": {
+          "type": "number",
+          "description": "decode.float: JSON value must have a decimal point, a bare integer is rejected."
+        }
+      }
+    },
+    "commodity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" }
+      }
+    },
+    "market_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commodity", "initial", "price", "elasticity"],
+      "properties": {
+        "commodity": {
+          "type": "string",
+          "description": "Must reference an existing commodity id (enforced by the Gleam decoder's validate step, not by this schema)."
+        },
+        "initial": { "type": "integer" },
+        "price": { "type": "integer" },
+        "elasticity": { "type": "integer" }
+      }
+    },
+    "station": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "parent", "orbit", "dock_radius"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "parent": {
+          "type": "string",
+          "description": "Must reference an existing body id (enforced by the Gleam decoder's validate step, not by this schema)."
+        },
+        "orbit": { "$ref": "#/$defs/orbit" },
+        "dock_radius": {
+          "type": "number",
+          "description": "decode.float: JSON value must have a decimal point, a bare integer is rejected."
+        },
+        "crane": {
+          "type": "boolean",
+          "description": "Optional field (decode.optional_field, default false). The fast-handling path: container hulls can only trade where crane is true."
+        },
+        "concourse": {
+          "description": "Optional field (decode.optional_field, default None) whose value may also be null; when present and non-null it is a walkable interior deck plan. null/absent means crews cannot go ashore.",
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/deckplan" }
+          ]
+        },
+        "market": {
+          "type": "array",
+          "description": "Optional field (decode.optional_field, default []).",
+          "items": { "$ref": "#/$defs/market_entry" }
+        },
+        "berths": {
+          "type": "array",
+          "description": "Optional field (decode.optional_field, default []). Authored mooring anchors on the concourse's top edge (M3.1); empty means ships cannot dock here.",
+          "items": {
+            "type": "array",
+            "description": "[x, y] tile coordinate.",
+            "items": { "type": "integer" },
+            "minItems": 2,
+            "maxItems": 2
+          }
+        }
+      }
+    },
+    "grid": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "integer" },
+        "height": { "type": "integer" }
+      }
+    },
+    "room": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "x", "y", "w", "h"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "x": { "type": "integer" },
+        "y": { "type": "integer" },
+        "w": { "type": "integer" },
+        "h": { "type": "integer" }
+      }
+    },
+    "console": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "x", "y"],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "description": "Free-form in the decoder (e.g. \"helm\"/\"cargo\"/\"broker\" are conventions, not constraints); left open here."
+        },
+        "x": { "type": "integer" },
+        "y": { "type": "integer" }
+      }
+    },
+    "deckplan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["grid", "walkable", "rooms", "consoles", "spawn_tile"],
+      "properties": {
+        "grid": { "$ref": "#/$defs/grid" },
+        "walkable": {
+          "type": "array",
+          "description": "One string per row, top to bottom; '#' walkable, anything else (canonically '.') hull/void. Row count and each row's length must match grid.height/grid.width (enforced by the Gleam decoder's validate step, not by this schema).",
+          "items": {
+            "type": "string",
+            "pattern": "^[#.]*$"
+          }
+        },
+        "rooms": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/room" }
+        },
+        "consoles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/console" }
+        },
+        "spawn_tile": {
+          "type": "array",
+          "description": "[x, y] tile where arriving characters appear (the airlock end).",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2
+        }
+      }
+    }
+  }
+}

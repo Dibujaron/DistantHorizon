@@ -653,6 +653,7 @@ what makes the game developable by agents rather than merely reviewable.
   shipped the interim behavior (X cycles the airlock, only from the airlock, docking collar
   rendered); this milestone deletes that crossing entirely. *This is key — "the ship is a
   place" lives or dies at the airlock.*
+  **✅ Done 2026-07-17 ([results](docs/M3.1-RESULTS.md)).**
 - **M3.5 — The vibe pass:** people fall in love with a vibe, and nobody can love a pixelated
   circle on a grid. First in-game aesthetic pass over the M3 playable loop: real hull sprites
   from the parts-vocabulary pipeline (the artspike style that passed the eyeball test,
@@ -751,12 +752,40 @@ what makes the game developable by agents rather than merely reviewable.
   visible at a glance.
 - **Is there an engineering game worth having?** Open challenge to future-us: find a core loop
   for engineer that passes the seat test, or keep the role cut.
-- **Planetside landing:** free flight over 2D terrain is a dead end and stays one — so what
-  happens between "burn for the planet" and "standing on the pad"? Near-term answer
-  (committed): landing is *docking* — a surface pad is a station whose berth requires the
-  atmospheric package (fins — docs/lore.md, the Mockingbird), and the descent is an abstract
-  transition, exactly like docking at an orbital. Eventually: a landing **minigame** — entry
-  corridor, heat and aero management, the atmosphere's version of recovering a shuttle to an
-  accelerating mothership. A skill moment that rewards planning the approach (Panic theme)
-  and fits Competence-Not-Power; airless-moon pads can stay pure docking even then. What it
-  never becomes: terrain flying.
+- **Planetside landing & the surface:** free flight over 2D terrain is a dead end and stays
+  one — so what happens between "burn for the planet" and "standing on the pad"? Near-term
+  answer (committed): landing is *docking* — a surface pad is a station whose berth requires
+  the atmospheric package (fins — docs/lore.md, the Mockingbird), and the descent is an
+  abstract transition, exactly like docking at an orbital. Eventually: a landing
+  **minigame** — entry corridor, heat and aero management, the atmosphere's version of
+  recovering a shuttle to an accelerating mothership; a skill moment that rewards planning
+  the approach (Panic theme) and fits Competence-Not-Power. Airless pads stay pure docking
+  even then. What it never becomes: terrain flying.
+
+  Once you're down, the port is a **concourse whose frame is a patch of planet** — same
+  interior tech, no new rendering. "Walking off into the woods" dissolves into three honest
+  barriers, none of them invisible:
+  - **Air.** The wall isn't the planet — it's *you*. Terraforming is never finished
+    (docs/lore.md, the Choice), but most border populations finished *themselves* instead:
+    their worlds are lived in openly, and only the really new colonies still spend their
+    whole lives in bubbles. It's the visiting body that doesn't fit — spacers are adapted
+    to ships, not to anybody's weather — so the port keeps guest-standard air, and the way
+    out is an airlock scaled by degrees: a breather mask here, cold gear there, a full suit
+    on the raw new worlds. Step out and stand on the ridge with your crew (an Awe beat, and
+    ports are remote, so it's cheap to render). The town over the hill breathes this air
+    fine; you don't. The world holds *you* at a distance — the theme, made of air.
+  - **Authority.** Core garden worlds — the meadows *your* lungs are welcome in — get
+    customs instead: the UCE's immigration politics as architecture, the green visible
+    through the glass, the world held at a distance exactly per themes.md (Loneliness).
+  - **Attention.** The universal outer layer, for breathable marginals and anyone who keeps
+    walking: the world doesn't stop you — **the camera does**. Past the port's edge the
+    camera stops following; your character keeps walking, out of frame, as far as you like
+    (flat empty terrain costs the server nothing) while the screen holds on the port and
+    the land. Not an invisible wall — the game admitting its frame: the story is here, the
+    world is real, and it isn't yours. An edge-of-screen marker points at your distant
+    walker; walk back and you re-enter the shot.
+
+  Future hooks, not design: settlements as further concourses reached by transit (a maglev
+  ride is a docking-style transition — interiors linked by transit scale to anything; open
+  streets never happen), and, filed as a maybe: walking over the horizon and not coming
+  back as the diegetic way a character leaves the crew.

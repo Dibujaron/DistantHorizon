@@ -33,10 +33,12 @@ class ProtocolError(Exception):
 
 @dataclass(frozen=True)
 class CharacterView:
-    """One character from an `interior`/`concourse` message, as a typed
-    view. Tests reach entities through this (me.x, me.seat) rather than
-    string-indexing dicts; raw message dicts remain the tool only where a
-    test asserts on the wire shape itself."""
+    """One character from a `walkers` message, as a typed view. Tests reach
+    entities through this (me.x, me.seat) rather than string-indexing dicts;
+    raw message dicts remain the tool only where a test asserts on the wire
+    shape itself. Positions are in the frame of the character's current
+    `space` — ship-local while flying, composite (concourse + docked-ship
+    moorings) while docked."""
 
     id: int
     name: str
@@ -180,10 +182,12 @@ class DHClient:
     ) -> dict:
         """Log in and wait for the `welcome` reply.
 
-        Raises `AuthError` if the server sends `error` instead (e.g.
-        `auth_failed`), and `ProtocolError` if neither reply arrives within
-        `timeout` seconds. Other message types (there normally aren't any
-        yet, since the server sends no snapshots pre-login) are skipped.
+        Raises `AuthError` if the server sends `error` instead. Failure
+        codes include `auth_failed` (bad credentials) and `station_full`
+        (M3.1: no free berth at the spawn station to dock into). Raises
+        `ProtocolError` if neither reply arrives within `timeout` seconds.
+        Other message types (there normally aren't any yet, since the server
+        sends no snapshots pre-login) are skipped.
 
         On success, also stashes `character_id` and `ship_class` (the M2
         embodiment spawned at login) as attributes on the client for
@@ -249,19 +253,6 @@ class DHClient:
         await self.send({"type": "stand"})
         return await self.recv_type("seat_result", timeout=timeout)
 
-    async def board(
-        self, ship_id: int, timeout: Optional[float] = DEFAULT_TIMEOUT
-    ) -> dict:
-        """Request to board `ship_id` (M2); wait for `board_result`."""
-        await self.send({"type": "board", "ship_id": ship_id})
-        return await self.recv_type("board_result", timeout=timeout)
-
-    async def disembark(self, timeout: Optional[float] = DEFAULT_TIMEOUT) -> dict:
-        """Step off the docked ship onto the station concourse (M3);
-        wait for `disembark_result`."""
-        await self.send({"type": "disembark"})
-        return await self.recv_type("disembark_result", timeout=timeout)
-
     async def buy(
         self, commodity: str, quantity: int, timeout: Optional[float] = DEFAULT_TIMEOUT
     ) -> dict:
@@ -299,10 +290,26 @@ class DHClient:
         ship's crew, wherever their bodies are."""
         return await self.recv_type("cargo", timeout=timeout)
 
-    async def next_concourse(self, timeout: Optional[float] = DEFAULT_TIMEOUT) -> dict:
-        """Wait for the next `concourse` message (M3). Only arrives while
-        this client's character is standing in that concourse."""
-        return await self.recv_type("concourse", timeout=timeout)
+    async def next_space(self, timeout: Optional[float] = DEFAULT_TIMEOUT) -> dict:
+        """Wait for the next `space` message (M3.1): the plan we should now
+        be walking (ship interior while flying, station composite while
+        docked), with our own position in its frame under "you"."""
+        return await self.recv_type("space", timeout=timeout)
+
+    async def next_walkers(
+        self,
+        space: Optional[str] = None,
+        timeout: Optional[float] = DEFAULT_TIMEOUT,
+    ) -> dict:
+        """Wait for the next `walkers` message (M3.1), optionally skipping
+        until one for `space` ("ship:3" / "station:meridian_highport")
+        arrives - stale frames for a previous space can still be buffered
+        right after a dock/undock."""
+        for _ in range(1000):
+            message = await self.recv_type("walkers", timeout=timeout)
+            if space is None or message.get("space") == space:
+                return message
+        raise ProtocolError(f"no walkers for space {space!r}")
 
     def store_in(self, market: dict, commodity: str) -> Optional[dict]:
         """Find a commodity's store in a `market` message, if present."""
@@ -322,14 +329,6 @@ class DHClient:
         """Wait for the next `snapshot` message."""
         return await self.recv_type("snapshot", timeout=timeout)
 
-    async def next_interior(self, timeout: Optional[float] = DEFAULT_TIMEOUT) -> dict:
-        """Wait for the next `interior` message (M2).
-
-        Only arrives for a ship the caller's character is currently aboard,
-        at the same 15 Hz cadence as `snapshot`.
-        """
-        return await self.recv_type("interior", timeout=timeout)
-
     def ship_in(self, snapshot: dict, ship_id: int) -> Optional[dict]:
         """Find the ship with `ship_id` in a snapshot's ship list, if present."""
         for ship in snapshot.get("ships", []):
@@ -337,10 +336,10 @@ class DHClient:
                 return ship
         return None
 
-    def character_in(self, interior: dict, character_id: int) -> Optional[CharacterView]:
-        """Find the character with `character_id` in an `interior` (or
-        `concourse`) message's crew list, as a typed CharacterView."""
-        for character in interior.get("characters", []):
+    def character_in(self, walkers: dict, character_id: int) -> Optional[CharacterView]:
+        """Find the character with `character_id` in a `walkers` message's
+        crew list, as a typed CharacterView."""
+        for character in walkers.get("characters", []):
             if character.get("id") == character_id:
                 return CharacterView.from_wire(character)
         return None

@@ -1,8 +1,11 @@
+import dh_server/composite
 import dh_server/world.{type World, Body, Orbit, Station, World}
 import gleam/float
+import gleam/int
 import gleam/json
 import gleam/list
 import gleam/option.{None}
+import gleam/string
 
 const two_pi = 6.283185307179586
 
@@ -71,6 +74,7 @@ fn station_only_world() -> World {
         crane: False,
         concourse: None,
         market: [],
+        berths: [],
       ),
     ],
     spawn_station: "s1",
@@ -204,7 +208,7 @@ pub fn load_reads_trade_fields_test() {
   let assert Ok(highport) = world.get_station(w, "meridian_highport")
   assert highport.crane == True
   let assert option.Some(plan) = highport.concourse
-  assert plan.spawn_tile == #(4, 4)
+  assert plan.spawn_tile == #(16, 3)
   assert list.length(highport.market) == 4
   let assert Ok(solis) = world.get_station(w, "solis_ring")
   assert solis.crane == False
@@ -302,4 +306,54 @@ fn tiny_world_with_concourse_consoles(consoles_json: String) -> String {
   <> "\"spawn_tile\":[1,1]},"
   <> "\"market\":[{\"commodity\":\"water\",\"initial\":5,\"price\":10,\"elasticity\":1}]}],"
   <> "\"spawn_station\":\"stn\"}"
+}
+
+pub fn berths_decode_test() {
+  let assert Ok(w) = world.load("worlds/m1_system.json")
+  let assert Ok(meridian) = world.get_station(w, "meridian_highport")
+  assert meridian.berths
+    == [
+      composite.Berth(x: 6, y: 1),
+      composite.Berth(x: 16, y: 1),
+      composite.Berth(x: 26, y: 1),
+    ]
+  let assert Ok(solis) = world.get_station(w, "solis_ring")
+  assert solis.berths == [composite.Berth(x: 5, y: 1)]
+}
+
+pub fn berth_on_non_walkable_tile_is_invalid_test() {
+  // Minimal world JSON with a berth pointing at a void tile.
+  let assert Error(e) = world.decode(world_json_with_berth(0, 0))
+  assert string.contains(e, "berth")
+}
+
+pub fn berth_with_walkable_north_neighbor_is_invalid_test() {
+  // Berth at (2,2) inside the floor: the tile north of it is walkable,
+  // so a moored airlock would overlap the concourse.
+  let assert Error(e) = world.decode(world_json_with_berth(2, 2))
+  assert string.contains(e, "berth")
+}
+
+/// A compact single-station world with one substitutable berth, for
+/// exercising berth validation in isolation. The embedded concourse has a
+/// walkable spawn_tile at [2,2].
+fn world_json_with_berth(x: Int, y: Int) -> String {
+  "{\"schema\":2,\"name\":\"t\",\"seed\":1,"
+  <> "\"bodies\":[{\"id\":\"star\",\"name\":\"star\",\"kind\":\"star\","
+  <> "\"parent\":null,\"orbit\":null,\"radius\":1.0,\"mu\":0.0}],"
+  <> "\"stations\":[{\"id\":\"st\",\"name\":\"st\",\"parent\":\"star\","
+  <> "\"orbit\":{\"radius\":10.0,\"period_s\":10.0,\"phase\":0.0},"
+  <> "\"dock_radius\":5.0,"
+  <> "\"concourse\":{"
+  <> "\"grid\":{\"width\":6,\"height\":5},"
+  <> "\"walkable\":[\"......\",\"..#...\",\".####.\",\".####.\",\"......\"],"
+  <> "\"rooms\":[],"
+  <> "\"consoles\":[],"
+  <> "\"spawn_tile\":[2,2]},"
+  <> "\"berths\":[["
+  <> int.to_string(x)
+  <> ","
+  <> int.to_string(y)
+  <> "]]}],"
+  <> "\"spawn_station\":\"st\"}"
 }

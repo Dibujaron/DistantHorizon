@@ -1,9 +1,18 @@
-//// Walkable characters aboard a ship. A character stands and walks the
-//// deck plan (free movement, per-axis circle-vs-tile collision) or sits at
-//// a console, snapped to its tile center with move input ignored. Interior
+//// Walkable characters in a deck plan. A character stands and walks the
+//// plan (free movement, per-axis circle-vs-tile collision) or sits at a
+//// console, snapped to its tile center with move input ignored. Interior
 //// simulation is decoupled from exterior ship physics (artificial gravity
 //// handwave): walking never cares whether the ship is docked, thrusting,
 //// or tumbling.
+////
+//// A body's `Place` is either `Aboard` — in a *flying* ship's local frame
+//// — or `OnStation(station_id)` — in that station's composite frame, which
+//// (M3.1 stitched interiors) includes standing aboard a ship *docked* at
+//// the station: its tiles are moored into the station composite. The old
+//// airlock/place-transition helpers (near_airlock/disembark_to and the
+//// spawn helpers) are gone; ship<->concourse crossing is now plain walking
+//// within one composite space, and the dock/undock place transitions live
+//// in the sim's join-on-dock / split-on-undock handling.
 
 import dh_server/deckplan.{type DeckPlan}
 import dh_server/ship
@@ -20,12 +29,6 @@ pub const radius = 0.3
 /// Maximum distance (character center to console tile center) to sit,
 /// tiles.
 pub const sit_range = 1.2
-
-/// Maximum distance (character center to airlock tile center) to cycle an
-/// airlock, tiles: disembarking a docked ship, or boarding one from the
-/// concourse. Matches sit_range so all "close enough to use" checks feel
-/// the same on foot.
-pub const airlock_range = 1.2
 
 /// Where a character's body is: aboard their crew ship, or ashore on a
 /// station concourse. Crew membership is `ship_id` either way — going
@@ -48,58 +51,6 @@ pub type Character {
     move_dx: Float,
     move_dy: Float,
   )
-}
-
-/// A new character standing at `plan`'s helm console, seated at it. Used
-/// for login: every M1 flow (helm/dock/undock) keeps working immediately,
-/// since the character spawns already seated at the helm.
-pub fn spawn_seated_at_helm(
-  id: Int,
-  name: String,
-  ship_id: Int,
-  plan: DeckPlan,
-) -> Character {
-  let assert Ok(console) = deckplan.find_console_of_kind(plan, "helm")
-  let #(x, y) = tile_center(console.x, console.y)
-  Character(
-    id: id,
-    name: name,
-    ship_id: ship_id,
-    place: Aboard,
-    x: x,
-    y: y,
-    seat: Some(console.id),
-    move_dx: 0.0,
-    move_dy: 0.0,
-  )
-}
-
-/// A new character standing at `plan`'s spawn tile, unseated. Used when a
-/// character boards a ship.
-pub fn spawn_at_spawn_tile(
-  id: Int,
-  name: String,
-  ship_id: Int,
-  plan: DeckPlan,
-) -> Character {
-  let #(x, y) = spawn_position(plan)
-  Character(
-    id: id,
-    name: name,
-    ship_id: ship_id,
-    place: Aboard,
-    x: x,
-    y: y,
-    seat: None,
-    move_dx: 0.0,
-    move_dy: 0.0,
-  )
-}
-
-/// The tile center of `plan`'s spawn tile.
-pub fn spawn_position(plan: DeckPlan) -> #(Float, Float) {
-  let #(x, y) = plan.spawn_tile
-  tile_center(x, y)
 }
 
 /// Set walk input (cast), clamping each axis to [-1, 1]. Clamping mirrors
@@ -165,7 +116,7 @@ pub fn try_sit(
           case occupied {
             True -> Error("occupied")
             False -> {
-              let #(cx, cy) = tile_center(console.x, console.y)
+              let #(cx, cy) = deckplan.tile_center(console.x, console.y)
               case distance(character.x, character.y, cx, cy) <=. sit_range {
                 False -> Error("too_far")
                 True ->
@@ -196,39 +147,6 @@ pub fn stand(character: Character) -> Result(Character, String) {
     Some(_) ->
       Ok(Character(..character, seat: None, move_dx: 0.0, move_dy: 0.0))
   }
-}
-
-/// Step ashore: standing at `plan`'s spawn tile on `station_id`'s
-/// concourse, seat and buffered move input cleared (same reasoning as
-/// boarding: input held at the moment of transition was aimed at the old
-/// deck and must not fire on the new one).
-pub fn disembark_to(
-  character: Character,
-  plan: DeckPlan,
-  station_id: String,
-) -> Character {
-  let #(x, y) = spawn_position(plan)
-  Character(
-    ..character,
-    place: OnStation(station_id),
-    x: x,
-    y: y,
-    seat: None,
-    move_dx: 0.0,
-    move_dy: 0.0,
-  )
-}
-
-/// Whether `character` is within airlock_range of `plan`'s airlock. The
-/// airlock is the spawn tile: deck plans already treat it as "the airlock
-/// end" (it's where boarders and robot stevedores come through), and both
-/// ship classes and concourses label it with an Airlock room. Crossing
-/// between a docked ship and its station concourse requires walking here
-/// first — the two interiors connect at their airlocks, they aren't
-/// teleport-anywhere worlds.
-pub fn near_airlock(character: Character, plan: DeckPlan) -> Bool {
-  let #(ax, ay) = spawn_position(plan)
-  distance(character.x, character.y, ax, ay) <=. airlock_range
 }
 
 /// Whether `character` is seated at a console of `kind` on `plan`.
@@ -264,10 +182,6 @@ pub fn is_at_helm(character: Character, plan: DeckPlan) -> Bool {
   seated_at_kind(character, plan, "helm")
 }
 
-fn tile_center(x: Int, y: Int) -> #(Float, Float) {
-  #(int.to_float(x) +. 0.5, int.to_float(y) +. 0.5)
-}
-
 /// Normalize `(dx, dy)` to a magnitude of at most 1, leaving it unchanged
 /// if already within the unit disc (so e.g. gentle analog input keeps its
 /// magnitude, but diagonal WASD at (1, 1) is scaled down to unit speed).
@@ -280,6 +194,16 @@ fn normalize(dx: Float, dy: Float) -> #(Float, Float) {
       #(dx /. magnitude, dy /. magnitude)
     }
   }
+}
+
+/// Whether a body (collision circle, radius `radius`) can stand centered at
+/// `(x, y)` on `plan` — the same circle-vs-tile test `step` gates movement
+/// on, so a position that passes here is one the character could have walked
+/// to. Used by the sim to detect a body left in void when a mooring despawns
+/// under it (a plain `deckplan.is_walkable` on the center tile is not enough:
+/// the collision radius matters at tile edges).
+pub fn can_stand_at(plan: DeckPlan, x: Float, y: Float) -> Bool {
+  circle_walkable(plan, x, y)
 }
 
 /// Whether every tile overlapped by the character collision circle

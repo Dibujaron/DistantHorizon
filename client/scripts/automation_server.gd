@@ -41,7 +41,7 @@ var _handling: bool = false
 ## scene so this hook only depends on the NetworkClient autoload's public
 ## signals/fields, not on main.gd's private render-loop state.
 var _latest_ships: Array[ShipState] = []
-## Latest `interior` message's crew (CharacterState), tracked the same way.
+## Latest `walkers` message's crew (CharacterState), tracked the same way.
 var _latest_characters: Array[CharacterState] = []
 ## Latest `cargo` message for our own ship (M3), tracked the same way.
 var _latest_cargo: CargoState = null
@@ -60,26 +60,18 @@ func _ready() -> void:
 		set_process(false)
 		return
 	NetworkClient.snapshot_received.connect(_on_snapshot_received)
-	NetworkClient.interior_received.connect(_on_interior_received)
-	NetworkClient.concourse_received.connect(_on_concourse_received)
+	NetworkClient.walkers_received.connect(_on_walkers_received)
 	NetworkClient.cargo_received.connect(_on_cargo_received)
 	print("[automation] listening on %s:%d" % [HOST, PORT])
 
 func _on_snapshot_received(_tick: int, ships: Array[ShipState]) -> void:
 	_latest_ships = ships
 
-## Interiors for other ships are ignored, mirroring main.gd's
-## `_on_interior_received` guard: a message serialized just before our
-## `board` landed can still arrive for the ship we just left.
-func _on_interior_received(_tick: int, ship_id: int, characters: Array[CharacterState]) -> void:
-	if ship_id != NetworkClient.ship_id:
-		return
-	_latest_characters = characters
-
-## Concourse crew replaces the character list while we're ashore,
-## mirroring the interior guard above.
-func _on_concourse_received(_tick: int, station_id: String, characters: Array[CharacterState]) -> void:
-	if station_id != NetworkClient.station_id:
+## Crew updates for our current space, mirroring main.gd's
+## `_on_walkers_received` guard: frames tagged with another space or a
+## previous epoch (in flight across a dock/undock rebuild) are dropped.
+func _on_walkers_received(_tick: int, space_id: String, epoch: int, characters: Array[CharacterState]) -> void:
+	if NetworkClient.space == null or space_id != NetworkClient.space.id or epoch != NetworkClient.space.epoch:
 		return
 	_latest_characters = characters
 
@@ -222,6 +214,8 @@ func _dump_state() -> Dictionary:
 		"view_mode": _view_mode_name(),
 		"character": null,
 		"station_id": NetworkClient.station_id if NetworkClient.station_id != "" else null,
+		"space": NetworkClient.space.id if NetworkClient.space != null else "",
+		"space_epoch": NetworkClient.space.epoch if NetworkClient.space != null else 0,
 		"wallet": _latest_cargo.wallet if _latest_cargo != null else null,
 		"hold": _latest_cargo.hold if _latest_cargo != null else {},
 		"transfers": _latest_cargo.transfers.size() if _latest_cargo != null else 0,

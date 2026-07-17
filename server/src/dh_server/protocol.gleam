@@ -10,8 +10,6 @@
 ////   {"v":1,"type":"move","dx":F,"dy":F}
 ////   {"v":1,"type":"sit","console":"..."}
 ////   {"v":1,"type":"stand"}
-////   {"v":1,"type":"board","ship_id":N}
-////   {"v":1,"type":"disembark"}
 ////   {"v":1,"type":"buy","commodity":S,"quantity":N}
 ////   {"v":1,"type":"sell","commodity":S,"quantity":N}
 ////   {"v":1,"type":"get_market"}
@@ -25,12 +23,6 @@
 ////   {"v":1,"type":"dock_result","ok":Bool,"reason":null|S} — reasons
 ////   include "transfer_in_progress"
 ////   {"v":1,"type":"seat_result","ok":Bool,"reason":null|S,"seat":null|S}
-////   {"v":1,"type":"board_result","ok":Bool,"reason":null|S,"ship_id":N} —
-////   reasons include "not_docked_here" and "not_at_airlock" (boarding from
-////   a concourse requires standing at its airlock)
-////   {"v":1,"type":"disembark_result","ok":Bool,
-////    "reason":null|"not_aboard"|"not_docked"|"not_at_airlock"|"no_concourse",
-////    "station_id":S|null}
 ////   {"v":1,"type":"trade_result","ok":Bool,"reason":null|S,"commodity":S,
 ////    "quantity":N,"price":N} — reasons: not_at_broker | ship_not_docked |
 ////   no_crane | not_sold_here | insufficient_stock | invalid_quantity |
@@ -42,15 +34,29 @@
 ////    "transfers":[{"commodity","direction","remaining"}...]}
 ////   {"v":1,"type":"snapshot","tick":N,
 ////    "ships":[{"id","x","y","vx","vy","heading","thrust","docked"}...]}
-////   {"v":1,"type":"interior","tick":N,"ship_id":N,
-////    "characters":[{"id","name","x","y","seat"}...]} — sent at 15 Hz, only
-////   to clients aboard `ship_id` (see sim.gleam's interior fan-out)
-////   {"v":1,"type":"concourse","tick":N,"station_id":S,
-////    "characters":[{"id","name","x","y","seat"}...]} — sent at 15 Hz, only
-////   to clients standing in that station's concourse
+////   {"v":1,"type":"space","space":"station:<id>"|"ship:N","epoch":N,
+////    "plan":{"grid":{...},"walkable":[...],"rooms":[...],"consoles":[...],
+////            "spawn_tile":[x,y]},
+////    "moorings":[{"ship_id":N,"dx":N,"dy":N}...],
+////    "you":{"x":F,"y":F,"seat":null|S}} — the plan a client should now be
+////   walking, with their own position/seat in its frame. Sent on login and
+////   to every occupant of a space whose plan changed (dock/undock/despawn
+////   rebuild). Ship spaces carry epoch 0 and moorings []. The client adopts
+////   the plan, snaps to `you`, and resets prediction/interpolation.
+////   {"v":1,"type":"walkers","tick":N,"space":S,"epoch":N,
+////    "characters":[{"id","name","x","y","seat"}...]} — sent at 15 Hz, one
+////   per occupied space, only to that space's occupants (replaces M2/M3
+////   `interior` + `concourse`). Clients drop walkers whose space/epoch
+////   don't match their current `space` message.
 ////   {"v":1,"type":"stats",...}
+////
+//// dock_result reasons gain: "berths_full" | "no_berths" | "berth_blocked".
+//// error codes gain: "station_full" (login refused: no free berth at the
+//// spawn station).
 
 import dh_server/character.{type Character}
+import dh_server/composite
+import dh_server/deckplan.{type DeckPlan}
 import dh_server/market
 import dh_server/ship.{type Ship}
 import dh_server/shipclass.{type ShipClass}
@@ -58,6 +64,7 @@ import dh_server/stats.{type StatsReply}
 import dh_server/world.{type World}
 import gleam/dict
 import gleam/dynamic/decode
+import gleam/int
 import gleam/json.{type Json}
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -74,8 +81,6 @@ pub type ClientMessage {
   Move(dx: Float, dy: Float)
   Sit(console: String)
   Stand
-  Board(ship_id: Int)
-  Disembark
   Buy(commodity: String, quantity: Int)
   Sell(commodity: String, quantity: Int)
   GetMarket
@@ -86,18 +91,6 @@ pub type ClientMessage {
 /// character is in after the attempt (unchanged on failure).
 pub type SeatResult {
   SeatResult(ok: Bool, reason: Option(String), seat: Option(String))
-}
-
-/// Reply to `board`: whether it succeeded, why not, and the character's
-/// ship after the attempt (unchanged on failure).
-pub type BoardResult {
-  BoardResult(ok: Bool, reason: Option(String), ship_id: Int)
-}
-
-/// Reply to `disembark`: whether it succeeded, why not, and the station
-/// whose concourse the character is now standing in.
-pub type DisembarkResult {
-  DisembarkResult(ok: Bool, reason: Option(String), station_id: Option(String))
 }
 
 /// Reply to `buy`/`sell`. `price` is the locked unit price on success,
@@ -148,11 +141,6 @@ fn client_message_decoder() -> decode.Decoder(Result(ClientMessage, Nil)) {
       decode.success(Ok(Sit(console: console)))
     }
     1, "stand" -> decode.success(Ok(Stand))
-    1, "board" -> {
-      use ship_id <- decode.field("ship_id", decode.int)
-      decode.success(Ok(Board(ship_id: ship_id)))
-    }
-    1, "disembark" -> decode.success(Ok(Disembark))
     1, "buy" -> {
       use commodity <- decode.field("commodity", decode.string)
       use quantity <- decode.field("quantity", decode.int)
@@ -227,30 +215,6 @@ pub fn encode_seat_result(result: SeatResult) -> String {
     #("ok", json.bool(result.ok)),
     #("reason", json.nullable(result.reason, json.string)),
     #("seat", json.nullable(result.seat, json.string)),
-  ])
-  |> json.to_string
-}
-
-/// Serialize a `board_result` reply to `board`.
-pub fn encode_board_result(result: BoardResult) -> String {
-  json.object([
-    #("v", json.int(version)),
-    #("type", json.string("board_result")),
-    #("ok", json.bool(result.ok)),
-    #("reason", json.nullable(result.reason, json.string)),
-    #("ship_id", json.int(result.ship_id)),
-  ])
-  |> json.to_string
-}
-
-/// Serialize a `disembark_result` reply to `disembark`.
-pub fn encode_disembark_result(result: DisembarkResult) -> String {
-  json.object([
-    #("v", json.int(version)),
-    #("type", json.string("disembark_result")),
-    #("ok", json.bool(result.ok)),
-    #("reason", json.nullable(result.reason, json.string)),
-    #("station_id", json.nullable(result.station_id, json.string)),
   ])
   |> json.to_string
 }
@@ -332,40 +296,71 @@ fn encode_transfer(transfer: ship.Transfer) -> Json {
   ])
 }
 
-/// Serialize a `concourse` message: the characters standing in one
-/// station's concourse, sent only to that concourse's occupants — the same
-/// interest-management shape as `interior`, keyed by station instead of
-/// ship.
-pub fn encode_concourse(
-  tick: Int,
-  station_id: String,
-  characters: List(Character),
+/// A walkable space: a flying ship's interior, or a station's composite
+/// (concourse + docked-ship moorings).
+pub type SpaceId {
+  ShipSpace(ship_id: Int)
+  StationSpace(station_id: String)
+}
+
+/// The wire id of a space: `"ship:3"` or `"station:meridian_highport"`.
+pub fn space_id_string(space: SpaceId) -> String {
+  case space {
+    ShipSpace(ship_id) -> "ship:" <> int.to_string(ship_id)
+    StationSpace(station_id) -> "station:" <> station_id
+  }
+}
+
+/// Serialize a `space` message: the plan a client should now be walking,
+/// with their own position/seat in its frame. Personalized per client.
+pub fn encode_space(
+  space: SpaceId,
+  epoch: Int,
+  plan: DeckPlan,
+  moorings: List(composite.Mooring),
+  you: Character,
 ) -> String {
   json.object([
     #("v", json.int(version)),
-    #("type", json.string("concourse")),
-    #("tick", json.int(tick)),
-    #("station_id", json.string(station_id)),
+    #("type", json.string("space")),
+    #("space", json.string(space_id_string(space))),
+    #("epoch", json.int(epoch)),
+    #("plan", deckplan.encode(plan)),
+    #("moorings", json.array(moorings, encode_mooring)),
     #(
-      "characters",
-      json.preprocessed_array(list.map(characters, encode_character)),
+      "you",
+      json.object([
+        #("x", json.float(you.x)),
+        #("y", json.float(you.y)),
+        #("seat", json.nullable(you.seat, json.string)),
+      ]),
     ),
   ])
   |> json.to_string
 }
 
-/// Serialize an `interior` message: the crew of one ship, sent only to
-/// that ship's clients (see sim.gleam's interior fan-out).
-pub fn encode_interior(
+fn encode_mooring(mooring: composite.Mooring) -> Json {
+  json.object([
+    #("ship_id", json.int(mooring.ship_id)),
+    #("dx", json.int(mooring.dx)),
+    #("dy", json.int(mooring.dy)),
+  ])
+}
+
+/// Serialize a `walkers` message: everyone in one space, 15 Hz, only to
+/// that space's occupants (replaces M2 `interior` / M3 `concourse`).
+pub fn encode_walkers(
   tick: Int,
-  ship_id: Int,
+  space: SpaceId,
+  epoch: Int,
   characters: List(Character),
 ) -> String {
   json.object([
     #("v", json.int(version)),
-    #("type", json.string("interior")),
+    #("type", json.string("walkers")),
     #("tick", json.int(tick)),
-    #("ship_id", json.int(ship_id)),
+    #("space", json.string(space_id_string(space))),
+    #("epoch", json.int(epoch)),
     #(
       "characters",
       json.preprocessed_array(list.map(characters, encode_character)),
@@ -411,7 +406,7 @@ fn encode_ship(s: Ship) -> Json {
 fn encode_docked(dock: ship.DockState) -> Json {
   case dock {
     ship.Flying -> json.null()
-    ship.Docked(station_id) -> json.string(station_id)
+    ship.Docked(station_id, _) -> json.string(station_id)
   }
 }
 

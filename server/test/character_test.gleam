@@ -129,43 +129,6 @@ pub fn character_never_enters_non_walkable_tile_test() {
   )
 }
 
-pub fn spawn_seated_at_helm_is_seated_at_helm_main_test() {
-  let plan = sparrow()
-  let c = character.spawn_seated_at_helm(1, "ada", 7, plan)
-  assert c.seat == Some("helm_main")
-  assert c.ship_id == 7
-  assert c.x == 1.5
-  assert c.y == 2.5
-  assert character.is_at_helm(c, plan)
-}
-
-pub fn spawn_at_spawn_tile_is_standing_at_spawn_test() {
-  let plan = sparrow()
-  let c = character.spawn_at_spawn_tile(2, "grace", 7, plan)
-  assert c.seat == None
-  assert c.ship_id == 7
-  // spawn_tile is [5, 4] -> tile center (5.5, 4.5).
-  assert c.x == 5.5
-  assert c.y == 4.5
-}
-
-pub fn near_airlock_true_on_the_airlock_tile_test() {
-  let plan = sparrow()
-  // The airlock is the spawn tile: [5, 4] -> center (5.5, 4.5).
-  assert character.near_airlock(standing_at(5.5, 4.5), plan)
-}
-
-pub fn near_airlock_true_within_range_test() {
-  let plan = sparrow()
-  // One tile north of the airlock center: distance 1.0 <= 1.2.
-  assert character.near_airlock(standing_at(5.5, 3.5), plan)
-}
-
-pub fn near_airlock_false_at_the_helm_test() {
-  let plan = sparrow()
-  assert !character.near_airlock(standing_at(1.5, 2.5), plan)
-}
-
 pub fn is_at_helm_false_when_standing_test() {
   let plan = sparrow()
   let c = standing_at(1.5, 2.5)
@@ -263,48 +226,38 @@ pub fn sit_clears_stale_move_input_test() {
   assert seated.move_dy == 0.0
 }
 
-pub fn spawns_are_aboard_test() {
-  let plan = sparrow()
-  let c = character.spawn_seated_at_helm(1, "ada", 1, plan)
-  assert c.place == character.Aboard
-  let c2 = character.spawn_at_spawn_tile(2, "grace", 1, plan)
-  assert c2.place == character.Aboard
-}
-
-pub fn disembark_to_moves_ashore_standing_at_spawn_test() {
-  let plan = sparrow()
-  let c =
-    character.spawn_seated_at_helm(1, "ada", 1, plan)
-    |> character.set_move(1.0, 0.0)
-  // Use the ship plan as a stand-in concourse plan: spawn tile [5, 4].
-  let ashore = character.disembark_to(c, plan, "meridian_highport")
-  assert ashore.place == character.OnStation("meridian_highport")
-  assert ashore.x == 5.5
-  assert ashore.y == 4.5
-  assert ashore.seat == None
-  assert ashore.move_dx == 0.0
-  assert ashore.move_dy == 0.0
-  // Crew membership survives going ashore.
-  assert ashore.ship_id == 1
-}
-
 pub fn seated_at_kind_matches_console_kind_test() {
   let plan = sparrow()
-  let c = character.spawn_seated_at_helm(1, "ada", 1, plan)
+  let c = Character(..char_at(1, 1, character.Aboard), seat: Some("helm_main"))
   assert character.seated_at_kind(c, plan, "helm")
   assert !character.seated_at_kind(c, plan, "broker")
   let assert Ok(standing) = character.stand(c)
   assert !character.seated_at_kind(standing, plan, "helm")
 }
 
-pub fn same_place_scopes_by_ship_and_station_test() {
-  let plan = sparrow()
-  let aboard_1 = character.spawn_at_spawn_tile(1, "a", 1, plan)
-  let aboard_1b = character.spawn_at_spawn_tile(2, "b", 1, plan)
-  let aboard_2 = character.spawn_at_spawn_tile(3, "c", 2, plan)
-  let ashore_m = character.disembark_to(aboard_1, plan, "meridian_highport")
-  let ashore_m2 = character.disembark_to(aboard_2, plan, "meridian_highport")
-  let ashore_s = character.disembark_to(aboard_1b, plan, "solis_ring")
+/// A character at a fixed test position with a given place — replaces the
+/// retired spawn/disembark constructors for the place-scoping checks.
+fn char_at(id: Int, ship_id: Int, place: character.Place) -> Character {
+  Character(
+    id: id,
+    name: "t",
+    ship_id: ship_id,
+    place: place,
+    x: 1.5,
+    y: 1.5,
+    seat: None,
+    move_dx: 0.0,
+    move_dy: 0.0,
+  )
+}
+
+pub fn same_place_test() {
+  let aboard_1 = char_at(1, 1, character.Aboard)
+  let aboard_1b = char_at(2, 1, character.Aboard)
+  let aboard_2 = char_at(3, 2, character.Aboard)
+  let ashore_m = char_at(4, 1, character.OnStation("meridian_highport"))
+  let ashore_m2 = char_at(5, 2, character.OnStation("meridian_highport"))
+  let ashore_s = char_at(6, 1, character.OnStation("solis_ring"))
   assert character.same_place(aboard_1, aboard_1b)
   assert !character.same_place(aboard_1, aboard_2)
   assert character.same_place(ashore_m, ashore_m2)

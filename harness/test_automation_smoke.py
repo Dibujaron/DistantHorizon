@@ -68,6 +68,26 @@ def _walk_until(automation: GodotAutomation, action: str, predicate, description
         automation.action(action, False)
 
 
+def _settle_x(automation: GodotAutomation, target_x: float, tol: float = 0.14, tries: int = 60) -> float:
+    """Nudge left/right in short fixed taps until the dumped character x is
+    within `tol` of `target_x`. A *continuous* move-hold overshoots by ~0.4
+    tiles (release latency), which is fatal at the single-tile berth pinch;
+    short taps keep per-tap travel bounded so this converges precisely.
+    Meant to be run on the wide ship-deck row, before descending the pinch."""
+    last = 0.0
+    for _ in range(tries):
+        char = automation.dump().get("character") or {}
+        last = char.get("x", 0.0)
+        if abs(last - target_x) <= tol:
+            return last
+        action = "move_right" if last < target_x else "move_left"
+        automation.action(action, True)
+        time.sleep(0.03)
+        automation.action(action, False)
+        time.sleep(0.10)  # let the queued server ticks land in the next dump
+    raise AssertionError(f"could not settle x near {target_x}; last x={last}")
+
+
 @pytest.mark.automation
 def test_automation_smoke(server, tmp_path):
     proc = launch_client(["--username=automation_smoke", "--password=pw_automation"])
@@ -130,14 +150,17 @@ def test_automation_smoke(server, tmp_path):
 
 @pytest.mark.automation
 def test_walk_ashore_and_screenshot(server, tmp_path):
-    """M3: stand from the helm (E) and step ashore (X); the state dump
-    should pick up the concourse (station_id, wallet) via NetworkClient's
-    concourse_received/cargo_received signals, mirroring how
-    test_automation_smoke above proves undock+thrust via toggle_dock.
+    """M3.1 stitched interiors: going ashore is now plain walking. Login
+    lands the character seated at their own helm in the station composite
+    (space "station:meridian_highport"); standing (E) and walking down
+    through the airlock onto the concourse floor is ordinary move input --
+    there is no `disembark` verb/X action any more. The dump exposes the
+    composite `space`/`space_epoch` and the crew `wallet`.
 
-    E and X are event-driven actions (see main.gd's `_unhandled_input`,
-    matched with `is_action_pressed`), so -- like SPACE/toggle_dock above --
-    they need the `key` command (press+release pair), not `action`.
+    E is an event-driven action (main.gd's `_unhandled_input`, matched with
+    `is_action_pressed`), so -- like SPACE/toggle_dock -- it needs the `key`
+    command (press+release). move_* are polled actions like thrust, so
+    `action` press/release injection works.
     """
     # A beat before opening a second Godot window in the same session: back
     # to back with test_automation_smoke's client (just force-killed via
@@ -151,16 +174,26 @@ def test_walk_ashore_and_screenshot(server, tmp_path):
     try:
         automation.connect(timeout=CONNECT_TIMEOUT_S)
 
-        # Login seats the character at the helm, same as test_automation_smoke;
-        # wait for that seated character to show up in the dump before
-        # trying to stand out of it.
+        # Login seats the character at their own namespaced helm in the
+        # station composite; wait for that seated character (and the space)
+        # to show up in the dump before trying to stand out of it.
         state = _wait_for_state(
             automation,
-            lambda s: s.get("logged_in") is True and s.get("character") is not None,
+            lambda s: (
+                s.get("logged_in") is True
+                and s.get("character") is not None
+                and s.get("space") == "station:meridian_highport"
+            ),
             STATE_TIMEOUT_S,
-            "client to log in and see own seated character",
+            "client to log in and land in the station composite, seated",
         )
         assert state["character"]["seat"] is not None, "login seats you at the helm"
+        # Berth assignment is seed-random among free berths (free_berth in
+        # sim.gleam), so derive this client's airlock column from its own
+        # seated helm position rather than assuming berth 0. The sparrow's
+        # airlock is a fixed 4 tiles east of the helm regardless of berth.
+        helm_x = state["character"]["x"]
+        airlock_x = helm_x + 4.0
 
         # Stand (E is bound to "interact", physical keycode 69, see
         # project.godot -- toggles stand/sit at whatever console you're at).
@@ -173,33 +206,34 @@ def test_walk_ashore_and_screenshot(server, tmp_path):
             "E to stand up from the helm",
         )
 
-        # Walk to the sparrow's aft airlock (spawn tile [5,4] -> center
-        # (5.5, 4.5)): the ship and the concourse connect at their
-        # airlocks, so X only works from there. move_* are polled actions
-        # like thrust, so `action` press/release injection works.
-        _walk_until(automation, "move_right", lambda c: c.get("x", 0.0) >= 4.9, "east to the airlock column")
-        _walk_until(automation, "move_down", lambda c: c.get("y", 0.0) >= 3.9, "south into the airlock")
+        # Walk down onto the concourse: the concourse floor is composite
+        # rows 6..8 regardless of berth (only the column shifts). The
+        # descent threads a single-tile berth pinch at composite
+        # (airlock_x, 5), so center precisely on the airlock column while
+        # still on the wide ship-deck row, THEN drop straight down onto the
+        # floor (y >= 6.5). Plain movement, no disembark verb.
+        _walk_until(
+            automation,
+            "move_right",
+            lambda c: c.get("x", 0.0) >= helm_x + 3.0,
+            "east along the ship deck",
+        )
+        _settle_x(automation, airlock_x)
+        _walk_until(automation, "move_down", lambda c: c.get("y", 0.0) >= 6.5, "south onto the concourse floor")
 
-        # Step ashore (X is bound to "disembark", physical keycode 88).
-        # Disembarking triggers main.gd's interior/exterior transition
-        # animation, so wait for that to settle (view_mode leaves
-        # "transition") as well as for the station_id to land, or this can
-        # observe a moment where we're ashore but still mid-transition.
-        automation.key("X", True)
-        automation.key("X", False)
+        # We are ashore on the concourse floor, still in the one station
+        # space, and the crew wallet is visible from the cargo feed.
         state = _wait_for_state(
             automation,
             lambda s: (
-                s.get("station_id") == "meridian_highport"
-                and s.get("view_mode") == "interior"
+                s.get("space") == "station:meridian_highport"
+                and (s.get("character") or {}).get("y", 0.0) >= 6.5
+                and s.get("wallet") == 2000  # starting wallet, m1_system.json
             ),
             STATE_TIMEOUT_S,
-            "X to disembark onto the concourse and the transition to settle",
+            "character to reach the concourse floor with the wallet loaded",
         )
-
-        assert state["view_mode"] == "interior"
-        # Starting wallet from server/worlds/m1_system.json (see test_m3_trade.py).
-        assert state["wallet"] == 2000
+        assert (state["character"] or {})["seat"] is None, "still standing, ashore"
 
         screenshot_path = tmp_path / "m3_concourse.png"
         automation.screenshot(str(screenshot_path).replace("\\", "/"))

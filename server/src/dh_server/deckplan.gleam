@@ -5,6 +5,7 @@
 //// `(x+0.5, y+0.5)`.
 
 import gleam/dynamic/decode
+import gleam/int
 import gleam/json.{type Json}
 import gleam/list
 import gleam/string
@@ -54,6 +55,11 @@ pub fn find_console(
   console_id: String,
 ) -> Result(Console, Nil) {
   list.find(plan.consoles, fn(c) { c.id == console_id })
+}
+
+/// Center of tile (x, y) in tile units.
+pub fn tile_center(x: Int, y: Int) -> #(Float, Float) {
+  #(int.to_float(x) +. 0.5, int.to_float(y) +. 0.5)
 }
 
 /// The first console of `kind`, if any.
