@@ -1,0 +1,19 @@
+; lightspike toy scene — proves the engine path for round-3 dynamic lighting:
+; CanvasTexture (albedo + normal) + DirectionalLight2D + quantize shader.
+; Run: godot --path tools/artspike/godot   (renders one frame, saves shot.png, quits)
+
+config_version=5
+
+[application]
+
+config/name="DH lightspike toy scene"
+run/main_scene="res://main.tscn"
+
+[display]
+
+window/size/viewport_width=1200
+window/size/viewport_height=430
+
+[rendering]
+
+environment/defaults/default_clear_color=Color(0.039, 0.051, 0.075, 1)
