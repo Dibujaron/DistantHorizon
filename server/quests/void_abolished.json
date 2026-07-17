@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "id": "void_abolished",
+  "name": "The Void, Abolished",
+  "flavor": "Mx. Adechike Voss has crossed the system eleven times and felt it zero, and they intend to keep the streak. One berth, one passenger, one rule: the void does not touch them. An Aratori hull holds a glassy one gee from undock to touchdown. Yours will simply have to pretend to be one, the whole way, including the parts where that costs you.",
+  "acquisition": "broker",
+  "slots": {
+    "uce": { "kind": "faction", "constraints": { "id": "uce" } },
+    "dest": {
+      "kind": "station",
+      "constraints": { "any": [{ "id": "apogee_grand" }, { "settlement_class": "hub" }] }
+    },
+    "offer_broker": {
+      "kind": "broker",
+      "constraints": { "faction_is": "${uce}", "not": { "station_is": "${dest}" } }
+    }
+  },
+  "eligibility": { "min_passenger_berths": 1 },
+  "conduct": {
+    "max_burn_g": {
+      "value": 1.0,
+      "while_aboard": "vip",
+      "on_violation": { "reward_multiplier": 0.5 }
+    }
+  },
+  "completion": {
+    "docked_at": "${dest}",
+    "deliver_item": { "item": "vip" }
+  },
+  "deadline_s": 2700,
+  "items": [
+    { "id": "vip", "name": "Mx. Adechike Voss", "space": "berth", "units": 1 }
+  ],
+  "rewards": {
+    "credits": 3200,
+    "rep": [
+      { "target": "${uce}", "delta": 10 },
+      { "target": "aratori", "delta": 10 }
+    ]
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "id": "freehold_water_run_2b",
+  "name": "Reclamation at ${dead_site}",
+  "flavor": "${dead_site} is quiet now. The condensers never restarted and the people are gone, one way or another. What's left is fittings, alloy, and nobody with standing to object. A Breakers buyer pays good rates for whatever comes loose, and asks only that you not say the word 'grave'.",
+  "acquisition": "triggered",
+  "slots": {
+    "dead_site": { "from": "parent.dest" },
+    "buyer_station": { "kind": "station", "constraints": { "faction_is": "breakers" } },
+    "buyer": {
+      "kind": "broker",
+      "constraints": { "faction_is": "breakers", "station_is": "${buyer_station}" }
+    }
+  },
+  "eligibility": {
+    "any": [{ "min_cargo_units": 10 }, { "min_container_slots": 1 }]
+  },
+  "completion": {
+    "docked_at": "${buyer_station}",
+    "deliver_item": { "item": "salvage", "to": "${buyer}" }
+  },
+  "deadline_s": 5400,
+  "items": [
+    {
+      "id": "salvage",
+      "name": "Reclaimed Fittings — ${dead_site}",
+      "space": "hold",
+      "units": 10,
+      "pickup_at": "${dead_site}"
+    }
+  ],
+  "rewards": {
+    "credits": 1600,
+    "rep": [
+      { "target": "breakers", "delta": 10 },
+      { "target": "freehold", "delta": -20 }
+    ]
+  }
+}

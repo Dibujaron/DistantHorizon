@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "id": "freehold_water_run_2a",
+  "name": "${dest}, Rebuilding",
+  "flavor": "${dest} made it. The condensers are running on what you brought, and the Compact means to build the place back better than it was. That takes machinery, and the contract is posted open: first hold in gets the job. That's how the border says thank you — more honest work for honest pay.",
+  "acquisition": "triggered",
+  "slots": {
+    "patron": { "from": "parent.patron" },
+    "dest": { "from": "parent.dest" },
+    "recipient": {
+      "kind": "broker",
+      "constraints": { "faction_is": "${patron}", "station_is": "${dest}" }
+    }
+  },
+  "eligibility": {
+    "any": [{ "min_cargo_units": 20 }, { "min_container_slots": 1 }]
+  },
+  "completion": {
+    "docked_at": "${dest}",
+    "deliver_commodity": { "commodity": "machinery", "units": 20, "to": "${recipient}" }
+  },
+  "fail_when": { "settlement_dead": "${dest}" },
+  "deadline_s": 3600,
+  "rewards": {
+    "credits": 1100,
+    "rep": [{ "target": "${patron}", "delta": 20 }]
+  }
+}

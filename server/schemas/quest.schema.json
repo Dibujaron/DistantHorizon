@@ -1,0 +1,286 @@
+{
+  "$schema": "http://json-schema.org/draft-06/schema#",
+  "$id": "https://distanthorizon.dev/schemas/quest.schema.json",
+  "title": "Distant Horizon quest template",
+  "description": "A seed-agnostic quest template. Slots bind against the generated world at world-gen or trigger time; constraints share one AST vocabulary across slots, eligibility (checked at offer/accept), conduct (latched invariants while active), completion (turn-in check), and fail_when (author-listed failure conditions). See docs/superpowers/specs/2026-07-16-quests-design.md. TODO(dialogue): dialogue beyond the single 'flavor' string is not yet modeled — dialogue points should become arrays of variant phrasings, each with a speaker (offering broker by default; rumor-bearers and passenger items are also speakers). TODO(events): events do not exist yet; when they do they become an additional trigger source posting these templates (likely an 'event' acquisition mode). TODO(name-pools): hardcoded names in flavor text (e.g. 'Jaya Okafor') should become substitutable variables drawn from constrained name pools — constrained by faction affiliation, race, and possibly more — sharing machinery with item name generation ('name omitted = resolver generates from seed').",
+  "type": "object",
+  "required": ["schema", "id", "name", "flavor", "acquisition", "slots", "completion", "rewards"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": 1 },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Must equal the filename minus .json (test-enforced)."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Display name. ${slot} interpolations are substituted with the bound entity's display name at offer time (e.g. \"Water for ${dest}\")."
+    },
+    "flavor": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Offer prose. ${slot} interpolations are substituted with bound display names, as in name."
+    },
+    "acquisition": {
+      "enum": ["broker", "rumor", "triggered"],
+      "description": "broker: offered at a faction broker console — specifically the broker bound by the slot named 'offer_broker', which broker-acquisition quests must declare. rumor: ambient, no contract, no penalty for ignoring. triggered: only reachable via another quest's triggers."
+    },
+    "slots": {
+      "type": "object",
+      "description": "Named entities the quest needs from the generated world. ${slotName} interpolates a bound slot anywhere a constraint value appears. If a slot cannot bind, the quest does not exist this run.",
+      "propertyNames": { "pattern": "^[a-z0-9_]+$" },
+      "additionalProperties": { "$ref": "#/definitions/slot" }
+    },
+    "eligibility": {
+      "$ref": "#/definitions/constraint",
+      "description": "Snapshot check at offer/accept time (rep gates, ship fit, crew)."
+    },
+    "conduct": {
+      "$ref": "#/definitions/constraint",
+      "description": "Latched invariants monitored while the quest is active. A violation latches; default effect is quest failure unless the predicate carries on_violation."
+    },
+    "completion": {
+      "$ref": "#/definitions/constraint",
+      "description": "Turn-in check, evaluated at the moment of hand-over."
+    },
+    "fail_when": {
+      "$ref": "#/definitions/constraint",
+      "description": "Author-listed failure conditions. The engine additionally always enforces implicit fails: destination gone, quest item destroyed or sold, quest passenger dead."
+    },
+    "deadline_s": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Seconds from acceptance. Absent = undated (the opportunity flavor)."
+    },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/item" }
+    },
+    "rewards": { "$ref": "#/definitions/rewards" },
+    "effects": {
+      "type": "object",
+      "description": "World effects by outcome — the third consequence kind besides rewards (crew) and triggers (quests). Applied by the engine when the outcome resolves; once a world simulation exists, effects become discrete story-beat inputs to it, not overrides.",
+      "properties": {
+        "on_complete": { "$ref": "#/definitions/world_effect" },
+        "on_failed": { "$ref": "#/definitions/world_effect" },
+        "on_expired": { "$ref": "#/definitions/world_effect" }
+      },
+      "additionalProperties": false
+    },
+    "on_complete": { "type": "array", "items": { "$ref": "#/definitions/trigger" } },
+    "on_failed": { "type": "array", "items": { "$ref": "#/definitions/trigger" } },
+    "on_expired": { "type": "array", "items": { "$ref": "#/definitions/trigger" } }
+  },
+  "definitions": {
+    "world_effect": {
+      "type": "object",
+      "description": "Vocabulary of world effects; grows as content demands.",
+      "properties": {
+        "settlement_dies": { "$ref": "#/definitions/ref_string" }
+      },
+      "additionalProperties": false
+    },
+    "slot": {
+      "type": "object",
+      "oneOf": [
+        {
+          "required": ["kind"],
+          "properties": {
+            "kind": { "enum": ["station", "broker", "faction", "commodity", "npc"] },
+            "constraints": { "$ref": "#/definitions/constraint" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["from"],
+          "properties": {
+            "from": {
+              "type": "string",
+              "pattern": "^parent\\.[a-z0-9_.]+$",
+              "description": "Inherit a resolved binding from the triggering parent quest, e.g. parent.dest or parent.item.remains. Only valid in quests with acquisition: triggered (test-enforced)."
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "constraint": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Mongo-style constraint AST. Sibling keys are implicit AND; any/all/not give explicit logic. Leaf predicates are the enumerated vocabulary below. String values may be literals or ${slot} interpolations.",
+      "additionalProperties": false,
+      "properties": {
+        "any": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/constraint" } },
+        "all": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/constraint" } },
+        "not": { "$ref": "#/definitions/constraint" },
+
+        "id": { "$ref": "#/definitions/ref_string" },
+        "faction_is": { "$ref": "#/definitions/ref_string" },
+        "station_is": { "$ref": "#/definitions/ref_string" },
+        "imports": { "$ref": "#/definitions/ref_string" },
+        "exports": { "$ref": "#/definitions/ref_string" },
+        "settlement_class": { "enum": ["outpost", "settlement", "terminal", "hub"] },
+        "has_crane": { "type": "boolean" },
+        "anchor_present": { "$ref": "#/definitions/ref_string" },
+
+        "min_cargo_units": { "type": "integer", "minimum": 1 },
+        "min_container_slots": { "type": "integer", "minimum": 1 },
+        "min_passenger_berths": { "type": "integer", "minimum": 1 },
+        "can_land_atmo": { "type": "boolean" },
+        "manufacturer_is": { "$ref": "#/definitions/ref_string" },
+
+        "rep_at_least": { "$ref": "#/definitions/rep_check" },
+        "rep_below": { "$ref": "#/definitions/rep_check" },
+        "aboard": { "$ref": "#/definitions/ref_string" },
+        "docked_at": { "$ref": "#/definitions/ref_string" },
+        "credits_at_least": { "type": "integer", "minimum": 0 },
+
+        "deliver_commodity": {
+          "type": "object",
+          "required": ["commodity", "units"],
+          "properties": {
+            "commodity": { "$ref": "#/definitions/ref_string" },
+            "units": { "type": "integer", "minimum": 1 },
+            "to": { "$ref": "#/definitions/ref_string" }
+          },
+          "additionalProperties": false,
+          "description": "Hand over open-market commodity units. 'to' names the receiving broker slot; absent = offload at the current dock."
+        },
+        "deliver_item": {
+          "type": "object",
+          "required": ["item"],
+          "properties": {
+            "item": { "$ref": "#/definitions/ref_string" },
+            "to": { "$ref": "#/definitions/ref_string" }
+          },
+          "additionalProperties": false,
+          "description": "Hand over a quest item (or disembark a passenger). 'to' names the receiving broker slot; absent = offload/disembark at the current dock."
+        },
+
+        "max_burn_g": {
+          "type": "object",
+          "required": ["value"],
+          "properties": {
+            "value": { "type": "number", "exclusiveMinimum": 0 },
+            "while_aboard": { "type": "string" },
+            "on_violation": { "$ref": "#/definitions/violation" }
+          },
+          "additionalProperties": false
+        },
+        "no_flight_on_holy_days": { "$ref": "#/definitions/conduct_flag" },
+        "no_inspection": { "$ref": "#/definitions/conduct_flag" },
+
+        "npc_dead": { "$ref": "#/definitions/ref_string" },
+        "settlement_dead": { "$ref": "#/definitions/ref_string" }
+      }
+    },
+    "conduct_flag": {
+      "type": "object",
+      "properties": {
+        "while_aboard": {
+          "type": "string",
+          "description": "Item id scoping the invariant to while that item is aboard. Absent = active for the quest's whole life."
+        },
+        "on_violation": { "$ref": "#/definitions/violation" }
+      },
+      "additionalProperties": false
+    },
+    "violation": {
+      "type": "object",
+      "required": ["reward_multiplier"],
+      "properties": {
+        "reward_multiplier": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false,
+      "description": "Softens a conduct violation from quest-failure to a reward penalty."
+    },
+    "rep_check": {
+      "type": "object",
+      "required": ["target", "value"],
+      "properties": {
+        "target": { "$ref": "#/definitions/ref_string" },
+        "value": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "ref_string": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A literal id or a ${slot} interpolation."
+    },
+    "item": {
+      "type": "object",
+      "required": ["id", "space"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Display name. Absent = the resolver generates one from the seed."
+        },
+        "space": {
+          "enum": ["hold", "berth"],
+          "description": "hold: occupies cargo units. berth: a passenger — named, mortal, otherwise a special more annoying kind of cargo."
+        },
+        "units": { "type": "integer", "minimum": 1, "default": 1 },
+        "pickup_at": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Station slot ref where the item is injected when the crew docks. Absent = injected at acceptance."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Quest items are namespaced by quest id (wire id: <questId>.<itemId>) and are not sellable on the open market."
+    },
+    "rewards": {
+      "type": "object",
+      "properties": {
+        "credits": { "type": "integer", "minimum": 0 },
+        "rep": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["target", "delta"],
+            "properties": {
+              "target": {
+                "$ref": "#/definitions/ref_string",
+                "description": "A faction or manufacturer id (part unlocks and discounts are modeled as rep bumps)."
+              },
+              "delta": { "type": "integer" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "meta_unlock": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$",
+          "description": "Rare. The only reward that outlives the run (e.g. senti_start)."
+        }
+      },
+      "additionalProperties": false
+    },
+    "trigger": {
+      "type": "object",
+      "required": ["quest", "offer"],
+      "properties": {
+        "quest": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "offer": {
+          "type": "object",
+          "required": ["mode"],
+          "properties": {
+            "mode": {
+              "enum": ["first_refusal", "open"],
+              "description": "first_refusal: offered privately to the completing crew for window_s, then 'then' happens. open: posted at an appropriate broker, first-come."
+            },
+            "window_s": { "type": "integer", "minimum": 1 },
+            "then": { "enum": ["open", "expire"] }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
