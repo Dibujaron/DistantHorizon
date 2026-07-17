@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "id": "account_closure_1",
+  "name": "Account Closure",
+  "flavor": "The Company would like some paper moved. The envelope is sealed, the fee is generous for the mass, and the factor at the far end is expecting it. What the paper does when it arrives is the Company's business — which is to say: not yours.",
+  "acquisition": "broker",
+  "slots": {
+    "company": { "kind": "faction", "constraints": { "id": "company" } },
+    "dest": { "kind": "station", "constraints": { "faction_is": "${company}" } },
+    "factor": {
+      "kind": "broker",
+      "constraints": { "faction_is": "${company}", "station_is": "${dest}" }
+    },
+    "offer_broker": {
+      "kind": "broker",
+      "constraints": { "faction_is": "${company}", "not": { "station_is": "${dest}" } }
+    }
+  },
+  "eligibility": { "rep_at_least": { "target": "${company}", "value": 0 } },
+  "completion": {
+    "docked_at": "${dest}",
+    "deliver_item": { "item": "orders", "to": "${factor}" }
+  },
+  "deadline_s": 2400,
+  "items": [
+    { "id": "orders", "name": "Sealed Repossession Orders", "space": "hold", "units": 1 }
+  ],
+  "rewards": {
+    "credits": 700,
+    "rep": [
+      { "target": "${company}", "delta": 10 },
+      { "target": "freehold", "delta": -5 }
+    ]
+  },
+  "on_complete": [
+    {
+      "quest": "account_closure_2",
+      "offer": { "mode": "first_refusal", "window_s": 900, "then": "expire" }
+    }
+  ]
+}
