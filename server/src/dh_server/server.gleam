@@ -4,11 +4,14 @@
 //// a valid `login`; the given `Authenticator` decides success/failure. On
 //// success the connection's ship and character are spawned via
 //// `sim.add_player` and it moves to `LoggedIn`, at which point
-//// `helm`/`dock`/`undock`/`move`/`sit`/`stand`/`board`/`disembark`/`buy`/`sell`/`get_market` take effect.
-//// `get_stats` works in both states. `LoggedIn.ship_id` tracks the
-//// character's current ship and is updated after every `board` attempt
-//// (even a failed one, to the character's unchanged current ship) so that
-//// `helm`/`dock`/`undock` always resolve against a session-local ship id.
+//// `helm`/`dock`/`undock`/`move`/`sit`/`stand`/`buy`/`sell`/`get_market` take
+//// effect. `get_stats` works in both states. `sim.add_player` can also
+//// refuse the login with `Error("station_full")` when the spawn station has
+//// no free berth, in which case the connection stays `PreLogin` and receives
+//// an `error` frame. `LoggedIn.ship_id` is the character's *spawn* ship: set
+//// once at login and never updated afterward, so it is informational only
+//// (e.g. for the welcome frame) — every other route resolves the
+//// character's current ship sim-side by `character_id`, not by this field.
 //// The sim pushes serialized snapshots/interiors as `SendText` messages,
 //// which the handler forwards down the socket.
 
@@ -146,12 +149,12 @@ fn handle_client_text(
           case authenticator(username, password) {
             Ok(account_id) ->
               case sim.add_player(sim_subject, username, client, 1000) {
-                Error(_reason) -> {
+                Error(reason) -> {
                   let _ =
                     mist.send_text_frame(
                       conn,
                       protocol.encode_error(
-                        "station_full",
+                        reason,
                         "no free berth at the spawn station",
                       ),
                     )
@@ -194,7 +197,7 @@ fn handle_client_text(
           }
       }
 
-    // Helm/dock/undock/move/sit/stand/board are ignored until logged in.
+    // Helm/dock/undock/move/sit/stand are ignored until logged in.
     Ok(protocol.Helm(rotate, thrust)) ->
       case session {
         PreLogin(_) -> session
