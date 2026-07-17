@@ -45,7 +45,9 @@ Every file has the same shape: schema version, a `tags` block of file-wide defau
   - `type`: `character | ship` (required)
   - `part`: `given | family | full | title | pattern` (required)
   - `race`: `human | selkie | voidborn | senti` (character only)
-  - `faction`: a faction id (open vocabulary; validated against the world at test time)
+  - `faction`: a faction id (open string in the schema; validated at test time
+    against the canonical faction constants in `names.gleam` — world files carry
+    no factions yet, so code constants are the authority until they do)
   - `wealth`: `low | mid | high`
   - `gender`: `female | male | neutral`
   - `role`: ship role id (ship only) — starter enum `packet | hauler | liner | gunship |
@@ -146,10 +148,10 @@ are already moddable.
   - `keep_the_wake` — Okafor becomes a `character` slot constrained to Wake; gender
     unpinned; flavor rewritten with pronoun interpolation; item name
     `"Sealed Remains — ${okafor.short}"`.
-  - `void_abolished` — Voss becomes a high-wealth UCE `character` slot with
-    `"not": { "gender_is": "neutral" }` — a representative core member reads
-    gendered (Mr./Ms.) whichever way the roll lands, and the constraint doubles as
-    a demonstration of the AST in generation position; flavor interpolated.
+  - `void_abolished` — Voss becomes a high-wealth UCE `character` slot; gender
+    left unpinned so the default roll weights (47.5/47.5/5) apply: the typical
+    Voss reads Mr./Ms., and roughly one in twenty is Mx. — nonbinary core
+    citizens exist without reading as the core norm; flavor interpolated.
   - `a_body_that_can_die` — IMRI becomes a `race_is: senti` character slot.
   - `account_closure_2`'s "Company Recovery Detail" is an anonymous group, not a
     named principal — unchanged.
@@ -184,8 +186,8 @@ are already moddable.
     satisfiable attribute assignment's chosen pattern, all referenced parts have a
     non-empty pool — holes fail the build, not the run
   - coherence tests: generation-legal leaves only on character/ship slots;
-    `principal` refs name an existing character slot; faction tags in name files
-    exist in the world
+    `principal` refs name an existing character slot; faction/manufacturer tags
+    in name files exist in the canonical domain constants
 
 ## Out of scope
 
