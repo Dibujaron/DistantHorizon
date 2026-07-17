@@ -245,7 +245,7 @@ Create each file exactly as follows.
   "tags": { "type": "character", "part": "family", "faction": "wake" },
   "entries": [
     "Okafor", "Ilesanmi", "Halvorsen", "Anand", "Petrossian", "Sandoval",
-    "Kiuru", "Vasari", "Tennant", "Reyes-Okafor"
+    "Kiuru", "Vasari", "Tennant", "Duarte"
   ]
 }
 ```
@@ -260,7 +260,7 @@ Create each file exactly as follows.
     "Voss", "Castellan", "Okonjo", "Balakrishnan", "Ferreira", "Nakamura",
     "Aldana", "Strand",
     { "name": "Montclair", "tags": { "wealth": "high" } },
-    { "name": "Aurelian-Hale", "tags": { "wealth": "high" } }
+    { "name": "Aurelian", "tags": { "wealth": "high" } }
   ]
 }
 ```
@@ -273,7 +273,7 @@ Create each file exactly as follows.
   "tags": { "type": "character", "part": "family", "faction": "freehold" },
   "entries": [
     "Calder", "Stroud", "Okoro", "Brandt", "Iyer", "Maddox", "Soto",
-    "Varga", "Onishi", "Reyes-Calder"
+    "Varga", "Onishi", "Kovac"
   ]
 }
 ```
@@ -920,7 +920,7 @@ git commit -m "feat(names): constraint AST as generator over the attribute domai
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `server/test/names_test.gleam` (add `import gleam/string` to its imports):
+Append to `server/test/names_test.gleam` (add `import gleam/string` and `import gleam/int` to its imports):
 
 ```gleam
 fn plain_tags(type_: String, part: String) -> names.Tags {
@@ -1069,6 +1069,52 @@ pub fn possible_effective_genders_test() {
       gender: "male",
     )
   assert names.possible_effective_genders(grafter) == ["neutral"]
+}
+
+pub fn family_hyphenation_is_occasional_test() {
+  // Only one family entry exists in test_entries(), so the deterministic
+  // tests above can never hyphenate. Here: two candidate families, 100
+  // fixed seeds — hyphenation must appear, but stay well short of the norm.
+  let entries = [
+    names.Entry(
+      "Jaya",
+      names.Tags(..plain_tags("character", "given"), race: Some("human")),
+    ),
+    names.Entry(
+      "Okafor",
+      names.Tags(..plain_tags("character", "family"), race: Some("human")),
+    ),
+    names.Entry(
+      "Calder",
+      names.Tags(..plain_tags("character", "family"), race: Some("human")),
+    ),
+    names.Entry(
+      "${given} ${family}",
+      names.Tags(..plain_tags("character", "pattern"), race: Some("human")),
+    ),
+    names.Entry(
+      "Mr.",
+      names.Tags(..plain_tags("character", "title"), gender: Some("male")),
+    ),
+    names.Entry(
+      "Ms.",
+      names.Tags(..plain_tags("character", "title"), gender: Some("female")),
+    ),
+    names.Entry(
+      "Mx.",
+      names.Tags(..plain_tags("character", "title"), gender: Some("neutral")),
+    ),
+  ]
+  let constraint = Some(names.AttrIs("race", "human"))
+  let hyphenated =
+    list.range(0, 99)
+    |> list.filter(fn(i) {
+      let assert Ok(person) =
+        names.generate_person(constraint, entries, "hyph-" <> int.to_string(i))
+      string.contains(person.full, "-")
+    })
+  assert hyphenated != []
+  assert list.length(hyphenated) < 30
 }
 
 pub fn generate_from_real_pools_test() {
@@ -1291,6 +1337,39 @@ fn weighted_gender(genders: List(String), seed: String) -> String {
   gender
 }
 
+/// Chance per 1000 that a family name double-barrels from a second distinct
+/// draw ("Sandoval-Okafor"). Hyphenated names are generated, never curated —
+/// pools contain no hyphen entries (spec §2).
+const double_family_chance_per_1000 = 100
+
+fn maybe_hyphenate_family(
+  resolved: List(#(String, String)),
+  entries: List(Entry),
+  attrs: CharacterAttrs,
+  effective_gender: String,
+  seed: String,
+) -> List(#(String, String)) {
+  case list.key_find(resolved, "family") {
+    Error(Nil) -> resolved
+    Ok(family) -> {
+      let assert Ok(roll) = int.modulo(hash_int(seed <> ":hyphen"), 1000)
+      case roll < double_family_chance_per_1000 {
+        False -> resolved
+        True ->
+          case
+            character_pool(entries, attrs, "family", effective_gender)
+            |> list.filter(fn(other) { other != family })
+            |> pick(seed <> ":family2")
+          {
+            Ok(second) ->
+              list.key_set(resolved, "family", family <> "-" <> second)
+            Error(Nil) -> resolved
+          }
+      }
+    }
+  }
+}
+
 pub fn generate_person(
   constraint: Option(Constraint),
   entries: List(Entry),
@@ -1332,6 +1411,8 @@ pub fn generate_person(
       |> result.map(fn(value) { #(part, value) })
     }),
   )
+  let resolved =
+    maybe_hyphenate_family(resolved, entries, attrs, effective, seed)
   let lookup = dict.from_list(resolved)
   use full <- result.try(
     render_pattern(pattern, fn(part) {
@@ -1459,7 +1540,7 @@ pub fn ship_form(ship: Ship, key: String) -> Result(String, Nil) {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run the global test command.
-Expected: PASS — `192 passed, no failures`.
+Expected: PASS — `193 passed, no failures`.
 
 - [ ] **Step 5: Commit**
 

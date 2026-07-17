@@ -5,6 +5,6 @@
     "Voss", "Castellan", "Okonjo", "Balakrishnan", "Ferreira", "Nakamura",
     "Aldana", "Strand",
     { "name": "Montclair", "tags": { "wealth": "high" } },
-    { "name": "Aurelian-Hale", "tags": { "wealth": "high" } }
+    { "name": "Aurelian", "tags": { "wealth": "high" } }
   ]
 }

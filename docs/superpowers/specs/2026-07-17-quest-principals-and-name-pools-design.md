@@ -30,7 +30,7 @@ Every file has the same shape: schema version, a `tags` block of file-wide defau
   "entries": [
     "Okafor",
     "Ilesanmi",
-    { "name": "Adeyemi-Voss", "tags": { "wealth": "high" } }
+    { "name": "Montclair", "tags": { "wealth": "high" } }
   ]
 }
 ```
@@ -91,6 +91,10 @@ Every file has the same shape: schema version, a `tags` block of file-wide defau
 - **Unconstrained axes are rolled** by the resolver. Gender rolls
   female/male/neutral at default weights 47.5/47.5/5 (per-culture tuning is a later
   knob).
+- **Family hyphenation is generated, not curated.** With a small seeded chance
+  (10%), the resolver double-barrels the family name from a second distinct draw of
+  the same matching pools ("Sandoval-Okafor"). Pools contain no hyphenated entries —
+  a lone curated hyphen reads as one family's quirk; the roll makes it a custom.
 - **Interpolation forms** on character slots, usable anywhere `${slot}` already works
   (name, flavor, item names, constraint values):
   - `${x}` — full display name (the pattern's output)
