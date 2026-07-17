@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "tags": { "type": "ship", "part": "full" },
+  "entries": [
+    "Borrowed Light", "Long Answer", "Second Sunrise", "Quiet Ledger",
+    "Distant Cousin", "Kindly Provision", "Weathered Eye", "Old Debt Paid",
+    { "name": "Cormorant's Debt", "tags": { "role": "packet" } },
+    { "name": "Swift Reply", "tags": { "role": "packet" } },
+    { "name": "Overdue Notice", "tags": { "role": "packet" } },
+    { "name": "Blunt Instrument", "tags": { "role": "gunship" } },
+    { "name": "Measured Response", "tags": { "role": "gunship" } },
+    { "name": "Gilded Hour", "tags": { "role": "liner" } },
+    { "name": "Perpetual Holiday", "tags": { "role": "liner" } },
+    { "name": "Patient Ox", "tags": { "role": "hauler" } },
+    { "name": "Deep Keel", "tags": { "role": "hauler" } },
+    { "name": "Stubborn Article", "tags": { "role": "tug" } },
+    { "name": "Private Weather", "tags": { "role": "yacht" } }
+  ]
+}

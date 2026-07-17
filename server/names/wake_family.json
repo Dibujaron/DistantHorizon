@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "tags": { "type": "character", "part": "family", "faction": "wake" },
+  "entries": [
+    "Okafor", "Ilesanmi", "Halvorsen", "Anand", "Petrossian", "Sandoval",
+    "Kiuru", "Vasari", "Tennant", "Duarte"
+  ]
+}

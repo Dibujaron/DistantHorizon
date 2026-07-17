@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "tags": { "type": "character", "part": "family", "race": "grafter" },
+  "entries": [
+    "Farside", "Hollow", "Ballast", "Kessler", "Umbra", "Drift",
+    "Perigee", "Ullage", "Lagrange", "Spindle"
+  ]
+}
