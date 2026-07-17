@@ -7,9 +7,12 @@
 //// into pools keyed purely by tags, so mods extend any pool by dropping a
 //// new file in the folder.
 
+import gleam/bit_array
+import gleam/crypto
 import gleam/dict
 import gleam/dynamic.{type Dynamic}
 import gleam/dynamic/decode
+import gleam/int
 import gleam/json
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -302,5 +305,399 @@ fn eval(c: Constraint, get: fn(String) -> String) -> Bool {
     All(cs) -> list.all(cs, eval(_, get))
     Not(inner) -> !eval(inner, get)
     AttrIs(axis, value) -> get(axis) == value
+  }
+}
+
+/// A generated character principal: attributes plus rendered name material.
+/// effective_gender is the address-style-adjusted gender that titles and
+/// pronouns render with (a grafter woman is still a woman; prose calls em
+/// ey).
+pub type Person {
+  Person(
+    race: String,
+    faction: String,
+    wealth: String,
+    gender: String,
+    effective_gender: String,
+    full: String,
+    given: Option(String),
+    family: Option(String),
+    title: String,
+  )
+}
+
+pub type Ship {
+  Ship(role: String, faction: String, manufacturer: String, name: String)
+}
+
+type Pronouns {
+  Pronouns(ey: String, em: String, eir: String, eirs: String, emself: String)
+}
+
+/// Deterministic seeded pick: SHA-256 of the seed string, first 48 bits as
+/// an index. Same pools + same constraint + same seed = same principal.
+fn hash_int(seed: String) -> Int {
+  let hex =
+    crypto.hash(crypto.Sha256, bit_array.from_string(seed))
+    |> bit_array.base16_encode
+  let assert Ok(n) = int.base_parse(string.slice(hex, 0, 12), 16)
+  n
+}
+
+fn pick(items: List(a), seed: String) -> Result(a, Nil) {
+  case items {
+    [] -> Error(Nil)
+    _ -> {
+      let assert Ok(index) = int.modulo(hash_int(seed), list.length(items))
+      items
+      |> list.drop(index)
+      |> list.first
+    }
+  }
+}
+
+fn tag_ok(tag: Option(String), value: String) -> Bool {
+  case tag {
+    None -> True
+    Some(tagged) -> tagged == value
+  }
+}
+
+/// Entries usable for `part` on a character with attributes `a`. Titles
+/// match against the effective (address-adjusted) gender; everything else
+/// against the rolled gender. Ship-only axes on a character entry never
+/// match.
+pub fn character_pool(
+  entries: List(Entry),
+  a: CharacterAttrs,
+  part: String,
+  effective_gender: String,
+) -> List(String) {
+  let gender = case part {
+    "title" -> effective_gender
+    _ -> a.gender
+  }
+  entries
+  |> list.filter(fn(entry) {
+    let tags = entry.tags
+    tags.type_ == "character"
+    && tags.part == part
+    && tag_ok(tags.race, a.race)
+    && tag_ok(tags.faction, a.faction)
+    && tag_ok(tags.wealth, a.wealth)
+    && tag_ok(tags.gender, gender)
+    && tags.role == None
+    && tags.manufacturer == None
+  })
+  |> list.map(fn(entry) { entry.name })
+}
+
+pub fn ship_pool(
+  entries: List(Entry),
+  a: ShipAttrs,
+  part: String,
+) -> List(String) {
+  entries
+  |> list.filter(fn(entry) {
+    let tags = entry.tags
+    tags.type_ == "ship"
+    && tags.part == part
+    && tag_ok(tags.role, a.role)
+    && tag_ok(tags.faction, a.faction)
+    && tag_ok(tags.manufacturer, a.manufacturer)
+    && tags.race == None
+    && tags.wealth == None
+    && tags.gender == None
+  })
+  |> list.map(fn(entry) { entry.name })
+}
+
+pub fn matching_patterns_for_character(
+  entries: List(Entry),
+  a: CharacterAttrs,
+) -> List(String) {
+  character_pool(entries, a, "pattern", a.gender)
+}
+
+pub fn matching_patterns_for_ship(
+  entries: List(Entry),
+  a: ShipAttrs,
+) -> List(String) {
+  ship_pool(entries, a, "pattern")
+}
+
+/// The part names a pattern references, e.g. "${given} ${family}" ->
+/// ["given", "family"].
+pub fn pattern_parts(pattern: String) -> List(String) {
+  string.split(pattern, "${")
+  |> list.drop(1)
+  |> list.filter_map(fn(chunk) {
+    string.split_once(chunk, "}")
+    |> result.map(fn(pair) { pair.0 })
+  })
+}
+
+fn render_pattern(
+  pattern: String,
+  resolve_part: fn(String) -> Result(String, String),
+) -> Result(String, String) {
+  case string.split(pattern, "${") {
+    [] -> Ok("")
+    [head, ..chunks] ->
+      list.try_fold(chunks, head, fn(acc, chunk) {
+        case string.split_once(chunk, "}") {
+          Ok(#(part, rest)) ->
+            resolve_part(part)
+            |> result.map(fn(value) { acc <> value <> rest })
+          Error(Nil) -> Error("unterminated ${ in pattern: " <> pattern)
+        }
+      })
+  }
+}
+
+/// Which address styles a character's culture can produce. Race trumps
+/// faction; mixed cultures return both and generation flips a seeded coin.
+pub fn possible_address_styles(race: String, faction: String) -> List(String) {
+  case race {
+    "senti" | "grafter" -> ["neutral"]
+    _ ->
+      case faction {
+        "uce" | "company" | "wake" -> ["gendered"]
+        "freehold" | "breakers" -> ["gendered", "neutral"]
+        // TODO(lore): Selkie address style deliberately undecided (spec
+        // 2026-07-17 §3); unknown factions take the conservative default
+        // until this table moves data-side.
+        _ -> ["gendered"]
+      }
+  }
+}
+
+fn effective_gender(gender: String, style: String) -> String {
+  case gender, style {
+    "neutral", _ -> "neutral"
+    _, "neutral" -> "neutral"
+    g, _ -> g
+  }
+}
+
+/// All effective genders a character's culture could render — used by the
+/// build-time coverage test so every reachable title/pronoun render is
+/// backed by pool entries.
+pub fn possible_effective_genders(a: CharacterAttrs) -> List(String) {
+  possible_address_styles(a.race, a.faction)
+  |> list.map(effective_gender(a.gender, _))
+  |> list.unique
+}
+
+fn weighted_gender(genders: List(String), seed: String) -> String {
+  // 475/475/50 tickets = the spec's 47.5/47.5/5 roll, restricted to the
+  // genders the constraint left open.
+  let tickets =
+    list.flat_map(list.unique(genders), fn(gender) {
+      case gender {
+        "neutral" -> list.repeat(gender, 50)
+        _ -> list.repeat(gender, 475)
+      }
+    })
+  let assert Ok(gender) = pick(tickets, seed)
+  gender
+}
+
+/// Chance per 1000 that a family name double-barrels from a second distinct
+/// draw ("Sandoval-Okafor"). Hyphenated names are generated, never curated —
+/// pools contain no hyphen entries (spec §2).
+const double_family_chance_per_1000 = 100
+
+fn maybe_hyphenate_family(
+  resolved: List(#(String, String)),
+  entries: List(Entry),
+  attrs: CharacterAttrs,
+  effective_gender: String,
+  seed: String,
+) -> List(#(String, String)) {
+  case list.key_find(resolved, "family") {
+    Error(Nil) -> resolved
+    Ok(family) -> {
+      let assert Ok(roll) = int.modulo(hash_int(seed <> ":hyphen"), 1000)
+      case roll < double_family_chance_per_1000 {
+        False -> resolved
+        True ->
+          case
+            character_pool(entries, attrs, "family", effective_gender)
+            |> list.filter(fn(other) { other != family })
+            |> pick(seed <> ":family2")
+          {
+            Ok(second) ->
+              list.key_set(resolved, "family", family <> "-" <> second)
+            Error(Nil) -> resolved
+          }
+      }
+    }
+  }
+}
+
+pub fn generate_person(
+  constraint: Option(Constraint),
+  entries: List(Entry),
+  seed: String,
+) -> Result(Person, String) {
+  let assignments = satisfying_character_attrs(constraint)
+  let bodies =
+    assignments
+    |> list.map(fn(a) { #(a.race, a.faction, a.wealth) })
+    |> list.unique
+  use body <- result.try(
+    pick(bodies, seed <> ":body")
+    |> result.replace_error("no attribute assignment satisfies the constraints"),
+  )
+  let #(race, faction, wealth) = body
+  let genders =
+    assignments
+    |> list.filter(fn(a) {
+      a.race == race && a.faction == faction && a.wealth == wealth
+    })
+    |> list.map(fn(a) { a.gender })
+  let gender = weighted_gender(genders, seed <> ":gender")
+  let attrs = CharacterAttrs(race:, faction:, wealth:, gender:)
+  let assert Ok(style) =
+    pick(possible_address_styles(race, faction), seed <> ":address")
+  let effective = effective_gender(gender, style)
+  let patterns = matching_patterns_for_character(entries, attrs)
+  use pattern <- result.try(
+    pick(patterns, seed <> ":pattern")
+    |> result.replace_error("no pattern matches " <> string.inspect(attrs)),
+  )
+  let parts = list.unique(pattern_parts(pattern))
+  use resolved <- result.try(
+    list.try_map(parts, fn(part) {
+      pick(character_pool(entries, attrs, part, effective), seed <> ":" <> part)
+      |> result.replace_error(
+        "no entries for part " <> part <> " (" <> string.inspect(attrs) <> ")",
+      )
+      |> result.map(fn(value) { #(part, value) })
+    }),
+  )
+  let resolved =
+    maybe_hyphenate_family(resolved, entries, attrs, effective, seed)
+  let lookup = dict.from_list(resolved)
+  use full <- result.try(
+    render_pattern(pattern, fn(part) {
+      dict.get(lookup, part)
+      |> result.replace_error("pattern part not resolved: " <> part)
+    }),
+  )
+  // ${x.title} must render even when the pattern didn't use it.
+  use title <- result.try(case dict.get(lookup, "title") {
+    Ok(title) -> Ok(title)
+    Error(Nil) ->
+      pick(character_pool(entries, attrs, "title", effective), seed <> ":title")
+      |> result.replace_error(
+        "no title entry matches " <> string.inspect(attrs),
+      )
+  })
+  Ok(Person(
+    race:,
+    faction:,
+    wealth:,
+    gender:,
+    effective_gender: effective,
+    full:,
+    given: option.from_result(dict.get(lookup, "given")),
+    family: option.from_result(dict.get(lookup, "family")),
+    title:,
+  ))
+}
+
+pub fn generate_ship(
+  constraint: Option(Constraint),
+  entries: List(Entry),
+  seed: String,
+) -> Result(Ship, String) {
+  let assignments = satisfying_ship_attrs(constraint)
+  use attrs <- result.try(
+    pick(assignments, seed <> ":ship")
+    |> result.replace_error("no ship attributes satisfy the constraints"),
+  )
+  let patterns = matching_patterns_for_ship(entries, attrs)
+  use pattern <- result.try(
+    pick(patterns, seed <> ":pattern")
+    |> result.replace_error("no ship pattern matches"),
+  )
+  let parts = list.unique(pattern_parts(pattern))
+  use resolved <- result.try(
+    list.try_map(parts, fn(part) {
+      pick(ship_pool(entries, attrs, part), seed <> ":" <> part)
+      |> result.replace_error("no entries for ship part " <> part)
+      |> result.map(fn(value) { #(part, value) })
+    }),
+  )
+  let lookup = dict.from_list(resolved)
+  use name <- result.try(
+    render_pattern(pattern, fn(part) {
+      dict.get(lookup, part)
+      |> result.replace_error("pattern part not resolved: " <> part)
+    }),
+  )
+  Ok(Ship(
+    role: attrs.role,
+    faction: attrs.faction,
+    manufacturer: attrs.manufacturer,
+    name:,
+  ))
+}
+
+fn pronouns(effective: String) -> Pronouns {
+  case effective {
+    "female" -> Pronouns("she", "her", "her", "hers", "herself")
+    "male" -> Pronouns("he", "him", "his", "his", "himself")
+    _ -> Pronouns("ey", "em", "eir", "eirs", "emself")
+  }
+}
+
+/// Resolve a dotted interpolation form (${x.<key>}) for a character.
+/// Authors write prose in ey/em/eir; gendered-culture characters render
+/// she/he. Capitalized keys are for sentence-initial position.
+pub fn form(person: Person, key: String) -> Result(String, Nil) {
+  let p = pronouns(person.effective_gender)
+  case key {
+    "given" -> Ok(option.unwrap(person.given, person.full))
+    "family" -> Ok(option.unwrap(person.family, person.full))
+    "short" ->
+      case person.given, person.family {
+        Some(given), Some(family) ->
+          Ok(string.slice(given, 0, 1) <> ". " <> family)
+        _, _ -> Ok(person.full)
+      }
+    "title" -> Ok(person.title)
+    "ey" -> Ok(p.ey)
+    "em" -> Ok(p.em)
+    "eir" -> Ok(p.eir)
+    "eirs" -> Ok(p.eirs)
+    "emself" -> Ok(p.emself)
+    "Ey" -> Ok(string.capitalise(p.ey))
+    "Em" -> Ok(string.capitalise(p.em))
+    "Eir" -> Ok(string.capitalise(p.eir))
+    "Eirs" -> Ok(string.capitalise(p.eirs))
+    "Emself" -> Ok(string.capitalise(p.emself))
+    _ -> Error(Nil)
+  }
+}
+
+pub fn role_display(role: String) -> String {
+  case role {
+    "packet" -> "Fast Packet"
+    "hauler" -> "Bulk Hauler"
+    "liner" -> "Liner"
+    "gunship" -> "Gunship"
+    "tug" -> "Tug"
+    "yacht" -> "Yacht"
+    other -> other
+  }
+}
+
+pub fn ship_form(ship: Ship, key: String) -> Result(String, Nil) {
+  case key {
+    "role" -> Ok(role_display(ship.role))
+    _ -> Error(Nil)
   }
 }
