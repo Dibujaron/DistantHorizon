@@ -37,11 +37,11 @@
 ////   {"v":1,"type":"space","space":"station:<id>"|"ship:N","epoch":N,
 ////    "plan":{"grid":{...},"walkable":[...],"rooms":[...],"consoles":[...],
 ////            "spawn_tile":[x,y]},
-////    "grafts":[{"ship_id":N,"dx":N,"dy":N}...],
+////    "moorings":[{"ship_id":N,"dx":N,"dy":N}...],
 ////    "you":{"x":F,"y":F,"seat":null|S}} — the plan a client should now be
 ////   walking, with their own position/seat in its frame. Sent on login and
 ////   to every occupant of a space whose plan changed (dock/undock/despawn
-////   rebuild). Ship spaces carry epoch 0 and grafts []. The client adopts
+////   rebuild). Ship spaces carry epoch 0 and moorings []. The client adopts
 ////   the plan, snaps to `you`, and resets prediction/interpolation.
 ////   {"v":1,"type":"walkers","tick":N,"space":S,"epoch":N,
 ////    "characters":[{"id","name","x","y","seat"}...]} — sent at 15 Hz, one
@@ -297,7 +297,7 @@ fn encode_transfer(transfer: ship.Transfer) -> Json {
 }
 
 /// A walkable space: a flying ship's interior, or a station's composite
-/// (concourse + docked-ship grafts).
+/// (concourse + docked-ship moorings).
 pub type SpaceId {
   ShipSpace(ship_id: Int)
   StationSpace(station_id: String)
@@ -317,7 +317,7 @@ pub fn encode_space(
   space: SpaceId,
   epoch: Int,
   plan: DeckPlan,
-  grafts: List(composite.Graft),
+  moorings: List(composite.Mooring),
   you: Character,
 ) -> String {
   json.object([
@@ -326,7 +326,7 @@ pub fn encode_space(
     #("space", json.string(space_id_string(space))),
     #("epoch", json.int(epoch)),
     #("plan", deckplan.encode(plan)),
-    #("grafts", json.array(grafts, encode_graft)),
+    #("moorings", json.array(moorings, encode_mooring)),
     #(
       "you",
       json.object([
@@ -339,11 +339,11 @@ pub fn encode_space(
   |> json.to_string
 }
 
-fn encode_graft(graft: composite.Graft) -> Json {
+fn encode_mooring(mooring: composite.Mooring) -> Json {
   json.object([
-    #("ship_id", json.int(graft.ship_id)),
-    #("dx", json.int(graft.dx)),
-    #("dy", json.int(graft.dy)),
+    #("ship_id", json.int(mooring.ship_id)),
+    #("dx", json.int(mooring.dx)),
+    #("dy", json.int(mooring.dy)),
   ])
 }
 

@@ -72,7 +72,7 @@ pub type Station {
     /// Walkable concourse interior; None means crews cannot go ashore.
     concourse: Option(deckplan.DeckPlan),
     market: List(MarketEntry),
-    /// Authored graft anchors on the concourse's top edge; empty = ships
+    /// Authored mooring anchors on the concourse's top edge; empty = ships
     /// cannot dock here (M3.1).
     berths: List(composite.Berth),
   )
@@ -323,7 +323,7 @@ fn validate_trade(world: World) -> Result(World, String) {
 
 /// Berth validation: a station that declares berths must have a
 /// concourse; every berth tile must be walkable, and the tile directly
-/// north of it must NOT be walkable (that's where the grafted airlock
+/// north of it must NOT be walkable (that's where the moored airlock
 /// lands, and it must not overlap the concourse floor).
 fn validate_berths(world: World) -> Result(World, String) {
   list.fold(world.stations, Ok(world), fn(acc, station) {

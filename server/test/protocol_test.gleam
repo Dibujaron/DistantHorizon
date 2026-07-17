@@ -305,12 +305,15 @@ pub fn encode_space_test() {
       protocol.StationSpace("meridian_highport"),
       2,
       plan,
-      [composite.Graft(ship_id: 1, dx: 1, dy: 0)],
+      [composite.Mooring(ship_id: 1, dx: 1, dy: 0)],
       you,
     )
   assert string.contains(text, "\"type\":\"space\"")
   assert string.contains(text, "\"space\":\"station:meridian_highport\"")
-  assert string.contains(text, "\"grafts\":[{\"ship_id\":1,\"dx\":1,\"dy\":0}]")
+  assert string.contains(
+    text,
+    "\"moorings\":[{\"ship_id\":1,\"dx\":1,\"dy\":0}]",
+  )
   assert string.contains(text, "\"you\":{\"x\":2.5,\"y\":2.5,\"seat\":null}")
 }
 

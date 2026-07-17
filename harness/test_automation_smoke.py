@@ -201,7 +201,7 @@ def test_walk_ashore_and_screenshot(server, tmp_path):
         )
 
         # Walk down onto the concourse: a single automation client claims
-        # berth 0 (graft +1,0), so its airlock column is composite x=6 and
+        # berth 0 (mooring +1,0), so its airlock column is composite x=6 and
         # the concourse floor is composite rows 6..8. The descent threads a
         # single-tile berth pinch at composite (6,5), so center precisely on
         # the airlock column (x=6.5) while still on the wide ship-deck row,

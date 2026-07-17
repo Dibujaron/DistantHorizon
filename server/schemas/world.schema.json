@@ -137,7 +137,7 @@
         },
         "berths": {
           "type": "array",
-          "description": "Optional field (decode.optional_field, default []). Authored graft anchors on the concourse's top edge (M3.1); empty means ships cannot dock here.",
+          "description": "Optional field (decode.optional_field, default []). Authored mooring anchors on the concourse's top edge (M3.1); empty means ships cannot dock here.",
           "items": {
             "type": "array",
             "description": "[x, y] tile coordinate.",

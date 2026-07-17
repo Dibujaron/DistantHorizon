@@ -38,7 +38,7 @@ class CharacterView:
     raw message dicts remain the tool only where a test asserts on the wire
     shape itself. Positions are in the frame of the character's current
     `space` — ship-local while flying, composite (concourse + docked-ship
-    grafts) while docked."""
+    moorings) while docked."""
 
     id: int
     name: str

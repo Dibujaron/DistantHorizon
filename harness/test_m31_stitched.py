@@ -1,11 +1,11 @@
 """M3.1 integration tests: stitched interiors.
 
-One space, not two: docking grafts the ship's deck onto the station
+One space, not two: docking moors the ship's deck onto the station
 concourse (airlock to airlock, ids namespaced s{ship_id}:*), everyone in
 the composite walks one shared plan, and undocking splits bodies by tile
 ownership. Composite geometry cheat-sheet lives in
 docs/superpowers/plans/2026-07-16-m3.1-stitched-interiors.md; the walk-leg
-math and draining helpers below (_airlock_center_x, _graft_dx,
+math and draining helpers below (_airlock_center_x, _mooring_dx,
 _wait_for_own_position) mirror test_m3_trade.py's, duplicated per-file
 rather than imported -- the same convention test_m2_interior.py follows.
 World numbers come from server/worlds/m1_system.json: spawn station
@@ -22,18 +22,18 @@ STATION_SPACE = "station:meridian_highport"
 CONCOURSE_FLOOR_Y = 7.2  # a y >= here is safely on the concourse floor (rows 6..8)
 
 
-def _airlock_center_x(graft_dx: int) -> float:
+def _airlock_center_x(mooring_dx: int) -> float:
     """Composite x-center of a ship's airlock column: the sparrow spawns at
-    ship-local x=5, so the airlock column is graft_dx + 5, center + 0.5."""
-    return float(graft_dx + 5) + 0.5
+    ship-local x=5, so the airlock column is mooring_dx + 5, center + 0.5."""
+    return float(mooring_dx + 5) + 0.5
 
 
-def _graft_dx(space: dict, ship_id: int) -> int:
-    """The dx of `ship_id`'s graft in a `space` message (its berth offset)."""
-    for graft in space["grafts"]:
-        if graft["ship_id"] == ship_id:
-            return int(graft["dx"])
-    raise AssertionError(f"ship {ship_id} not grafted in space {space.get('space')!r}")
+def _mooring_dx(space: dict, ship_id: int) -> int:
+    """The dx of `ship_id`'s mooring in a `space` message (its berth offset)."""
+    for mooring in space["moorings"]:
+        if mooring["ship_id"] == ship_id:
+            return int(mooring["dx"])
+    raise AssertionError(f"ship {ship_id} not moored in space {space.get('space')!r}")
 
 
 async def _wait_for_own_position(
@@ -78,9 +78,9 @@ async def test_login_space_is_the_station_composite(server):
     try:
         ship_id = welcome["ship_id"]
         assert space["space"] == STATION_SPACE
-        # Our ship is grafted at a berth and our seat is namespaced to it.
-        grafts = {g["ship_id"]: g for g in space["grafts"]}
-        assert ship_id in grafts
+        # Our ship is moored at a berth and our seat is namespaced to it.
+        moorings = {g["ship_id"]: g for g in space["moorings"]}
+        assert ship_id in moorings
         assert space["you"]["seat"] == f"s{ship_id}:helm_main"
         # The composite plan carries both our helm and the concourse broker.
         console_ids = {c["id"] for c in space["plan"]["consoles"]}
@@ -90,19 +90,19 @@ async def test_login_space_is_the_station_composite(server):
         await client.close()
 
 
-async def test_docking_regrafts_everyones_plan(server):
+async def test_docking_remoors_everyones_plan(server):
     a, welcome_a, space_a = await _login("m31_resident")
     try:
         epoch_before = space_a["epoch"]
         b, welcome_b, _space_b = await _login("m31_arrival")
         try:
-            # b's arrival grafted a second ship: a receives a fresh space
-            # with a bumped epoch and b's graft in it.
+            # b's arrival moored a second ship: a receives a fresh space
+            # with a bumped epoch and b's mooring in it.
             space = await a.next_space()
             assert space["epoch"] > epoch_before
-            graft_ships = {g["ship_id"] for g in space["grafts"]}
-            assert welcome_b["ship_id"] in graft_ships
-            assert welcome_a["ship_id"] in graft_ships
+            mooring_ships = {g["ship_id"] for g in space["moorings"]}
+            assert welcome_b["ship_id"] in mooring_ships
+            assert welcome_a["ship_id"] in mooring_ships
         finally:
             await b.close()
     finally:
@@ -116,11 +116,11 @@ async def test_undock_splits_by_tile(server):
         try:
             # The stayer walks off their own ship onto the concourse floor:
             # east to clear the single-tile airlock pinch (column derived
-            # from their own login graft), then south onto the floor --
+            # from their own login mooring), then south onto the floor --
             # mirrors test_m3_trade.py's _descend_to_broker legs.
             assert (await stayer.stand())["ok"]
             stayer_airlock_x = _airlock_center_x(
-                _graft_dx(stayer_login_space, stayer_welcome["ship_id"])
+                _mooring_dx(stayer_login_space, stayer_welcome["ship_id"])
             )
             await stayer.move(1, 0)
             await _wait_for_own_position(
@@ -140,9 +140,9 @@ async def test_undock_splits_by_tile(server):
             assert pilot_space["you"]["seat"] == "helm_main"
             stayer_space = await stayer.next_space()
             assert stayer_space["space"] == STATION_SPACE
-            graft_ships = {g["ship_id"] for g in stayer_space["grafts"]}
-            assert pilot_welcome["ship_id"] not in graft_ships
-            assert stayer_welcome["ship_id"] in graft_ships
+            mooring_ships = {g["ship_id"] for g in stayer_space["moorings"]}
+            assert pilot_welcome["ship_id"] not in mooring_ships
+            assert stayer_welcome["ship_id"] in mooring_ships
         finally:
             await stayer.close()
     finally:

@@ -329,7 +329,7 @@ pub fn berth_on_non_walkable_tile_is_invalid_test() {
 
 pub fn berth_with_walkable_north_neighbor_is_invalid_test() {
   // Berth at (2,2) inside the floor: the tile north of it is walkable,
-  // so a grafted airlock would overlap the concourse.
+  // so a moored airlock would overlap the concourse.
   let assert Error(e) = world.decode(world_json_with_berth(2, 2))
   assert string.contains(e, "berth")
 }

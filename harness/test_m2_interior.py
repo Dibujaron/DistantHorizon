@@ -8,7 +8,7 @@ whole suite runs). Each test opens its own DHClient connection(s).
 M3.1 stitched interiors: there is no `board`/`disembark` any more. Login
 lands a character seated at their own namespaced helm ("s{ship}:helm_main")
 in the *station composite* -- the concourse with every docked ship's deck
-grafted on at a berth. Crossing between a ship deck and the concourse is
+moored on at a berth. Crossing between a ship deck and the concourse is
 plain `move` input in one shared space; the 15 Hz `walkers` feed (not the
 old `interior`/`concourse` messages) carries everyone in it. Positions are
 in the composite frame while docked, and in the ship-local frame once a ship
@@ -20,12 +20,12 @@ they drain the walkers/snapshot streams until a condition holds, bounded in
 server ticks or message counts, so a stalled server fails fast.
 
 Composite geometry (verified by server/test/sim_test.gleam; y-down, tile
-units): berth 0's graft is (+1, 0), so the sparrow's ship-local tiles shift
+units): berth 0's mooring is (+1, 0), so the sparrow's ship-local tiles shift
 +1 in x. helm_main tile (1,2) -> composite center (2.5, 2.5); cargo_main
 (6,1) -> (7.5, 1.5); the airlock/spawn tile [5,4] -> (6.5, 4.5). A ship's
-airlock column in the composite is graft_dx + 5, center + 0.5. The concourse
+airlock column in the composite is mooring_dx + 5, center + 0.5. The concourse
 floor is composite rows 6..8. Walk speed 3.0 tiles/s, character radius 0.3.
-Composite row 2 grafts the ship's ".########." row into columns 1..10, so a
+Composite row 2 moors the ship's ".########." row into columns 1..10, so a
 character walking east down it pins where its circle meets the wall tile
 x=10: center x = 10 - 0.3 = 9.7, give or take one 0.05-tile step.
 """
@@ -51,22 +51,22 @@ CHAR_RADIUS = 0.3  # tiles, matches character.gleam
 SPAWN_STATION = "meridian_highport"
 SPAWN_STATION_SPACE = f"station:{SPAWN_STATION}"
 
-HELM_CENTER = (2.5, 2.5)  # helm_main (1,2) grafted (+1,0)
-CARGO_CONSOLE_CENTER = (7.5, 1.5)  # cargo_main (6,1) grafted (+1,0)
-AIRLOCK_CENTER = (6.5, 4.5)  # spawn/airlock tile [5,4] grafted (+1,0)
+HELM_CENTER = (2.5, 2.5)  # helm_main (1,2) moored (+1,0)
+CARGO_CONSOLE_CENTER = (7.5, 1.5)  # cargo_main (6,1) moored (+1,0)
+AIRLOCK_CENTER = (6.5, 4.5)  # spawn/airlock tile [5,4] moored (+1,0)
 SHIP_LOCAL_SPAWN_CENTER = (5.5, 4.5)  # the same tile back in ship-local frame
 
 
-def _airlock_center_x(graft_dx: int) -> float:
+def _airlock_center_x(mooring_dx: int) -> float:
     """Composite x-center of a ship's airlock column (sparrow spawn x=5)."""
-    return float(graft_dx + 5) + 0.5
+    return float(mooring_dx + 5) + 0.5
 
 
-def _graft_dx(space: dict, ship_id: int) -> int:
-    for graft in space["grafts"]:
-        if graft["ship_id"] == ship_id:
-            return int(graft["dx"])
-    raise AssertionError(f"ship {ship_id} not grafted in space {space.get('space')!r}")
+def _mooring_dx(space: dict, ship_id: int) -> int:
+    for mooring in space["moorings"]:
+        if mooring["ship_id"] == ship_id:
+            return int(mooring["dx"])
+    raise AssertionError(f"ship {ship_id} not moored in space {space.get('space')!r}")
 
 
 # --- Deck-plan math (unchanged; runs against a plan dict -- a ship class doc
@@ -224,7 +224,7 @@ async def test_spawn_state(server):
         assert tile_walkable(ship_class, *ship_class["spawn_tile"])
 
         # The space message names the spawn station's composite and seats us
-        # at our own namespaced helm, offset by the berth-0 graft.
+        # at our own namespaced helm, offset by the berth-0 mooring.
         space = await client.next_space()
         assert space["space"] == SPAWN_STATION_SPACE
         assert space["you"]["seat"] == f"s{ship_id}:helm_main"
@@ -391,12 +391,12 @@ async def test_one_flies_one_walks(server):
         world = welcome_a["world"]
         dt = welcome_a["dt"]
 
-        # Airlock columns from the login grafts (A logs in first -> lower
+        # Airlock columns from the login moorings (A logs in first -> lower
         # berth -> west of B, so B can walk west along the floor to reach it).
         space_a = await client_a.next_space()
         space_b = await client_b.next_space()
-        a_airlock = _airlock_center_x(_graft_dx(space_a, ship_a))
-        b_airlock = _airlock_center_x(_graft_dx(space_b, ship_b))
+        a_airlock = _airlock_center_x(_mooring_dx(space_a, ship_a))
+        b_airlock = _airlock_center_x(_mooring_dx(space_b, ship_b))
         assert a_airlock < b_airlock, (a_airlock, b_airlock)
 
         # B stands and walks off her own deck, along the concourse floor, and

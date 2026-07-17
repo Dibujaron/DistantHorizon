@@ -1,10 +1,10 @@
 //// Stitched interiors (M3.1): build one combined deck plan from a station
-//// concourse plus every docked ship's plan grafted on at a berth, airlock
+//// concourse plus every docked ship's plan moored on at a berth, airlock
 //// to airlock. A berth is a walkable stub tile authored on the concourse;
 //// a docked ship is placed so its airlock (spawn tile) sits directly north
 //// of its berth tile. All tiles are then translated into one positive
 //// frame (bounding-box normalization); ship room/console ids are
-//// namespaced "s{ship_id}:{id}" so several grafts never collide. This is
+//// namespaced "s{ship_id}:{id}" so several moorings never collide. This is
 //// level generation, not coordinate gymnastics: the output is an ordinary
 //// DeckPlan the character sim and the client walk unchanged.
 
@@ -15,31 +15,31 @@ import gleam/int
 import gleam/list
 import gleam/string
 
-/// An authored berth: the walkable concourse stub tile a ship grafts onto.
+/// An authored berth: the walkable concourse stub tile a ship moors onto.
 pub type Berth {
   Berth(x: Int, y: Int)
 }
 
-/// One docked ship to graft: its id, claimed berth index, and deck plan.
+/// One docked ship to moor: its id, claimed berth index, and deck plan.
 pub type DockedShip {
   DockedShip(ship_id: Int, berth: Int, plan: DeckPlan)
 }
 
 /// Where one ship's tiles landed in the composite frame: ship-local tile
 /// (x, y) maps to composite tile (x + dx, y + dy).
-pub type Graft {
-  Graft(ship_id: Int, dx: Int, dy: Int)
+pub type Mooring {
+  Mooring(ship_id: Int, dx: Int, dy: Int)
 }
 
 /// The stitched plan. `concourse_dx/dy` is the translation applied to
-/// concourse tiles (grows when a graft extends past the concourse's
-/// top/left edge); grafts carry each ship's translation.
+/// concourse tiles (grows when a mooring extends past the concourse's
+/// top/left edge); moorings carry each ship's translation.
 pub type Composite {
   Composite(
     plan: DeckPlan,
     concourse_dx: Int,
     concourse_dy: Int,
-    grafts: List(Graft),
+    moorings: List(Mooring),
   )
 }
 
@@ -65,22 +65,25 @@ pub fn parse_namespaced(id: String) -> Result(#(Int, String), Nil) {
   }
 }
 
-/// Find the ship's graft in this composite, if it is docked here.
-pub fn find_graft(composite: Composite, ship_id: Int) -> Result(Graft, Nil) {
-  list.find(composite.grafts, fn(g) { g.ship_id == ship_id })
+/// Find the ship's mooring in this composite, if it is docked here.
+pub fn find_mooring(
+  composite: Composite,
+  ship_id: Int,
+) -> Result(Mooring, Nil) {
+  list.find(composite.moorings, fn(g) { g.ship_id == ship_id })
 }
 
 /// Whether composite-frame position (x, y) stands on a walkable tile of
-/// this graft — the undock split test: bodies on ship tiles leave with the
+/// this mooring — the undock split test: bodies on ship tiles leave with the
 /// ship, bodies on station tiles stay.
-pub fn tile_on_graft(
-  graft: Graft,
+pub fn tile_on_mooring(
+  mooring: Mooring,
   ship_plan: DeckPlan,
   x: Float,
   y: Float,
 ) -> Bool {
-  let tx = float_floor(x) - graft.dx
-  let ty = float_floor(y) - graft.dy
+  let tx = float_floor(x) - mooring.dx
+  let ty = float_floor(y) - mooring.dy
   deckplan.is_walkable(ship_plan, tx, ty)
 }
 
@@ -133,10 +136,10 @@ pub fn build(
       let shift_y = -min_y
       let width = max_x - min_x
       let height = max_y - min_y
-      let grafts =
+      let moorings =
         list.map(placed, fn(entry) {
           let #(ship, dx, dy) = entry
-          Graft(ship_id: ship.ship_id, dx: dx + shift_x, dy: dy + shift_y)
+          Mooring(ship_id: ship.ship_id, dx: dx + shift_x, dy: dy + shift_y)
         })
       case
         compose_walkable(concourse, placed, shift_x, shift_y, width, height)
@@ -195,7 +198,7 @@ pub fn build(
                 plan: plan,
                 concourse_dx: shift_x,
                 concourse_dy: shift_y,
-                grafts: grafts,
+                moorings: moorings,
               ))
           }
         }

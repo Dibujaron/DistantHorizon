@@ -15,12 +15,12 @@
 //// occupied station's market to that station's occupants.
 ////
 //// Stitched interiors (M3.1): each concourse keeps one `StationSpace` — its
-//// composite plan (concourse + every docked ship grafted at a berth) and a
+//// composite plan (concourse + every docked ship moored at a berth) and a
 //// monotonically increasing epoch, rebuilt on every dock/undock/despawn. A
 //// body's place is `Aboard` (in a *flying* ship's frame) or `OnStation`
 //// (in a station's composite frame, which covers standing aboard a *docked*
 //// ship). Crew membership (`ship_id`) transfers only at the undock split:
-//// bodies standing on ship X's grafted tiles leave with X.
+//// bodies standing on ship X's moored tiles leave with X.
 ////
 //// A WebSocket handler process joins the simulation by calling
 //// `add_player`, which claims a free berth at the spawn station (refusing
@@ -38,7 +38,7 @@
 //// whether their bodies are aboard or ashore — so a pilot who disconnects
 //// mid-flight leaves a walking crewmate on a still-flying ship, a ship
 //// whose whole crew has gone ashore stays alive, and the last crew member
-//// leaving despawns it and rebuilds the station space without its graft.
+//// leaving despawns it and rebuilds the station space without its mooring.
 
 import dh_server/cargo
 import dh_server/character.{type Character}
@@ -358,7 +358,7 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
               let t = int.to_float(state.tick) *. ship.dt
               let new_ship =
                 ship.spawn_docked(state.next_ship_id, state.world, t, berth)
-              // Rebuild the spawn station's composite with the new graft
+              // Rebuild the spawn station's composite with the new mooring
               // before placing the character in the composite frame.
               let state =
                 rebuild_space(
@@ -371,12 +371,12 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
                 )
               let assert Ok(space) =
                 find_space(state.spaces, state.world.spawn_station)
-              let assert Ok(graft) =
-                composite.find_graft(space.composite, new_ship.id)
+              let assert Ok(mooring) =
+                composite.find_mooring(space.composite, new_ship.id)
               let assert Ok(helm) =
                 deckplan.find_console_of_kind(state.class.plan, "helm")
               let #(hx, hy) =
-                deckplan.tile_center(helm.x + graft.dx, helm.y + graft.dy)
+                deckplan.tile_center(helm.x + mooring.dx, helm.y + mooring.dy)
               let new_character =
                 character.Character(
                   id: state.next_character_id,
@@ -405,7 +405,7 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
                 )
               process.send(reply, Ok(#(new_ship.id, new_character.id)))
               // Everyone in the spawn station's space (including the new
-              // client) gets the new plan: a ship just grafted on.
+              // client) gets the new plan: a ship just moored on.
               push_space(
                 state,
                 protocol.StationSpace(state.world.spawn_station),
@@ -464,10 +464,10 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
                   State(..state, ships: replace_ship(state.ships, docked))
                   |> rebuild_space(station_id)
                 // Join: every crew body aboard steps into the composite frame,
-                // seats namespaced, positions offset by the new graft.
+                // seats namespaced, positions offset by the new mooring.
                 let assert Ok(space) = find_space(state.spaces, station_id)
-                let assert Ok(graft) =
-                  composite.find_graft(space.composite, docked.id)
+                let assert Ok(mooring) =
+                  composite.find_mooring(space.composite, docked.id)
                 let characters =
                   list.map(state.characters, fn(c) {
                     case c.ship_id == docked.id && c.place == character.Aboard {
@@ -476,8 +476,8 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
                         character.Character(
                           ..c,
                           place: character.OnStation(station_id),
-                          x: c.x +. int.to_float(graft.dx),
-                          y: c.y +. int.to_float(graft.dy),
+                          x: c.x +. int.to_float(mooring.dx),
+                          y: c.y +. int.to_float(mooring.dy),
                           seat: option.map(c.seat, composite.namespace_id(
                             docked.id,
                             _,
@@ -653,7 +653,7 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
         list.map(characters, fn(c) { c.ship_id }) |> list.unique
       let ships =
         list.filter(state.ships, fn(s) { list.contains(crewed_ship_ids, s.id) })
-      // Every station that just lost a docked graft rebuilds and re-pushes
+      // Every station that just lost a docked mooring rebuilds and re-pushes
       // its plan (computed from the pre-filter ships against the surviving
       // crew ids).
       let despawned_station_ids =
@@ -775,10 +775,10 @@ fn with_helm_ship(
   }
 }
 
-/// Undock `target` from `station_id`: bodies standing on its grafted tiles
+/// Undock `target` from `station_id`: bodies standing on its moored tiles
 /// leave with it (and become its crew), bodies on station tiles stay. Ships
 /// left crewless by the transfer despawn, the station space rebuilds
-/// without the departed grafts, and both sides get their new plan.
+/// without the departed moorings, and both sides get their new plan.
 fn handle_undock_split(
   state: State,
   station_id: String,
@@ -792,14 +792,15 @@ fn handle_undock_split(
       actor.continue(state)
     }
     Ok(flying) -> {
-      // Split against the *current* (pre-rebuild) frame's graft.
+      // Split against the *current* (pre-rebuild) frame's mooring.
       let assert Ok(space) = find_space(state.spaces, station_id)
-      let assert Ok(graft) = composite.find_graft(space.composite, target.id)
+      let assert Ok(mooring) =
+        composite.find_mooring(space.composite, target.id)
       let characters =
         list.map(state.characters, fn(c) {
           let departing =
             c.place == character.OnStation(station_id)
-            && composite.tile_on_graft(graft, state.class.plan, c.x, c.y)
+            && composite.tile_on_mooring(mooring, state.class.plan, c.x, c.y)
           case departing {
             False -> c
             True ->
@@ -807,8 +808,8 @@ fn handle_undock_split(
                 ..c,
                 ship_id: target.id,
                 place: character.Aboard,
-                x: c.x -. int.to_float(graft.dx),
-                y: c.y -. int.to_float(graft.dy),
+                x: c.x -. int.to_float(mooring.dx),
+                y: c.y -. int.to_float(mooring.dy),
                 seat: strip_namespace(c.seat),
               )
           }
@@ -821,10 +822,10 @@ fn handle_undock_split(
       let ships =
         list.filter(surviving, fn(s) { list.contains(crewed_ship_ids, s.id) })
       // A ship despawned by the transfer while docked at a *different*
-      // station leaves that station's composite with a ghost graft. Mirror
+      // station leaves that station's composite with a ghost mooring. Mirror
       // ClientDown: rebuild+re-push every such remote station too (the local
       // station is rebuilt below). rebuild_space's snap re-floors any body
-      // that was standing on those remote grafts.
+      // that was standing on those remote moorings.
       let despawned_station_ids =
         list.filter_map(surviving, fn(s) {
           case list.contains(crewed_ship_ids, s.id), s.dock {
@@ -1229,7 +1230,7 @@ fn rebuild_space(state: State, station_id: String) -> State {
           }
           let shift_x = int.to_float(built.concourse_dx - old_dx)
           let shift_y = int.to_float(built.concourse_dy - old_dy)
-          // A body standing on a ship graft that just despawned lands in
+          // A body standing on a ship mooring that just despawned lands in
           // void on the new composite (its tiles are gone). Rather than
           // leave it soft-locked — character.step rejects every move out of
           // a non-walkable circle — snap it to the concourse spawn tile,
@@ -1324,7 +1325,7 @@ fn space_message_for(state: State, char: Character) -> Result(String, Nil) {
             protocol.StationSpace(station_id),
             space.epoch,
             space.composite.plan,
-            space.composite.grafts,
+            space.composite.moorings,
             char,
           ))
       }
@@ -1458,7 +1459,7 @@ fn run_tick(state: State) -> actor.Next(State, Msg) {
 
 /// One `walkers` message per occupied space, sent only to that space's
 /// occupants: flying ships' crews get their ship space, everyone at a
-/// docked station (aboard grafted ships or on the concourse floor alike)
+/// docked station (aboard moored ships or on the concourse floor alike)
 /// shares the station space.
 fn broadcast_walkers(
   clients: List(Client),

@@ -3,7 +3,7 @@ extends RefCounted
 ## Typed view of the wire protocol's `space` message (M3.1 stitched
 ## interiors): the walkable plan a client should currently be simulating
 ## against, which is either a flying ship's interior ("ship:N") or a
-## station's composite - concourse plus every docked ship grafted at a
+## station's composite - concourse plus every docked ship moored at a
 ## berth ("station:<id>"). `epoch` increments every time a station space
 ## is rebuilt (dock/undock/despawn); `walkers` messages carry the same
 ## tag so stale-frame updates can be dropped. `you_*` is our own
@@ -11,25 +11,25 @@ extends RefCounted
 ## it, since plan changes move the coordinate frame under our feet.
 
 
-## One grafted ship: ship-local tile (x,y) sits at composite tile
+## One moored ship: ship-local tile (x,y) sits at composite tile
 ## (x + dx, y + dy).
-class Graft:
+class Mooring:
 	var ship_id: int
 	var dx: int
 	var dy: int
 
-	static func from_dict(data: Dictionary) -> Graft:
-		var graft := Graft.new()
-		graft.ship_id = int(data.get("ship_id", -1))
-		graft.dx = int(data.get("dx", 0))
-		graft.dy = int(data.get("dy", 0))
-		return graft
+	static func from_dict(data: Dictionary) -> Mooring:
+		var mooring := Mooring.new()
+		mooring.ship_id = int(data.get("ship_id", -1))
+		mooring.dx = int(data.get("dx", 0))
+		mooring.dy = int(data.get("dy", 0))
+		return mooring
 
 
 var id: String = ""
 var epoch: int = 0
 var plan: ShipClassData = null
-var grafts: Array[Graft] = []
+var moorings: Array[Mooring] = []
 var you_x: float = 0.0
 var you_y: float = 0.0
 var you_seat: Variant = null  ## console id or null
@@ -42,9 +42,9 @@ static func from_dict(data: Dictionary) -> SpaceData:
 	var plan_doc: Variant = data.get("plan")
 	if plan_doc is Dictionary:
 		space.plan = ShipClassData.from_dict(plan_doc)
-	for graft_data: Variant in data.get("grafts", []):
-		if graft_data is Dictionary:
-			space.grafts.append(Graft.from_dict(graft_data))
+	for mooring_data: Variant in data.get("moorings", []):
+		if mooring_data is Dictionary:
+			space.moorings.append(Mooring.from_dict(mooring_data))
 	var you: Variant = data.get("you")
 	if you is Dictionary:
 		space.you_x = float(you.get("x", 0.0))

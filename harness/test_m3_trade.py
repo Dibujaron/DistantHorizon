@@ -1,7 +1,7 @@
 """M3.1 integration tests: trade on foot in the stitched station space.
 
 Exercises the full loop over the wire: from the helm seat, stand and walk
-the composite (concourse + docked-ship grafts) to a broker, sit, buy with a
+the composite (concourse + docked-ship moorings) to a broker, sit, buy with a
 timed robot transfer, watch the hold fill through `cargo` messages, sell it
 back, and prove undock is blocked mid-transfer. Under M3.1 there is no
 `board`/`disembark` any more: a docked ship's deck and the concourse are one
@@ -13,10 +13,10 @@ meridian_highport, machinery base 55 +/- 4, starting wallet 2000, hold
 capacity 40, robot rate 1.0 unit/s, three berths.
 
 Composite geometry (verified by server/test/sim_test.gleam; y-down, tile
-units): first login claims berth 0, graft (+1, 0), so the sparrow's helm
+units): first login claims berth 0, mooring (+1, 0), so the sparrow's helm
 tile (1,2) lands at composite center (2.5, 2.5) with seat "s{ship}:helm_main",
 and its airlock (spawn tile [5,4]) at composite (6, 4). A ship's airlock
-COLUMN in the composite is graft_dx + 5 (sparrow spawn x = 5); its center is
+COLUMN in the composite is mooring_dx + 5 (sparrow spawn x = 5); its center is
 that + 0.5. The concourse floor is composite rows 6..8; broker_main sits at
 composite center (10.5, 7.5). Walk legs mirror sim_test.gleam's
 `walk_to_broker`: character radius 0.3, so descending the single-tile berth
@@ -37,22 +37,22 @@ SPAWN_STATION_SPACE = f"station:{SPAWN_STATION}"
 MACHINERY_MIN, MACHINERY_MAX = 51, 59  # base 55, elasticity 4
 STARTING_WALLET = 2000
 
-BROKER_CENTER = (10.5, 7.5)  # broker_main: concourse (10,3) grafted to (10,7)
+BROKER_CENTER = (10.5, 7.5)  # broker_main: concourse (10,3) moored to (10,7)
 CONCOURSE_FLOOR_Y = 7.2  # a y >= here is safely on the concourse floor (rows 6..8)
 
 
-def _airlock_center_x(graft_dx: int) -> float:
+def _airlock_center_x(mooring_dx: int) -> float:
     """Composite x-center of a ship's airlock column: the sparrow spawns at
-    ship-local x=5, so the airlock column is graft_dx + 5, center + 0.5."""
-    return float(graft_dx + 5) + 0.5
+    ship-local x=5, so the airlock column is mooring_dx + 5, center + 0.5."""
+    return float(mooring_dx + 5) + 0.5
 
 
-def _graft_dx(space: dict, ship_id: int) -> int:
-    """The dx of `ship_id`'s graft in a `space` message (its berth offset)."""
-    for graft in space["grafts"]:
-        if graft["ship_id"] == ship_id:
-            return int(graft["dx"])
-    raise AssertionError(f"ship {ship_id} not grafted in space {space.get('space')!r}")
+def _mooring_dx(space: dict, ship_id: int) -> int:
+    """The dx of `ship_id`'s mooring in a `space` message (its berth offset)."""
+    for mooring in space["moorings"]:
+        if mooring["ship_id"] == ship_id:
+            return int(mooring["dx"])
+    raise AssertionError(f"ship {ship_id} not moored in space {space.get('space')!r}")
 
 
 async def _login(server, name: str) -> tuple[DHClient, dict]:
@@ -146,7 +146,7 @@ async def _walk_to_broker(client: DHClient) -> None:
     stand = await client.stand()
     assert stand["ok"], stand
     me = await _own_position(client, SPAWN_STATION_SPACE)
-    airlock_x = _airlock_center_x(math.floor(me.x) - 1)  # helm col = graft_dx + 1
+    airlock_x = _airlock_center_x(math.floor(me.x) - 1)  # helm col = mooring_dx + 1
     await _descend_to_broker(client, SPAWN_STATION_SPACE, airlock_x)
 
 
@@ -299,7 +299,7 @@ async def test_trade_validation_reasons(server):
 
 async def test_pilot_holds_helm_while_quartermaster_trades(server):
     """M3.1 exit criterion: a quartermaster shanghais onto the pilot's ship,
-    the pilot undocks and RE-DOCKS (the crew-join re-graft path, which has no
+    the pilot undocks and RE-DOCKS (the crew-join re-moor path, which has no
     server-side test of its own), then the qm trades ashore while the pilot
     holds the helm; undock is blocked until the robots finish."""
     pilot, pilot_welcome = await _login(server, "m31_pilot")
@@ -308,13 +308,13 @@ async def test_pilot_holds_helm_while_quartermaster_trades(server):
     qm_ship = qm_welcome["ship_id"]
     try:
         # Both spawn docked (pilot berth 0, qm berth 1). Their login `space`
-        # messages carry the grafts we drive the walk legs from.
+        # messages carry the moorings we drive the walk legs from.
         pilot_space = await pilot.next_space()
         assert pilot_space["space"] == SPAWN_STATION_SPACE
         qm_space = await qm.next_space()
         assert qm_space["space"] == SPAWN_STATION_SPACE
-        qm_own_airlock = _airlock_center_x(_graft_dx(qm_space, qm_ship))
-        pilot_airlock = _airlock_center_x(_graft_dx(pilot_space, pilot_ship))
+        qm_own_airlock = _airlock_center_x(_mooring_dx(qm_space, qm_ship))
+        pilot_airlock = _airlock_center_x(_mooring_dx(pilot_space, pilot_ship))
 
         # The qm stands and walks off her own deck, along the concourse, and
         # up onto the pilot's deck (down her airlock column, west along the
@@ -345,7 +345,7 @@ async def test_pilot_holds_helm_while_quartermaster_trades(server):
         undock = await pilot.undock()
         assert undock["ok"], undock
 
-        # The pilot re-docks -- the crew-join re-graft path. dock()'s
+        # The pilot re-docks -- the crew-join re-moor path. dock()'s
         # dock_result drains the stale ship `space` buffered from the undock,
         # so the next `space` is the station composite the redock rebuilt.
         redock = await pilot.dock()
@@ -354,8 +354,8 @@ async def test_pilot_holds_helm_while_quartermaster_trades(server):
         assert pilot_redock_space["space"] == SPAWN_STATION_SPACE
         # The pilot's helm seat is re-namespaced back to the ship on the join.
         assert pilot_redock_space["you"]["seat"] == f"s{pilot_ship}:helm_main"
-        # Berth is the lowest free index -- derive the graft, never hardcode.
-        redock_dx = _graft_dx(pilot_redock_space, pilot_ship)
+        # Berth is the lowest free index -- derive the mooring, never hardcode.
+        redock_dx = _mooring_dx(pilot_redock_space, pilot_ship)
         redock_airlock = _airlock_center_x(redock_dx)
 
         # Both bodies re-enter the station space's walkers on the redock.
@@ -369,7 +369,7 @@ async def test_pilot_holds_helm_while_quartermaster_trades(server):
         else:
             raise AssertionError("both bodies never re-appeared in station walkers")
 
-        # The qm (standing on the re-grafted deck) walks to the broker; stale
+        # The qm (standing on the re-moored deck) walks to the broker; stale
         # ship-space frames from the flight are drained (strict_space=False).
         await _descend_to_broker(
             qm, SPAWN_STATION_SPACE, redock_airlock, strict_space=False

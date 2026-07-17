@@ -8,7 +8,7 @@
 //// A body's `Place` is either `Aboard` — in a *flying* ship's local frame
 //// — or `OnStation(station_id)` — in that station's composite frame, which
 //// (M3.1 stitched interiors) includes standing aboard a ship *docked* at
-//// the station: its tiles are grafted into the station composite. The old
+//// the station: its tiles are moored into the station composite. The old
 //// airlock/place-transition helpers (near_airlock/disembark_to and the
 //// spawn helpers) are gone; ship<->concourse crossing is now plain walking
 //// within one composite space, and the dock/undock place transitions live
@@ -199,7 +199,7 @@ fn normalize(dx: Float, dy: Float) -> #(Float, Float) {
 /// Whether a body (collision circle, radius `radius`) can stand centered at
 /// `(x, y)` on `plan` — the same circle-vs-tile test `step` gates movement
 /// on, so a position that passes here is one the character could have walked
-/// to. Used by the sim to detect a body left in void when a graft despawns
+/// to. Used by the sim to detect a body left in void when a mooring despawns
 /// under it (a plain `deckplan.is_walkable` on the center tile is not enough:
 /// the collision radius matters at tile edges).
 pub fn can_stand_at(plan: DeckPlan, x: Float, y: Float) -> Bool {

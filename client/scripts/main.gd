@@ -625,7 +625,7 @@ func _on_snapshot_received(tick: int, ships: Array[ShipState]) -> void:
 	_snapshot_ticks_msec = Time.get_ticks_msec()
 
 ## A new plan under our feet (login, dock, undock, or another ship's
-## graft appearing/leaving): adopt it and restart prediction and
+## mooring appearing/leaving): adopt it and restart prediction and
 ## interpolation from scratch. The frame may have shifted, so our own
 ## position comes from the message's `you` block; the crew list refills
 ## on the next `walkers`. Seed _characters with ourselves so the renderer
@@ -832,8 +832,8 @@ func _update_status_label() -> void:
 	lines.append("view: %s" % view_mode_name())
 	if _space != null and _space.is_station():
 		lines.append("at %s" % _station_name(_space.station_id()))
-		if _space.grafts.size() > 0:
-			lines.append("%d ship(s) at the berths" % _space.grafts.size())
+		if _space.moorings.size() > 0:
+			lines.append("%d ship(s) at the berths" % _space.moorings.size())
 	if _cargo != null:
 		lines.append("wallet %d cr - hold %d/%d" % [_cargo.wallet, _cargo.hold_total(), _cargo.capacity])
 		for transfer in _cargo.transfers:
