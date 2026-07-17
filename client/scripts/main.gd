@@ -466,10 +466,7 @@ func _update_interior_view() -> void:
 			rendered.append(_predicted_character_state(character))
 		else:
 			rendered.append(_interpolated_character_state(character, render_msec))
-	# Dock-label argument is retired (M3.1 stitched interiors draw the
-	# graft in place rather than a separate docking collar); interior_view.gd's
-	# signature swap to a camera-focus argument is Task 10.
-	_interior_view.set_frame_data(_current_plan(), rendered, _character_id, "")
+	_interior_view.set_frame_data(_current_plan(), rendered, _character_id, _own_render_position())
 
 ## Where our own character renders this frame (predicted while walking,
 ## server truth otherwise) - also the interior camera's focus.

@@ -3,14 +3,17 @@ class_name InteriorView
 ## Draws the ship's interior deck plan (floor tiles, room tints/labels,
 ## consoles) and the characters aboard, sibling of world_view.gd.
 ##
-## Unlike WorldView there's no follow/zoom camera: the M2 sparrow class
-## (10x6 tiles) always fits comfortably on screen at TILE_PIXELS scale, so
-## the whole grid is simply centered in the viewport.
+## Unlike WorldView there's no zoom, but there is a clamped follow camera:
+## an axis whose extent fits the viewport is simply centered (the old M2
+## behavior, still true for e.g. the 10x6 sparrow plan), but an axis that
+## overflows follows the own character instead, clamped so the view never
+## scrolls past the grid's edges. M3.1 stitched composites routinely outgrow
+## one screen, unlike the single-deck plans M2 rendered.
 ##
 ## Character positions arrive from `interior` messages (network_client.gd)
-## at 15 Hz; main.gd extrapolates between them the same way it dead-reckons
-## ship snapshots, using velocity estimated client-side (the wire message
-## carries position only, no vx/vy).
+## at 15 Hz; main.gd predicts/interpolates between them (see
+## _own_render_position() and _interpolated_character_state() there), never
+## extrapolating past the latest known state.
 
 const TILE_PIXELS := 64.0
 
@@ -34,37 +37,30 @@ const ROOM_TINT_PALETTE := [
 	Color(0.45, 0.35, 0.3, 0.35),
 ]
 
-## Docking collar: the tile beyond the airlock, drawn while something is
-## connected on the other side (the station concourse seen from a docked
-## ship's deck, or the docked ship seen from the concourse).
-const DOCK_COLLAR_FILL := Color(0.6, 0.95, 0.7, 0.15)
-const DOCK_COLLAR_EDGE := Color(0.6, 0.95, 0.7, 0.7)
-const DOCK_COLLAR_LABEL := Color(0.75, 0.95, 0.8, 0.9)
-
 ## Set every frame by main.gd before queue_redraw().
 var ship_class: ShipClassData = null
 var characters: Array[CharacterState] = []
 var own_character_id: int = -1
-var dock_label: String = ""
+var focus_tile: Vector2 = Vector2.ZERO
 
 var _font: Font
 
 func _ready() -> void:
 	_font = ThemeDB.fallback_font
 
-## Called by main.gd once per frame with everything needed to render.
-## `p_dock_label` names what the plan's airlock is connected to ("" = draw
-## no docking collar).
+## Called by main.gd once per frame. `p_focus_tile` is the own character's
+## position (tile units) - the camera centers on it when the plan is too
+## big for the viewport (M3.1 composites routinely are).
 func set_frame_data(
 	p_ship_class: ShipClassData,
 	p_characters: Array[CharacterState],
 	p_own_character_id: int,
-	p_dock_label: String = ""
+	p_focus_tile: Vector2
 ) -> void:
 	ship_class = p_ship_class
 	characters = p_characters
 	own_character_id = p_own_character_id
-	dock_label = p_dock_label
+	focus_tile = p_focus_tile
 	queue_redraw()
 
 func _draw() -> void:
@@ -72,17 +68,28 @@ func _draw() -> void:
 		return
 	var origin := _grid_origin()
 	_draw_floor(origin)
-	_draw_dock_link(origin)
 	_draw_room_labels(origin)
 	_draw_consoles(origin)
 	_draw_characters(origin)
 
-## Top-left screen pixel of tile (0,0): centers the whole grid in the
-## viewport (the M2 deck always fits on screen, so no follow camera).
+## Top-left screen pixel of tile (0,0). An axis whose whole extent fits
+## the viewport is centered (the M2 behavior); an axis that overflows
+## follows the own character, clamped so the view never scrolls past the
+## grid's edges - a stitched station composite is wider than one screen,
+## but the camera should still come to rest at its ends.
 func _grid_origin() -> Vector2:
 	var viewport_size := get_viewport_rect().size
 	var grid_size_px := Vector2(ship_class.grid_width, ship_class.grid_height) * TILE_PIXELS
-	return (viewport_size - grid_size_px) * 0.5
+	var origin := (viewport_size - grid_size_px) * 0.5
+	if grid_size_px.x > viewport_size.x:
+		origin.x = clampf(
+			viewport_size.x * 0.5 - focus_tile.x * TILE_PIXELS,
+			viewport_size.x - grid_size_px.x, 0.0)
+	if grid_size_px.y > viewport_size.y:
+		origin.y = clampf(
+			viewport_size.y * 0.5 - focus_tile.y * TILE_PIXELS,
+			viewport_size.y - grid_size_px.y, 0.0)
+	return origin
 
 func _tile_to_screen(tile: Vector2, origin: Vector2) -> Vector2:
 	return origin + tile * TILE_PIXELS
@@ -101,39 +108,6 @@ func _draw_floor(origin: Vector2) -> void:
 			else:
 				draw_rect(rect, VOID_COLOR, true)
 			draw_rect(rect, GRID_LINE_COLOR, false, 1.0)
-
-## The direction the airlock (spawn tile) opens outward: its first
-## non-walkable neighbor, preferring down (every bundled plan's airlock
-## sits on its bottom edge today).
-func _airlock_outward_dir() -> Vector2i:
-	var airlock := ship_class.spawn_tile
-	for dir: Vector2i in [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0)]:
-		if not ship_class.is_walkable(airlock.x + dir.x, airlock.y + dir.y):
-			return dir
-	return Vector2i(0, 1)
-
-## Draws the docking collar just outside the airlock: the connecting tube
-## your ship (or the concourse) sits on the other end of, labeled with
-## what's connected. Rendering only -- crossing is still X at the airlock;
-## stitching the two interiors into one walkable space is M3.1.
-func _draw_dock_link(origin: Vector2) -> void:
-	if dock_label == "":
-		return
-	var outward := _airlock_outward_dir()
-	var collar := ship_class.spawn_tile + outward
-	var rect := Rect2(_tile_to_screen(Vector2(collar), origin), Vector2(TILE_PIXELS, TILE_PIXELS))
-	draw_rect(rect.grow(-TILE_PIXELS * 0.12), DOCK_COLLAR_FILL, true)
-	draw_rect(rect.grow(-TILE_PIXELS * 0.12), DOCK_COLLAR_EDGE, false, 2.0)
-	if _font != null:
-		var text_size := _font.get_string_size(dock_label, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE)
-		var label_pos := Vector2(
-			rect.get_center().x - text_size.x * 0.5,
-			rect.position.y + rect.size.y + FONT_SIZE + 2.0)
-		if outward.y < 0:
-			label_pos.y = rect.position.y - 6.0
-		draw_string(
-			_font, label_pos, dock_label,
-			HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, DOCK_COLLAR_LABEL)
 
 func _draw_room_labels(origin: Vector2) -> void:
 	if _font == null:
