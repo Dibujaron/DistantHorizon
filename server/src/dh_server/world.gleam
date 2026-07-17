@@ -18,9 +18,11 @@
 //// flat (never blows up) inside the body. At the exact centre (r = 0) the
 //// direction is undefined and the body contributes nothing.
 
+import dh_server/composite
 import dh_server/deckplan
 import gleam/dynamic/decode
 import gleam/float
+import gleam/int
 import gleam/json.{type Json}
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -70,6 +72,9 @@ pub type Station {
     /// Walkable concourse interior; None means crews cannot go ashore.
     concourse: Option(deckplan.DeckPlan),
     market: List(MarketEntry),
+    /// Authored graft anchors on the concourse's top edge; empty = ships
+    /// cannot dock here (M3.1).
+    berths: List(composite.Berth),
   )
 }
 
@@ -262,7 +267,7 @@ fn validate(world: World) -> Result(World, String) {
     _, Ok(station) -> Error("unknown parent body id: " <> station.parent)
     Error(Nil), Error(Nil) ->
       case list.contains(station_ids, world.spawn_station) {
-        True -> validate_trade(world)
+        True -> validate_trade(world) |> result.try(validate_berths)
         False -> Error("unknown spawn_station id: " <> world.spawn_station)
       }
   }
@@ -312,6 +317,41 @@ fn validate_trade(world: World) -> Result(World, String) {
               "station " <> station.id <> " has a market but no broker console",
             )
         }
+    }
+  })
+}
+
+/// Berth validation: a station that declares berths must have a
+/// concourse; every berth tile must be walkable, and the tile directly
+/// north of it must NOT be walkable (that's where the grafted airlock
+/// lands, and it must not overlap the concourse floor).
+fn validate_berths(world: World) -> Result(World, String) {
+  list.fold(world.stations, Ok(world), fn(acc, station) {
+    use _ <- result.try(acc)
+    case station.berths, station.concourse {
+      [], _ -> Ok(world)
+      [_, ..], None ->
+        Error("station " <> station.id <> " has berths but no concourse")
+      berths, Some(plan) ->
+        list.fold(berths, Ok(world), fn(acc2, berth) {
+          use _ <- result.try(acc2)
+          let label =
+            "station "
+            <> station.id
+            <> " berth ("
+            <> int.to_string(berth.x)
+            <> ","
+            <> int.to_string(berth.y)
+            <> ")"
+          case deckplan.is_walkable(plan, berth.x, berth.y) {
+            False -> Error(label <> " is not walkable")
+            True ->
+              case deckplan.is_walkable(plan, berth.x, berth.y - 1) {
+                True -> Error(label <> " has a walkable north neighbor")
+                False -> Ok(world)
+              }
+          }
+        })
     }
   })
 }
@@ -378,6 +418,17 @@ fn station_decoder() -> decode.Decoder(Station) {
     [],
     decode.list(market_entry_decoder()),
   )
+  use berths <- decode.optional_field(
+    "berths",
+    [],
+    decode.list({
+      use coords <- decode.then(decode.list(decode.int))
+      case coords {
+        [x, y] -> decode.success(composite.Berth(x: x, y: y))
+        _ -> decode.failure(composite.Berth(0, 0), "two-element [x, y] array")
+      }
+    }),
+  )
   decode.success(Station(
     id: id,
     name: name,
@@ -387,6 +438,7 @@ fn station_decoder() -> decode.Decoder(Station) {
     crane: crane,
     concourse: concourse,
     market: market,
+    berths: berths,
   ))
 }
 
@@ -459,5 +511,10 @@ fn encode_station(station: Station) -> Json {
     #("crane", json.bool(station.crane)),
     #("concourse", json.nullable(station.concourse, deckplan.encode)),
     #("market", json.array(station.market, encode_market_entry)),
+    #("berths", json.array(station.berths, encode_berth)),
   ])
+}
+
+fn encode_berth(berth: composite.Berth) -> Json {
+  json.preprocessed_array([json.int(berth.x), json.int(berth.y)])
 }
