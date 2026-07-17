@@ -1,7 +1,7 @@
 # Quest Principals & Name Pools — Design
 
 Date: 2026-07-17
-Status: approved pending review
+Status: implemented (see docs/superpowers/plans/2026-07-17-quest-principals-and-name-pools.md)
 Prereq reading: `2026-07-16-quests-design.md` (quest data contract), `docs/lore.md` (races, factions, signatory law)
 
 ## Goal
