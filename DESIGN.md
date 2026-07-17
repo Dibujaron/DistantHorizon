@@ -12,7 +12,8 @@ system, and try to get rich before the bank gets you. Zoomed out, it plays like 
 top-down 2D system view with Newtonian flight and flip-and-burn trajectories. Zoomed in, you get
 out of your chair: an FTL-style deck view of your ship's interior, where every crew member is a
 walking character interacting with the ship's systems. A campaign — a **run** — lasts a few hours
-and then it's over: you retire rich, or the bank repossesses the ship.
+and then it's over: you retire rich, or the bank repossesses the ship, or you die in the
+black — that third option is always on the table.
 
 The one-sentence pitch: **Classic DH's flight model + FTL's ship interior and run structure +
 shared-crew multiplayer.**
@@ -33,6 +34,11 @@ shared-crew multiplayer.**
    be fun as a standalone minigame. No filler jobs. (See "The seat test" below.)
 6. **Motherships and small craft.** Shuttles, snub fighters, and tenders dock inside or alongside
    larger ships. Detaching a snub while the mothership burns for a planet is a headline moment.
+7. **Simple axes, combinatorial depth.** Variety comes from many simple, orthogonal axes of
+   difference — hull × modules × crew × race × faction × commodity × seed — multiplying into
+   more combinations than we could ever hand-author. Each axis stays legible on its own (FTL
+   base game, not its expansion); depth is an emergent property of the multiplication, never
+   of any single system.
 
 ## What we keep, drop, and add vs. Classic
 
@@ -90,7 +96,14 @@ ending.
   starting state is exactly reproducible, which buys challenge seeds ("everyone race this
   Friday's universe"), per-seed score comparison, and regression-testable worldgen. This is
   where roguelike variety comes from — no two seeds have the same map or the same profitable
-  routes.
+  routes. Noita's seed culture is the aspiration for how much identity a seed can have:
+  known seeds, seed-hunting, "this build is only possible on this seed" — seeds becoming
+  community artifacts is a feature, not an exploit. Replay determinism is dropped, but
+  **fairness determinism is a goal**: same seed, same strategy, similar outcome. Divergence
+  after t=0 should come from decisions — players' and NPCs' — not from mid-run dice, so
+  exogenous randomness (event schedules above all) gets drawn from the seed wherever
+  possible. Two crews racing Friday's universe should be able to argue about choices, not
+  luck.
 - **Length target:** 2–4 hours. Solo-universe runs are **resumable** — the server snapshots the
   world so a crew can stop mid-run and pick it up next game night; a few hours *of play*, not
   necessarily one sitting. **Shared universes don't pause** — you can't stop a clock other crews
@@ -160,8 +173,18 @@ rich *this* run?"
 ## Stations, factions, and cargo
 
 Docking at a station isn't a menu — you walk out of your ship. The airlock connects to a station
-**concourse**: a small tile interior built from the same tech as ship interiors. Business happens
-on foot: brokers, refueling, hiring, rumors. This is also where all the lore lives — delivered
+**concourse**: a tile interior built from the same tech as ship interiors — and deliberately
+*not* small. 2D interiors are cheap to build big, so build big: a major terminal's concourse
+should feel like a place with a far side you haven't walked to yet — long sightlines, side
+corridors, shuttered stalls, whole districts on the biggest stations. Scale and density track
+what the station *is* — a hub terminal is big and bustling, a fading depot big and echoing,
+a dusty outpost legitimately three rooms — and none of that spends the loneliness theme: per
+docs/themes.md, the loneliness dial is the distance between settlements, not the size of them,
+and a crowd that doesn't know you is its own kind of alone. Big-and-empty has a specific best
+flavor: Gander Airport — a huge facility in the middle of nowhere, built for a rush that never
+came or stopped coming. Worldgen should occasionally deal one: an over-built concourse whose
+architecture promises traffic the routes no longer deliver. Business
+happens on foot: brokers, refueling, hiring, rumors. This is also where all the lore lives — delivered
 through small touches (signage, cargo stacks, an NPC's idle line, whose flag hangs in the
 concourse), never through codex dumps.
 
@@ -189,6 +212,17 @@ economic niche, not just flavor:
   robots need twenty minutes, so you stretch your legs on the concourse. Loading time is why
   station-walking happens; station-walking is what makes loading time pleasant instead of a
   progress bar.
+- **Stowage as a game, not a number** (direction, unscheduled): break-bulk holds want Tetris —
+  cargo as shaped pieces arranged in the hold's actual tile geometry, with mass distribution
+  that matters. The arrangement computes a center-of-mass offset that feeds the exterior sim
+  as a handling modifier: a lopsided hold pulls, and a badly lashed load shifting in a hard
+  burn is an event you walk down and fix, not a fail state. If it lands, this is the
+  quartermaster's real answer to the seat test — loading well becomes skill with a visible
+  payoff, not a wait. Known problem, unsolved: it serializes the crew (the quartermaster
+  plays while everyone waits, then the pilot flies while the quartermaster rides along) —
+  solvable later, flagged now so it gets designed for rather than discovered. Container ships
+  stay abstract (the crane does the thinking), which sharpens the tramp identity: the big
+  ships move more tons; you stow yours better.
 - **Berths are finite, but nobody waits in line.** A station's data declares a limited number
   of crane berths and break-bulk locks, plus effectively unlimited *anchorage* standing off the
   station. When the berths are busy, queueing is never the only option: hold at anchorage and
@@ -376,8 +410,9 @@ grid, rooms, door graph), console placements, docking ports, and hangar berths f
   keeps Senti death consistent with the no-cloning rule — minds port but never copy, so no
   backups; see docs/lore.md, Technology.)
 - **The signatory rule.** The bank's charter requires a living **natural-born human** signatory
-  aboard — the in-world reason humans crew ships at all, and deliberately a piece of prejudice
-  with a legal veneer: Senti (AI with legal personhood — docs/lore.md) can fly the ship but
+  aboard — *natural-born* meaning a mind still in the body it was born in: someone who can die
+  and can't port away (docs/lore.md, Technology). It's the in-world reason humans crew ships at
+  all, and deliberately a piece of prejudice with a legal veneer: Senti (AI with legal personhood — docs/lore.md) can fly the ship but
   can't hold the note, and crew robots are non-sentient appliances. The run continues while at
   least one natural-born human is alive aboard, **player or NPC**:
   - All-human and mixed crews: unchanged — when the last human dies, the run is over, and a
@@ -436,10 +471,25 @@ The hull is the fixed part; what's inside is the loadout.
 - Two constraints make slots satisfying instead of a menu:
   - **Breadth:** enough module types, tiers, and per-module configuration options that a
     loadout is a creative act — picking a build should say something about your plan for the
-    run.
-  - **Taste over solvedness:** no one or two configurations may be clearly best. Tradeoffs get
-    tuned so many builds are defensible; if the community solves the loadout, the module
-    catalog has failed and needs rebalancing, not more slots.
+    run. Noita's wand-building is the bar for what per-module configuration should feel like:
+    simple orthogonal parts, freeform combination, results nobody enumerated.
+  - **Taste over solvedness:** tradeoffs get tuned so many builds are defensible. Perfect
+    balance isn't the goal and won't happen — some builds will be canonically better, and
+    that's survivable as long as they aren't much more *fun*: the wiki build should be
+    something you look up once, fly once, and wander away from, because the draw is exploring
+    the possibility space and getting good, not being broken. (Noita is the existence proof:
+    god-wands are wiki-documented, often seed-dependent, and most players — devoted ones
+    included — never bother. The catalog fails only if the solved build is also the most fun
+    one.)
+
+- **Ships classify themselves** (eventually): a transponder reading gives name, class, and a
+  *role* derived automatically from the installed loadout — "Ulysses, Mockingbird-class, Fast
+  Packet" if she's stripped for cabins and speed; the same hull reads "Heavy Freighter" full
+  of racks, or "Mothership" with a second small-craft berth. The classifier is data-driven
+  rules over the module list, so it's free content — and it makes builds legible: other crews
+  (and NPC pirates picking targets, someday) can read what you're rigged for at a glance.
+  Future hook, not design: if the role is what the transponder *claims*, spoofing it is a
+  smuggling mechanic waiting to exist.
 
   Start-of-run loadout choice covers the early game; full refit/loadout depth arrives with M7+.
   One slice moves up, though: **replace-one-part-at-a-dock** should land with M4, because the
@@ -475,6 +525,13 @@ The core pattern is **provides/requires matching**:
   orientation-free: modules rotate and mirror freely, and constraints are written in
   orientation-independent terms ("a door on *a* short wall", never "the north wall"), so one
   module definition fits any room that satisfies it in any flip.
+- **Matching is freeform tags with quantities, not enums.** A supply is a tag (`coolant: 2`,
+  `exterior_access`, `flibbertigibbet: 3`) and a requirement is a tag; a module fits where
+  every requirement is met. Tags are open strings the engine only compares and sums — new
+  content can invent new tags without touching code (power and hardpoint size are the first
+  tags, not special cases). Tags come in two scopes: **hull-level budgets** pooled across the
+  whole loadout (power is the flagship case) and **slot-level supplies** pooled across the
+  slot's tiles — tiles supplying 3 and 2 `foo` will host a 5-`foo` module and turn away a 6.
 - **Loadout validation is constraint matching** against these declared specs — does it fit,
   does the power add up, is the hardpoint big enough. That's cheap, data-driven, and
   server-side, and it is *not* the geometry/reachability analysis we cut along with the layout
@@ -482,11 +539,13 @@ The core pattern is **provides/requires matching**:
 - **Power is the cross-cutting currency.** Every interesting module draws from one budget, so
   loadouts are tradeoffs by construction — a big gun costs you a cargo rack's worth of power —
   which is half the battle for "taste over solvedness."
-- **Stations** get the same treatment: type, faction owner, services (crane terminal or not —
-  this is *the* flag that creates the container/break-bulk niche split), berth counts, concourse
-  layout, broker slots, commodity profile. Exteriors are *assembled* from a parts vocabulary
-  driven by that same data plus the universe seed — crane gantries because it declares crane
-  berths, habitat rings scaled to population, the controlling faction's colors — so two crane
+- **Stations** get the same treatment: type, faction owner, **builder** (station manufacturers
+  overlap with ship yards but aren't identical to them — docs/lore.md, Manufacturers), services
+  (crane terminal or not — this is *the* flag that creates the container/break-bulk niche
+  split), berth counts, concourse layout, broker slots, commodity profile. Exteriors are
+  *assembled* from a parts vocabulary driven by that same data plus the universe seed — crane
+  gantries because it declares crane berths, habitat rings scaled to population, parts drawn
+  from the builder's design language, the controlling faction's colors — so two crane
   terminals share a silhouette language but never a sprite. Variety is generated from what the
   station *is*, not hand-drawn per station.
 
@@ -579,6 +638,30 @@ what makes the game developable by agents rather than merely reviewable.
   sell at a broker; cargo transfer with handling times (cranes vs. robots); dynamic prices ported
   from Classic. Playable sandbox from here on.
   **✅ Done 2026-07-15 ([results](docs/M3-RESULTS.md)).**
+- **M3.1 — One space, not two (stitched interiors):** when a ship docks, generate one combined
+  deck plan — the concourse with the ship's interior grafted on at a berth, airlock to
+  airlock — and simulate everyone in that single walkable space. Down the cargo ramp and onto
+  the concourse is just *walking*: no keypress, no cut, and you can see the whole place
+  through your airlock. Undocking splits the plan back apart — bodies on ship tiles leave
+  with the ship, bodies on station tiles stay. Our levels are small tile grids, so this is
+  level generation, not coordinate gymnastics: offset the ship's tiles/rooms/consoles into
+  the concourse frame (console ids namespaced per ship) and hand clients the composite plan
+  at dock. What it does need: berth tiles on each concourse (several docked ships = several
+  grafts, and "berths full" is an early, honest form of M5's congestion), the join/split
+  moments on the wire (here's-your-new-plan on dock/undock, client prediction resets across
+  them), and an interior camera once composite plans outgrow one screen. M3's review round
+  shipped the interim behavior (X cycles the airlock, only from the airlock, docking collar
+  rendered); this milestone deletes that crossing entirely. *This is key — "the ship is a
+  place" lives or dies at the airlock.*
+- **M3.5 — The vibe pass:** people fall in love with a vibe, and nobody can love a pixelated
+  circle on a grid. First in-game aesthetic pass over the M3 playable loop: real hull sprites
+  from the parts-vocabulary pipeline (the artspike style that passed the eyeball test,
+  organized into manufacturer design languages), station exteriors assembled from station
+  data, an interior/concourse tileset that reads as a place instead of a grid, and a first
+  HUD/UI skin. *Exit: a stranger watching thirty seconds of the M3 loop can tell what the
+  game wants to feel like.* Deliberately before M4: the milestone that makes it a game
+  shouldn't look like a prototype when it lands. (Audio is deliberately absent here — it
+  gets its own pass, M6.5.)
 - **M4 — The run:** world generation from a seed; the debt clock (loan, interest, fees);
   retirement and scoring; lobby flow for creating/joining/resuming runs; universe/run-state
   persistence. Solo-universe only at first, but the universe/run split is built in here so
@@ -593,6 +676,12 @@ what makes the game developable by agents rather than merely reviewable.
   NPC + player trades; factions get teeth (brokers, reputation effects, control map visible in
   concourses); first run events and broker contracts; shared-universe mode opens (multiple
   crews, one world).
+- **M6.5 — The audio pass:** the game's voice. An SFX floor first (engine hum, docking
+  clunks, UI ticks — silence reads as broken), then the soundtrack. FTL is the bar and the
+  scope warning both: Ben Prunty's score is half that game's personality, and it's one
+  coherent voice, not a library of stock loops. The themes doc is the brief — loneliness and
+  awe, sparse and patient and indifferent. The test: muting the game should feel like losing
+  a crew member.
 - **M7+ — Expansion:** passenger transport (first new career), refit/loadout depth, combat &
   piracy, meta-progression content (hulls, scenarios), boarding, LLM characters — reprioritize
   when we get here.
@@ -662,3 +751,12 @@ what makes the game developable by agents rather than merely reviewable.
   visible at a glance.
 - **Is there an engineering game worth having?** Open challenge to future-us: find a core loop
   for engineer that passes the seat test, or keep the role cut.
+- **Planetside landing:** free flight over 2D terrain is a dead end and stays one — so what
+  happens between "burn for the planet" and "standing on the pad"? Near-term answer
+  (committed): landing is *docking* — a surface pad is a station whose berth requires the
+  atmospheric package (fins — docs/lore.md, the Mockingbird), and the descent is an abstract
+  transition, exactly like docking at an orbital. Eventually: a landing **minigame** — entry
+  corridor, heat and aero management, the atmosphere's version of recovering a shuttle to an
+  accelerating mothership. A skill moment that rewards planning the approach (Panic theme)
+  and fits Competence-Not-Power; airless-moon pads can stay pure docking even then. What it
+  never becomes: terrain flying.

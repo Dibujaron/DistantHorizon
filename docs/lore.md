@@ -11,6 +11,8 @@ not canon — where it conflicts with this document, this document wins.
 - Skyrim for race-vibes
 - The Culture for forward-looking tech; too far in the future to copy directly, but an influence
 - Star Citizen a bit, mostly around ship manufacturers
+- Noita for buildable, configurable elements — wand-building is the bar for what configuring a module should feel like — and
+  for how much personality a seed can carry (see ../DESIGN.md, worldgen and "taste over solvedness")
 
 # Canon vs. Seed
 
@@ -66,6 +68,12 @@ finished, every settled world still lacks something. The trade map is a map of t
   noise. One rule, three payoffs: no superintelligence bootstrap (you can't iterate on a mind you can't copy), Senti are mortal
   (no backups — destroy the substrate before transfer and they're gone), and Senti aren't tied to one hull (portable, just not
   copyable).
+- **Humans port under the same rule** — it's a law of minds, not of software. In practice almost nobody does: a transfer needs
+  a living, intact brain, a prepared destination substrate, and core-world money, and porting is scheduled surgery, not an
+  escape hatch — nobody ports off a decompressing ship, because there is no backup and no time. Sudden death is just death,
+  for everyone (which is what keeps the robot-respawn rule honest — see ../DESIGN.md, Death and robots). And the person who
+  walks out of a porting clinic is no longer **natural-born** — a word the law leans on hard (see the signatory law). Among
+  the very rich, porting is how you outlive your body; everywhere else, it's a rumor about the Directors.
 - Ship robots — stevedores, crew chassis — are non-sentient by design, and possibly by law.
 - Space elevators exist on lower-gravity worlds.
 
@@ -99,6 +107,8 @@ majors, media empires, chip foundries, a few dynastic conglomerates — merged t
 everything could pay for it. Its full legal name runs to a paragraph; nobody uses it. It is ruled by **the Directors**:
 incomprehensibly wealthy, never seen, and — since minds port, and the Crossing was three and a half centuries ago — not provably
 alive or dead. Whether anyone is behind the charter, or the charter simply continues, is a question the Company does not entertain.
+Nor does it entertain the adjacent one: a Director who ported is no longer natural-born, and could not lawfully sign the Company's
+own paper. The charter is older than the law, and no court has yet dared apply the one to the other.
 
 That's you, by the way. A player crew isn't an adventuring party; it's line seventeen of a Company ledger, the instrument of
 someone else's empire, working out about as well as such instruments do. The Company is the setting's great villain and earns the
@@ -107,13 +117,18 @@ at all. Without the Company there is no border, only core. (DESIGN.md's "the ban
 its **factors** work the larger concourses — part broker, part debt collector, part political officer.)
 
 - **Recycled collateral:** the Company re-lends what it repossesses, at a markup, forever. Most mortgage hulls are decades old
-  and have outlived several crews — a "new" Company loan usually smells of the last crew's cooking. Consolidated builds new
-  hulls only when the used stock runs dry.
+  and have outlived several crews — a "new" Company loan usually smells of the last crew's cooking. "Outlived" is doing honest
+  work in that sentence: some crews retire, some get foreclosed on, and plenty just die — the void is not safe, which is why
+  the border keeps a faith about exactly that. The Company's paperwork records only that the account closed. Consolidated
+  builds new hulls only when the used stock runs dry.
 - **The signatory law (Decided):** the Company's charter — and most charters, licenses, and courts of consequence — requires a
   *natural-born human* signatory. Senti personhood is legally real but economically hollow: a Senti can be a person in court and
   still be unable to hold a ship's note. Everyone knows it's prejudice with a legal veneer, but per themes.md (Moral Ambiguity)
   its defenders have real arguments: a signatory who can die is a hostage to fortune, while a mind that can port to a new hull the
-  moment the repo crew docks is genuinely hard to hold accountable; personhood law is young, and law lags.
+  moment the repo crew docks is genuinely hard to hold accountable; personhood law is young, and law lags. And *natural-born* is
+  precise drafting, not decoration: the law doesn't demand a human genome, it demands a mind still resident in the mortal body it
+  was born in — a signatory who can die and cannot leave. A ported human fails the test exactly the way a Senti does; what the
+  Company is collateralizing is the hostage, not the humanity.
 - **Signatories of convenience ("paper captains"):** the workaround is an institution. Broke humans rent out their personhood to
   Senti crews — sit in a bunk, draw a wage, legally exist. The most capable being on the ship is the least legally real.
   (Mechanics: ../DESIGN.md, the signatory rule under Multiplayer & crew design.)
@@ -168,8 +183,11 @@ unmodified body as a moral achievement; it is actually a purchase, made generati
 
 The water worlds' answer to the Choice: an ocean world barely needs terraforming if you stop insisting on land. Gene-adapted for
 depth and cold, Selkies build drowned habitats and flooded station districts, and surface among the dry-worlders in close-fitting
-wet-suits, unhurried and slightly too graceful. The name was an insult once — sailor-folklore seal-people — and got worn with
-pride instead. Selkie yards — Deepwright above all (see Manufacturers) — build amphibious oddities: hulls meant to land on open
+wet-suits, unhurried and slightly too graceful. **Selkie** is their own word — folklore their settler ancestors carried with
+them: the seal-people who belong to two worlds. It's the rare race name that isn't an exonym (the umbrella words above are
+mostly other people's), and they made it stick the way small proud nations do, by never answering to anything else. What the
+border actually says is *mermaid* — politely, to their faces — or *manatee*, when not. The standing Selkie response to both is
+the same unhurried indifference, which drives dockhands quietly insane. Selkie yards — Deepwright above all (see Manufacturers) — build amphibious oddities: hulls meant to land on open
 water and dock at drowned habitats, a niche no dry yard bothers to serve.
 
 Most Selkies never leave the water, and a people who prize fluid motion do not queue for jobs in stiff suits on dry decks. A
@@ -223,6 +241,11 @@ usually carry at least some fins. The largest cargo ships are container vessels 
 never land. Ports range from bare planetside pads to orbital crane terminals — the mechanical split (cranes vs. robot stevedores,
 berths vs. anchorage) lives in ../DESIGN.md.
 
+Spacer culture is aerospace-descended, not nautical: the ancestors were mission specialists, flight engineers, and military
+space types, and the inheritance shows — checklist discipline, callsigns, sim hours. The *vocabulary* is maritime anyway
+(berths, stevedores, lightering, the Longshore Guild), because orbital logistics descends from the shipping industry and its
+law. Spacers talk like longshoremen because the paperwork does; nobody's grandfather was a sailor.
+
 Ships are usually either cargo or passenger: passenger ships accelerate smoothly at 1G, cargo ships can be jerkier. (Open question
 we like: are cargo ships actually *faster*, inverting the usual passengers-travel-fast principle?) Convertible cargo/passenger
 configurations exist but are rarer, as with aircraft.
@@ -234,6 +257,15 @@ one of the few identities always with you. Manufacturers-as-cultures can carry a
 They're also a class ladder, and everyone on a concourse can read it at a glance: a Consol means the Company still owns you; a
 Theseus means you scraped one together; a Harrow means you built it yourself; a Rijay means you made it; an Aratori means you
 never had to worry; a Bureau hull means people will tell the story of having seen it.
+
+Yards build stations too — though not all of them, the same way not every carmaker builds trucks. **Consolidated** built the
+Company's depots and half the border's terminals (fleet-spec, identical, aggressively unlovable — you can navigate one
+blindfolded because you've stood in forty of them). **Porter** builds the serious industrial plant: crane terminals, refineries,
+anything with gantries. **Harrow** kit outposts are the Freehold standard — a station that arrived as cargo, assembled in orbit
+by the people who live in it. **Deepwright** builds the drowned habitats, obviously. **Theseus** doesn't build stations; it
+*converts* them — a retired hull, gutted and moored, is the border's cheapest station, and a Theseus concourse still feels
+faintly like a ship. Rijay, Aratori, and the Bureau build only ships. Two houses build only stations: Lintel Vastworks and
+Apogee Grand (below).
 
 ### Rijay Drive Yards
 
@@ -338,3 +370,20 @@ signatory law). Their ships are brilliant and slightly wrong: windowless, becaus
 think to add them; interiors an afterthought; geometry optimized past human intuition. Hulls carry catalog numbers; spacers
 assign the real names. **Bureau hulls are lore-event drops:** never on the open market, vanishingly rare in any universe.
 Encountering one is the kind of thing a run gets remembered for; flying one is the kind of thing a *player* gets remembered for.
+
+### Lintel Vastworks
+
+Station-only: the civil-megastructure giant — habitat rings, elevator anchors, the pressure architecture of every big station
+regardless of whose flag hangs in the concourse. A lintel is the load-bearing beam over a door, and that's the company: their
+nameplate is stamped on every pressure door and airlock seal in the system, which makes LINTEL very possibly the most-read word
+in human space — and nobody thinks about them at all. Infrastructure so trusted it's invisible: you've bet your life on them
+ten thousand times and couldn't name their logo's color. Visual language: monumental, load-rated, beige. Real-world
+equivalent: Bechtel crossed with Otis elevators.
+
+### Apogee Grand
+
+Station-only: the hospitality house — resort rings, orbital hotels, terminals the rich transit without touching. Where Aratori
+sells *the void, abolished*, Apogee sells the void **framed**: vast windows, cathedral views, the best vacuum money can see —
+per themes.md (Awe), rich people paying to glimpse the thing spacers live in. An apogee is an orbit's highest point; yes, that
+is the brand promise, and unlike the Company they acknowledge the joke, in serif type, on everything. Visual language: glass,
+sweep, lobby. Real-world equivalent: grand hotel dynasties, cruise lines.

@@ -17,8 +17,12 @@ There was also supposed to be pleasure in 'helping' people by bringing them good
 Our 2026 remake of DH should still capture some of this feeling, I think; there's something in it that I like. The run structure
 (see ../DESIGN.md) already encodes it well for single-crew ships: in shared universes, other crews appear mostly as burns seen across
 the system — interaction at great distance, just like Classic. The thing to protect going forward is that **concourse density and tone
-are a loneliness dial**: stations should stay sparse, transactional, and a little alienating — a few brokers, security, signage, quiet.
-Nobody should later "improve" them into bustling taverns without noticing that it spends this theme.
+are a loneliness dial**: the dial is *distance* — settlements are far apart, and the void between them is most of the game — not
+concourse size. Concourses themselves vary, and every variant serves the theme: a hub terminal is big and bustling (alone in a
+crowded room — nobody here knows you), a fading depot is big and echoing, a dusty outpost is legitimately three rooms. What spends
+the theme isn't crowds, it's *belonging*: the tone stays transactional and a little alienating — brokers, security, signage, other
+people's business — and "lived-in" reads as traces of lives you don't share (shuttered stalls, laundry lines, someone else's coffee
+cup). Nobody should later "improve" stations into places that feel like home without noticing that it spends this theme.
 
 Multi-crew ships will be different, obviously, because you're not alone; this becomes more like the Firefly fantasy, of a tight-knit
 crew together, alone against the universe. Then it becomes more unambiguously a positive loneliness.
