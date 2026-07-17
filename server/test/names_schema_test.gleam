@@ -250,3 +250,22 @@ pub fn quest_principals_are_coverable_test() {
     })
   })
 }
+
+pub fn pattern_entries_are_well_formed_test() {
+  // pattern_parts silently drops an unterminated "${" chunk, so a malformed
+  // pattern would pass coverage yet fail at generation time — enforce
+  // well-formedness here so holes fail the build, not the run.
+  let assert Ok(entries) = names.load(names_dir)
+  entries
+  |> list.filter(fn(entry) { entry.tags.part == "pattern" })
+  |> list.each(fn(entry) {
+    string.split(entry.name, "${")
+    |> list.drop(1)
+    |> list.each(fn(chunk) {
+      case string.contains(chunk, "}") {
+        True -> Nil
+        False -> panic as { "malformed pattern entry: " <> entry.name }
+      }
+    })
+  })
+}

@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "id": "overdue_packet",
-  "name": "${lost}'s Run",
+  "name": "The ${lost} Run",
   "flavor": "The ${lost}, ${lost.role}, was due at ${dest} three days ago and has not been seen since the outer marker. Somebody else gets to find out what happened to her; what matters this morning is that there is a hold's worth of ${cargo} on a standing contract that does not care whose ship it rides. Take the run, collect the fee, and try not to dwell on the manifest line that says the last crew did exactly this.",
   "acquisition": "broker",
   "slots": {
