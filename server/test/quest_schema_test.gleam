@@ -56,6 +56,7 @@ type QuestRefs {
     acquisition: String,
     trigger_targets: List(String),
     has_parent_binding: Bool,
+    slot_names: List(String),
   )
 }
 
@@ -84,6 +85,7 @@ fn refs_decoder() -> decode.Decoder(QuestRefs) {
     trigger_targets: list.flatten([on_complete, on_failed, on_expired]),
     has_parent_binding: dict.values(slots)
       |> list.any(string.starts_with(_, "parent.")),
+    slot_names: dict.keys(slots),
   ))
 }
 
@@ -122,5 +124,30 @@ pub fn quest_triggers_are_coherent_test() {
       }
       False -> Nil
     }
+  })
+}
+
+pub fn quest_interpolations_resolve_test() {
+  list.each(quest_files(), fn(file) {
+    let assert Ok(text) = simplifile.read(quests_dir <> "/" <> file)
+    let assert Ok(refs) = json.parse(text, refs_decoder())
+    // Every ${token} anywhere in the file must name a declared slot —
+    // a typo'd interpolation validates against the schema and would
+    // otherwise only surface engine-side.
+    string.split(text, "${")
+    |> list.drop(1)
+    |> list.each(fn(chunk) {
+      case string.split_once(chunk, "}") {
+        Ok(#(token, _)) ->
+          case list.contains(refs.slot_names, token) {
+            True -> Nil
+            False ->
+              panic as {
+                file <> ": ${" <> token <> "} does not name a declared slot"
+              }
+          }
+        Error(Nil) -> panic as { file <> ": unterminated ${ interpolation" }
+      }
+    })
   })
 }

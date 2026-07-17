@@ -25,7 +25,7 @@
     },
     "acquisition": {
       "enum": ["broker", "rumor", "triggered"],
-      "description": "broker: offered at a faction broker console. rumor: ambient, no contract, no penalty for ignoring. triggered: only reachable via another quest's triggers."
+      "description": "broker: offered at a faction broker console — specifically the broker bound by the slot named 'offer_broker', which broker-acquisition quests must declare. rumor: ambient, no contract, no penalty for ignoring. triggered: only reachable via another quest's triggers."
     },
     "slots": {
       "type": "object",
@@ -108,6 +108,7 @@
     },
     "constraint": {
       "type": "object",
+      "minProperties": 1,
       "description": "Mongo-style constraint AST. Sibling keys are implicit AND; any/all/not give explicit logic. Leaf predicates are the enumerated vocabulary below. String values may be literals or ${slot} interpolations.",
       "additionalProperties": false,
       "properties": {
