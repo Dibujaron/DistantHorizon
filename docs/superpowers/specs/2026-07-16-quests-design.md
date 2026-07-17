@@ -268,6 +268,21 @@ than throwaway:
 - JSON Schemas for `worlds/` and `classes/` (planned for `server/schemas/`, not now).
 - Client UI for offers/rumors.
 
+## Amendments (planning, 2026-07-16)
+
+Resolved or refined while writing the implementation plan:
+
+- **Validator: `jesse`** (pure Erlang hex package, dev dependency); schema pinned to
+  **draft-06**. `jsv` rejected — Elixir/Mix build would drag the Elixir toolchain into a
+  pure Gleam/Erlang project.
+- **`deliver_item` and `deliver_commodity` are objects** with an optional `to` naming the
+  receiving broker slot (`{"item": "remains", "to": "${congregation}"}`); `to` absent means
+  offload/disembark at the current dock (e.g. a passenger disembarking needs no broker).
+- **Items gain optional `pickup_at`** (a station slot ref): the item is injected when the
+  crew docks there, instead of at acceptance. This is the spec's "or as authored" injection
+  point, and is how salvage/retrieval quests work within the single-shot model.
+- **`min_passenger_berths`** added to the predicate vocabulary (content demanded it).
+
 ## Design principles honored
 
 - **Citizen rule:** every quest is faction business somebody would post or ask of a capable
