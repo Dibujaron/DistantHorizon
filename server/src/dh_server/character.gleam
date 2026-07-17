@@ -5,8 +5,8 @@
 //// handwave): walking never cares whether the ship is docked, thrusting,
 //// or tumbling.
 
+import dh_server/deckplan.{type DeckPlan}
 import dh_server/ship
-import dh_server/shipclass.{type ShipClass}
 import gleam/float
 import gleam/int
 import gleam/option.{type Option, None, Some}
@@ -21,11 +21,26 @@ pub const radius = 0.3
 /// tiles.
 pub const sit_range = 1.2
 
+/// Maximum distance (character center to airlock tile center) to cycle an
+/// airlock, tiles: disembarking a docked ship, or boarding one from the
+/// concourse. Matches sit_range so all "close enough to use" checks feel
+/// the same on foot.
+pub const airlock_range = 1.2
+
+/// Where a character's body is: aboard their crew ship, or ashore on a
+/// station concourse. Crew membership is `ship_id` either way — going
+/// ashore does not stop you being crew (or keeping your ship alive).
+pub type Place {
+  Aboard
+  OnStation(station_id: String)
+}
+
 pub type Character {
   Character(
     id: Int,
     name: String,
     ship_id: Int,
+    place: Place,
     x: Float,
     y: Float,
     /// The console id this character is seated at, if any.
@@ -35,21 +50,22 @@ pub type Character {
   )
 }
 
-/// A new character standing at `class`'s helm console, seated at it. Used
+/// A new character standing at `plan`'s helm console, seated at it. Used
 /// for login: every M1 flow (helm/dock/undock) keeps working immediately,
 /// since the character spawns already seated at the helm.
 pub fn spawn_seated_at_helm(
   id: Int,
   name: String,
   ship_id: Int,
-  class: ShipClass,
+  plan: DeckPlan,
 ) -> Character {
-  let assert Ok(console) = shipclass.helm_console(class)
+  let assert Ok(console) = deckplan.find_console_of_kind(plan, "helm")
   let #(x, y) = tile_center(console.x, console.y)
   Character(
     id: id,
     name: name,
     ship_id: ship_id,
+    place: Aboard,
     x: x,
     y: y,
     seat: Some(console.id),
@@ -58,19 +74,20 @@ pub fn spawn_seated_at_helm(
   )
 }
 
-/// A new character standing at `class`'s spawn tile, unseated. Used when a
+/// A new character standing at `plan`'s spawn tile, unseated. Used when a
 /// character boards a ship.
 pub fn spawn_at_spawn_tile(
   id: Int,
   name: String,
   ship_id: Int,
-  class: ShipClass,
+  plan: DeckPlan,
 ) -> Character {
-  let #(x, y) = spawn_position(class)
+  let #(x, y) = spawn_position(plan)
   Character(
     id: id,
     name: name,
     ship_id: ship_id,
+    place: Aboard,
     x: x,
     y: y,
     seat: None,
@@ -79,9 +96,9 @@ pub fn spawn_at_spawn_tile(
   )
 }
 
-/// The tile center of `class`'s spawn tile.
-pub fn spawn_position(class: ShipClass) -> #(Float, Float) {
-  let #(x, y) = class.spawn_tile
+/// The tile center of `plan`'s spawn tile.
+pub fn spawn_position(plan: DeckPlan) -> #(Float, Float) {
+  let #(x, y) = plan.spawn_tile
   tile_center(x, y)
 }
 
@@ -104,18 +121,18 @@ pub fn set_move(character: Character, dx: Float, dy: Float) -> Character {
 /// collision circle at the candidate position overlaps a non-walkable
 /// tile — classic per-axis tile collision, so a character sliding into a
 /// wall at an angle keeps moving along it instead of stopping dead.
-pub fn step(character: Character, class: ShipClass) -> Character {
+pub fn step(character: Character, plan: DeckPlan) -> Character {
   case character.seat {
     Some(_) -> character
     None -> {
       let #(ndx, ndy) = normalize(character.move_dx, character.move_dy)
       let candidate_x = character.x +. ndx *. walk_speed *. ship.dt
-      let x = case circle_walkable(class, candidate_x, character.y) {
+      let x = case circle_walkable(plan, candidate_x, character.y) {
         True -> candidate_x
         False -> character.x
       }
       let candidate_y = character.y +. ndy *. walk_speed *. ship.dt
-      let y = case circle_walkable(class, x, candidate_y) {
+      let y = case circle_walkable(plan, x, candidate_y) {
         True -> candidate_y
         False -> character.y
       }
@@ -135,14 +152,14 @@ pub fn step(character: Character, class: ShipClass) -> Character {
 /// and fire again on the first tick after a later stand.
 pub fn try_sit(
   character: Character,
-  class: ShipClass,
+  plan: DeckPlan,
   console_id: String,
   occupied: Bool,
 ) -> Result(Character, String) {
   case character.seat {
     Some(_) -> Error("already_seated")
     None ->
-      case shipclass.find_console(class, console_id) {
+      case deckplan.find_console(plan, console_id) {
         Error(Nil) -> Error("unknown_console")
         Ok(console) ->
           case occupied {
@@ -181,17 +198,70 @@ pub fn stand(character: Character) -> Result(Character, String) {
   }
 }
 
-/// Whether `character` is seated at a `"helm"`-kind console of `class`.
-/// Helm/dock/undock take effect only when this holds.
-pub fn is_at_helm(character: Character, class: ShipClass) -> Bool {
+/// Step ashore: standing at `plan`'s spawn tile on `station_id`'s
+/// concourse, seat and buffered move input cleared (same reasoning as
+/// boarding: input held at the moment of transition was aimed at the old
+/// deck and must not fire on the new one).
+pub fn disembark_to(
+  character: Character,
+  plan: DeckPlan,
+  station_id: String,
+) -> Character {
+  let #(x, y) = spawn_position(plan)
+  Character(
+    ..character,
+    place: OnStation(station_id),
+    x: x,
+    y: y,
+    seat: None,
+    move_dx: 0.0,
+    move_dy: 0.0,
+  )
+}
+
+/// Whether `character` is within airlock_range of `plan`'s airlock. The
+/// airlock is the spawn tile: deck plans already treat it as "the airlock
+/// end" (it's where boarders and robot stevedores come through), and both
+/// ship classes and concourses label it with an Airlock room. Crossing
+/// between a docked ship and its station concourse requires walking here
+/// first — the two interiors connect at their airlocks, they aren't
+/// teleport-anywhere worlds.
+pub fn near_airlock(character: Character, plan: DeckPlan) -> Bool {
+  let #(ax, ay) = spawn_position(plan)
+  distance(character.x, character.y, ax, ay) <=. airlock_range
+}
+
+/// Whether `character` is seated at a console of `kind` on `plan`.
+pub fn seated_at_kind(
+  character: Character,
+  plan: DeckPlan,
+  kind: String,
+) -> Bool {
   case character.seat {
     None -> False
     Some(console_id) ->
-      case shipclass.find_console(class, console_id) {
+      case deckplan.find_console(plan, console_id) {
         Error(Nil) -> False
-        Ok(console) -> console.kind == "helm"
+        Ok(console) -> console.kind == kind
       }
   }
+}
+
+/// Whether two characters share an interior (same ship deck, or the same
+/// station concourse) — the scope for seat occupancy and interior fan-out.
+pub fn same_place(a: Character, b: Character) -> Bool {
+  case a.place, b.place {
+    Aboard, Aboard -> a.ship_id == b.ship_id
+    OnStation(station_a), OnStation(station_b) -> station_a == station_b
+    Aboard, OnStation(_) | OnStation(_), Aboard -> False
+  }
+}
+
+/// Whether `character` is seated at a `"helm"`-kind console of `plan`.
+/// Helm/dock/undock take effect only when this holds (and only aboard —
+/// the sim checks `place` before consulting the ship plan).
+pub fn is_at_helm(character: Character, plan: DeckPlan) -> Bool {
+  seated_at_kind(character, plan, "helm")
 }
 
 fn tile_center(x: Int, y: Int) -> #(Float, Float) {
@@ -214,7 +284,7 @@ fn normalize(dx: Float, dy: Float) -> #(Float, Float) {
 
 /// Whether every tile overlapped by the character collision circle
 /// centered at `(cx, cy)` is walkable.
-fn circle_walkable(class: ShipClass, cx: Float, cy: Float) -> Bool {
+fn circle_walkable(plan: DeckPlan, cx: Float, cy: Float) -> Bool {
   let tx0 = tile_index(cx -. radius)
   let tx1 = tile_index(cx +. radius)
   let ty0 = tile_index(cy -. radius)
@@ -223,7 +293,7 @@ fn circle_walkable(class: ShipClass, cx: Float, cy: Float) -> Bool {
     all_tiles(ty0, ty1, fn(ty) {
       case tile_overlaps_circle(tx, ty, cx, cy) {
         False -> True
-        True -> shipclass.is_walkable(class, tx, ty)
+        True -> deckplan.is_walkable(plan, tx, ty)
       }
     })
   })

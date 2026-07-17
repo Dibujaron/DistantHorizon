@@ -1,5 +1,6 @@
 import dh_server/ship.{type Ship, Controls, Docked, Flying, Ship}
 import dh_server/world.{type World, Body, Orbit, Station, World}
+import gleam/dict
 import gleam/float
 import gleam/int
 import gleam/option.{None}
@@ -18,6 +19,7 @@ fn test_world() -> World {
     schema: 1,
     name: "ship test world",
     seed: 1,
+    commodities: [],
     bodies: [
       Body(
         id: "anchor",
@@ -36,6 +38,9 @@ fn test_world() -> World {
         parent: "anchor",
         orbit: Orbit(radius: 400.0, period_s: 180.0, phase: 0.0),
         dock_radius: 150.0,
+        crane: False,
+        concourse: None,
+        market: [],
       ),
     ],
     spawn_station: "s1",
@@ -50,6 +55,7 @@ fn stationary_dock_world() -> World {
     schema: 1,
     name: "stationary dock world",
     seed: 1,
+    commodities: [],
     bodies: [
       Body(
         id: "anchor",
@@ -68,6 +74,9 @@ fn stationary_dock_world() -> World {
         parent: "anchor",
         orbit: Orbit(radius: 0.0, period_s: 180.0, phase: 0.0),
         dock_radius: 150.0,
+        crane: False,
+        concourse: None,
+        market: [],
       ),
     ],
     spawn_station: "s1",
@@ -84,6 +93,9 @@ fn flying_ship(x: Float, y: Float, vx: Float, vy: Float) -> Ship {
     heading: 0.0,
     controls: Controls(rotate: 0.0, thrust: 0.0),
     dock: Flying,
+    wallet: ship.starting_wallet,
+    hold: dict.new(),
+    transfers: [],
   )
 }
 
@@ -204,6 +216,32 @@ pub fn undock_while_flying_errors_test() {
   let w = test_world()
   let ship = flying_ship(0.0, 0.0, 0.0, 0.0)
   assert ship.undock(ship, w, 0.0) == Error("not_docked")
+}
+
+pub fn spawn_docked_has_starting_wallet_and_empty_hold_test() {
+  let assert Ok(w) = world.load("worlds/m1_system.json")
+  let s = ship.spawn_docked(1, w, 0.0)
+  assert s.wallet == ship.starting_wallet
+  assert s.hold == dict.new()
+  assert s.transfers == []
+}
+
+pub fn undock_blocked_mid_transfer_test() {
+  let assert Ok(w) = world.load("worlds/m1_system.json")
+  let s = ship.spawn_docked(1, w, 0.0)
+  let busy =
+    ship.Ship(..s, transfers: [
+      ship.Transfer(
+        commodity: "machinery",
+        direction: ship.ToShip,
+        remaining: 3,
+        progress: 0.0,
+        price_each: 55,
+        rate: 1.0,
+      ),
+    ])
+  assert ship.undock(busy, w, 0.0) == Error("transfer_in_progress")
+  let assert Ok(_) = ship.undock(s, w, 0.0)
 }
 
 fn run_ticks(ship: Ship, w: World, n: Int) -> Ship {

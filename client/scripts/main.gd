@@ -24,7 +24,11 @@ const ZOOM_MAX := 2.0
 const ZOOM_STEP := 1.15
 const DEFAULT_ZOOM := 0.2
 
-const TRANSIENT_MESSAGE_SEC := 3.0
+## Event feed (trades, failures, eventual player chat) lives in the ChatLog
+## label at the bottom-left, scrolling upward, so it never overlays the
+## status label (top-left) or the trade panel (top-right). Oldest lines are
+## dropped past this cap.
+const CHAT_LOG_MAX_LINES := 8
 
 ## Duration of the animated zoom + crossfade between INTERIOR and SYSTEM
 ## views (spec: M2 ship interior design, "Client", ~0.6s).
@@ -33,6 +37,11 @@ const ZOOM_TRANSITION_SEC := 0.6
 ## Sit range shown in the status-label prompt; the server is the authority
 ## on whether a `sit` actually lands (spec: character sim, "Sit").
 const SIT_RANGE_TILES := 1.2
+
+## Airlock range shown in the X prompts -- mirrors `airlock_range` in
+## character.gleam; the server is the authority on whether a
+## disembark/board actually lands.
+const AIRLOCK_RANGE_TILES := 1.2
 
 ## Client-side prediction of the OWN character only (fixes the stop
 ## snap-back: walkers halt instantly server-side on key release, but the old
@@ -44,6 +53,19 @@ const SIT_RANGE_TILES := 1.2
 ## OWN_PREDICTION_SNAP_TILES away.
 const OWN_PREDICTION_CORRECTION := 0.15
 const OWN_PREDICTION_SNAP_TILES := 1.0
+
+## Rails (stations/planets) are drawn at a *smoothed* sim time rather than
+## the raw `_sim_time()`: the raw clock hard-resets to the server tick on
+## every snapshot arrival, so network jitter makes it non-monotonic and
+## rail-riding bodies visibly stutter — most obviously next to the own
+## docked ship, which is dead-reckoned from its snapshot velocity and so
+## stays smooth. Each frame the smoothed clock advances by wall-clock delta
+## and is pulled toward the raw clock by this fraction (the same soft-
+## correction idiom as OWN_PREDICTION_CORRECTION), or hard-snapped if it
+## has drifted more than SIM_TIME_SNAP_SEC (e.g. a reconnect or a long
+## stall — no point easing across seconds).
+const SIM_TIME_CORRECTION := 0.1
+const SIM_TIME_SNAP_SEC := 0.5
 
 ## Every OTHER character (not our own) is rendered via delayed
 ## interpolation between buffered `interior` messages rather than velocity
@@ -83,6 +105,20 @@ var _dt: float = 0.016666666666666666
 var _ship_id: int = -1
 var _character_id: int = -1
 
+## Station whose concourse we're standing in, "" while aboard (mirror of
+## NetworkClient.station_id, kept locally like _ship_id).
+var _station_id: String = ""
+## Latest cargo state for our ship (wallet/hold/transfers), null pre-M3
+## server or before the first message.
+var _cargo: CargoState = null
+## Latest market for the station we're at (null until one arrives).
+var _market: MarketData = null
+
+## Smoothed sim time for rail rendering (see SIM_TIME_CORRECTION). Invalid
+## until the first frame after a snapshot has arrived.
+var _render_sim_time: float = 0.0
+var _render_sim_time_valid: bool = false
+
 var _zoom: float = DEFAULT_ZOOM
 var _last_sent_rotate: float = 0.0
 var _last_sent_thrust: float = 0.0
@@ -95,8 +131,14 @@ var _transition_from: ViewMode = ViewMode.SYSTEM
 var _transition_to: ViewMode = ViewMode.SYSTEM
 var _transition_elapsed: float = 0.0
 
-var _transient_message: String = ""
-var _transient_expire_msec: int = 0
+var _chat_lines: PackedStringArray = []
+
+## "buy" or "sell" while a trade request is in flight, so the next
+## `trade_result` (which doesn't echo the direction) can be worded
+## correctly. Fine as a single slot: trades are request/reply over one
+## connection, and a stale verb only ever mislabels a message, never a
+## trade.
+var _pending_trade_verb: String = ""
 
 ## Predicted position of the own character while standing (tile units,
 ## ship-local -- same frame as CharacterState.position()). Valid only while
@@ -106,9 +148,16 @@ var _transient_expire_msec: int = 0
 var _predicted_pos: Vector2 = Vector2.ZERO
 var _predicting: bool = false
 
+## Highlighted row in the trade panel while at a broker (clamped to
+## _market.stores' bounds each render; meaningless at the read-only cargo
+## console, where the panel draws no cursor).
+var _trade_selection: int = 0
+
 @onready var _status_label: Label = %StatusLabel
 @onready var _world_view: WorldView = %WorldView
 @onready var _interior_view: InteriorView = %InteriorView
+@onready var _trade_panel: Label = %TradePanel
+@onready var _chat_log: Label = %ChatLog
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(BACKGROUND_COLOR)
@@ -120,6 +169,11 @@ func _ready() -> void:
 	NetworkClient.interior_received.connect(_on_interior_received)
 	NetworkClient.seat_result_received.connect(_on_seat_result_received)
 	NetworkClient.board_result_received.connect(_on_board_result_received)
+	NetworkClient.disembark_result_received.connect(_on_disembark_result_received)
+	NetworkClient.concourse_received.connect(_on_concourse_received)
+	NetworkClient.cargo_received.connect(_on_cargo_received)
+	NetworkClient.market_received.connect(_on_market_received)
+	NetworkClient.trade_result_received.connect(_on_trade_result_received)
 	_snap_view_visuals()
 	_update_status_label()
 
@@ -129,18 +183,26 @@ func _physics_process(delta: float) -> void:
 	_update_own_prediction(move_input, delta)
 
 func _process(delta: float) -> void:
+	_advance_render_sim_time(delta)
 	_update_view_mode(delta)
 	_update_status_label()
 	_update_world_view()
 	_update_interior_view()
+	_update_trade_panel()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _at_broker() and event is InputEventKey and event.pressed and not event.echo:
+		if _handle_trade_input(event):
+			get_viewport().set_input_as_handled()
+			return
 	if event.is_action_pressed("toggle_dock"):
 		_toggle_dock()
 	elif event.is_action_pressed("interact"):
 		_handle_interact()
 	elif event.is_action_pressed("board"):
 		_handle_board()
+	elif event.is_action_pressed("disembark"):
+		_handle_disembark_toggle()
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_zoom = clampf(_zoom * ZOOM_STEP, ZOOM_MIN, ZOOM_MAX)
@@ -208,14 +270,15 @@ func _poll_move_input() -> Vector2:
 ## next time it's needed (no continuity across a sit/stand/board gap).
 func _update_own_prediction(move_input: Vector2, delta: float) -> void:
 	var own_char := _own_character()
-	if own_char == null or own_char.is_seated() or _ship_class == null:
+	var plan := _current_plan()
+	if own_char == null or own_char.is_seated() or plan == null:
 		_predicting = false
 		return
 	if not _predicting:
 		_predicted_pos = own_char.position()
 		_predicting = true
 	_predicted_pos = ShipClassData.step_walk(
-		_ship_class, _predicted_pos.x, _predicted_pos.y, move_input.x, move_input.y, delta)
+		plan, _predicted_pos.x, _predicted_pos.y, move_input.x, move_input.y, delta)
 
 func _toggle_dock() -> void:
 	if not NetworkClient.logged_in:
@@ -252,6 +315,44 @@ func _handle_board() -> void:
 	if target != null:
 		NetworkClient.send_message({"type": "board", "ship_id": target.id})
 
+## `X`: aboard and docked -> step onto the concourse; ashore -> board our
+## own ship back. The server re-validates everything.
+func _handle_disembark_toggle() -> void:
+	if not NetworkClient.logged_in:
+		return
+	if _station_id != "":
+		NetworkClient.send_message({"type": "board", "ship_id": _ship_id})
+		return
+	var own := _own_ship()
+	if own != null and own.is_docked():
+		NetworkClient.send_message({"type": "disembark"})
+
+## Returns true if the key drove the trade panel. W/S move the selection,
+## D buys 1, A sells 1, Shift multiplies by 10. Quantities are JSON ints
+## (the server decoder rejects floats here).
+func _handle_trade_input(event: InputEventKey) -> bool:
+	if _market == null or _market.stores.is_empty():
+		return false
+	var quantity := 10 if event.shift_pressed else 1
+	match event.physical_keycode:
+		KEY_W, KEY_UP:
+			_trade_selection = maxi(0, _trade_selection - 1)
+			return true
+		KEY_S, KEY_DOWN:
+			_trade_selection = mini(_market.stores.size() - 1, _trade_selection + 1)
+			return true
+		KEY_D, KEY_RIGHT:
+			var store := _market.stores[_trade_selection]
+			_pending_trade_verb = "buy"
+			NetworkClient.send_message({"type": "buy", "commodity": store.commodity, "quantity": quantity})
+			return true
+		KEY_A, KEY_LEFT:
+			var sell_store := _market.stores[_trade_selection]
+			_pending_trade_verb = "sell"
+			NetworkClient.send_message({"type": "sell", "commodity": sell_store.commodity, "quantity": quantity})
+			return true
+	return false
+
 func _own_ship() -> ShipState:
 	for ship in _ships:
 		if ship.id == _ship_id:
@@ -264,6 +365,17 @@ func _own_character() -> CharacterState:
 			return character
 	return null
 
+## The deck plan under our feet: the station concourse while ashore, the
+## ship class otherwise. Null until welcome (and for a concourse the
+## server would never have let us disembark to).
+func _current_plan() -> ShipClassData:
+	if _station_id != "" and _world != null:
+		var station := _world.find_station(_station_id)
+		if station != null and station.concourse != null:
+			return station.concourse
+		return null
+	return _ship_class
+
 ## Live seat truth: is our character currently seated at a helm-kind
 ## console? Falls back to the current view mode while we have no character
 ## data yet (right after welcome, before the first `interior` message --
@@ -275,8 +387,59 @@ func _seated_at_helm() -> bool:
 		return _view_mode == ViewMode.SYSTEM
 	if not own_char.is_seated():
 		return false
-	var console := _ship_class.find_console(own_char.seat) if _ship_class != null else null
+	var plan := _current_plan()
+	var console := plan.find_console(own_char.seat) if plan != null else null
 	return console != null and console.kind == "helm"
+
+## The kind of console our character is seated at on the current plan, or
+## "" while standing / before data arrives.
+func _seated_console_kind() -> String:
+	var own_char := _own_character()
+	var plan := _current_plan()
+	if own_char == null or not own_char.is_seated() or plan == null:
+		return ""
+	var console := plan.find_console(own_char.seat)
+	return console.kind if console != null else ""
+
+
+## Interactive trading: seated at a broker on a concourse.
+func _at_broker() -> bool:
+	return _seated_console_kind() == "broker"
+
+
+## Mirrors character.near_airlock server-side: within AIRLOCK_RANGE_TILES
+## of the current plan's spawn tile (the airlock end). Uses the predicted
+## position while walking so the prompt tracks what the player sees.
+func _near_airlock() -> bool:
+	var own_char := _own_character()
+	var plan := _current_plan()
+	if own_char == null or plan == null:
+		return false
+	var pos := _predicted_pos if _predicting else own_char.position()
+	var airlock := Vector2(plan.spawn_tile) + Vector2(0.5, 0.5)
+	return pos.distance_to(airlock) <= AIRLOCK_RANGE_TILES
+
+
+## What the current plan's airlock is connected to, for the interior
+## renderer's docking collar: the station concourse while aboard a docked
+## ship, our own (still-docked) ship while ashore, "" when nothing is on
+## the other side (flying, or the ship undocked while we were ashore).
+func _dock_link_label() -> String:
+	var own := _own_ship()
+	if _station_id != "":
+		if own != null and own.docked_at == _station_id and _ship_class != null:
+			return "%s #%d (your ship)" % [_ship_class.name, _ship_id]
+		return ""
+	if own != null and own.is_docked():
+		return _station_name(own.docked_at)
+	return ""
+
+
+## The trade panel is visible at a broker (interactive) and at the ship's
+## cargo console (read-only manifest -- M3's binding of the M2 console).
+func _trade_panel_open() -> bool:
+	var kind := _seated_console_kind()
+	return kind == "broker" or kind == "cargo"
 
 ## The first other ship (by snapshot order) docked at the same station as
 ## `own`, or null. `own` must itself be docked.
@@ -292,12 +455,13 @@ func _first_boardable_ship(own: ShipState) -> ShipState:
 ## both to decide what `E` sits at and to show the sit prompt; the server
 ## re-checks range authoritatively.
 func _nearest_console_in_range(own_char: CharacterState) -> ShipClassData.Console:
-	if _ship_class == null:
+	var plan := _current_plan()
+	if plan == null:
 		return null
 	var pos := own_char.position()
 	var nearest: ShipClassData.Console = null
 	var nearest_dist := SIT_RANGE_TILES
-	for console in _ship_class.consoles:
+	for console in plan.consoles:
 		var dist := pos.distance_to(console.tile_center())
 		if dist <= nearest_dist:
 			nearest_dist = dist
@@ -307,8 +471,9 @@ func _nearest_console_in_range(own_char: CharacterState) -> ShipClassData.Consol
 ## Label for a console in status-label prompts: its room's name if it's
 ## inside one (e.g. "Helm"), else its kind, capitalized.
 func _console_label(console: ShipClassData.Console) -> String:
-	if _ship_class != null:
-		var room := _ship_class.room_at(console.x, console.y)
+	var plan := _current_plan()
+	if plan != null:
+		var room := plan.room_at(console.x, console.y)
 		if room != null:
 			return room.name
 	return console.kind.capitalize()
@@ -318,14 +483,32 @@ func _console_label(console: ShipClassData.Console) -> String:
 func _seconds_since_snapshot() -> float:
 	return minf(float(Time.get_ticks_msec() - _snapshot_ticks_msec) / 1000.0, MAX_EXTRAPOLATION_SEC)
 
-## Sim time for rail math: last snapshot's tick, advanced by the (capped)
-## wall-clock time elapsed since it arrived, converted to seconds via dt.
+## Raw sim time: last snapshot's tick, advanced by the (capped) wall-clock
+## time elapsed since it arrived, converted to seconds via dt. Non-monotonic
+## across snapshot arrivals (network jitter) — render rails at
+## _render_sim_time, not this.
 func _sim_time() -> float:
 	return (float(_snapshot_tick) + TICKS_PER_SEC * _seconds_since_snapshot()) * _dt
 
+## Advances the smoothed rail clock by one frame: forward by wall-clock
+## delta, then softly toward the raw clock (or a hard snap past
+## SIM_TIME_SNAP_SEC of drift) — see SIM_TIME_CORRECTION for why.
+func _advance_render_sim_time(delta: float) -> void:
+	var raw := _sim_time()
+	if not _render_sim_time_valid:
+		_render_sim_time = raw
+		_render_sim_time_valid = true
+		return
+	_render_sim_time += delta
+	var drift := raw - _render_sim_time
+	if absf(drift) > SIM_TIME_SNAP_SEC:
+		_render_sim_time = raw
+	else:
+		_render_sim_time += drift * SIM_TIME_CORRECTION
+
 func _update_world_view() -> void:
 	var elapsed := _seconds_since_snapshot()
-	var t := _sim_time()
+	var t := _render_sim_time
 	var extrapolated: Array[ShipState] = []
 	var own_pos := Vector2.ZERO
 	var own_found := false
@@ -359,7 +542,7 @@ func _update_interior_view() -> void:
 			rendered.append(_predicted_character_state(character) if _predicting else character)
 		else:
 			rendered.append(_interpolated_character_state(character, render_msec))
-	_interior_view.set_frame_data(_ship_class, rendered, _character_id)
+	_interior_view.set_frame_data(_current_plan(), rendered, _character_id, _dock_link_label())
 
 ## Copy of `server_char` with position replaced by the locally-predicted
 ## position.
@@ -500,6 +683,10 @@ func view_mode_name() -> String:
 		return "transition"
 	return "interior" if _view_mode == ViewMode.INTERIOR else "system"
 
+## Public for the automation hook, like view_mode_name().
+func trade_panel_open() -> bool:
+	return _trade_panel_open()
+
 func _on_snapshot_received(tick: int, ships: Array[ShipState]) -> void:
 	_ships = ships
 	_snapshot_tick = tick
@@ -512,7 +699,36 @@ func _on_snapshot_received(tick: int, ships: Array[ShipState]) -> void:
 ## serialized just before our `board` landed can still arrive for the ship
 ## we just left.
 func _on_interior_received(_tick: int, ship_id: int, characters: Array[CharacterState]) -> void:
+	if _station_id != "":
+		return
 	if ship_id != _ship_id:
+		return
+	_characters = characters
+	_interior_history.append({"arrival_msec": Time.get_ticks_msec(), "characters": characters})
+	while _interior_history.size() > INTERIOR_HISTORY_SIZE:
+		_interior_history.pop_front()
+	_reconcile_own_prediction()
+
+## Mirrors _on_board_result_received's reset: crossing between interiors
+## (deck <-> concourse) invalidates crew list, interpolation history and
+## prediction continuity.
+func _on_disembark_result_received(ok: bool, reason: Variant, station_id: Variant) -> void:
+	if ok:
+		_station_id = str(station_id)
+		_characters = []
+		_interior_history = []
+		_predicting = false
+		# Stale cargo/market panels from the old place must not linger.
+		_cargo = null
+		_market = null
+	else:
+		_append_chat("disembark failed: %s" % str(reason))
+
+## Concourse crew flows through the same pipeline as interior crew: the
+## prediction/interpolation machinery only cares about positions on the
+## current plan, not what kind of place it is.
+func _on_concourse_received(_tick: int, station_id: String, characters: Array[CharacterState]) -> void:
+	if _station_id == "" or station_id != _station_id:
 		return
 	_characters = characters
 	_interior_history.append({"arrival_msec": Time.get_ticks_msec(), "characters": characters})
@@ -555,8 +771,14 @@ func _on_welcome_received(ship_id: int, world: WorldData) -> void:
 	_ship_id = ship_id
 	_world = world
 	_dt = NetworkClient.dt
+	# A fresh login restarts sim time from the new server's clock: snap the
+	# smoothed rail clock rather than easing across the discontinuity.
+	_render_sim_time_valid = false
 	_character_id = NetworkClient.character_id
 	_ship_class = NetworkClient.ship_class
+	_station_id = ""
+	_cargo = null
+	_market = null
 	_characters = []
 	_interior_history = []
 	# No continuity across a fresh login: prediction restarts from the
@@ -577,11 +799,15 @@ func _on_welcome_received(ship_id: int, world: WorldData) -> void:
 
 func _on_dock_result_received(ok: bool, reason: Variant) -> void:
 	if not ok:
-		_show_transient_message("dock failed: %s" % str(reason))
+		_append_chat("dock failed: %s" % str(reason))
 
 func _on_seat_result_received(ok: bool, reason: Variant, _seat: Variant) -> void:
 	if not ok:
-		_show_transient_message("seat failed: %s" % str(reason))
+		_append_chat("seat failed: %s" % str(reason))
+		return
+	_trade_selection = 0
+	if _trade_panel_open():
+		NetworkClient.send_message({"type": "get_market"})
 
 ## On `ok`, NetworkClient.ship_id has already been updated (it's the wire
 ## authority); mirror it into our local copy so status-label/board logic
@@ -594,20 +820,98 @@ func _on_seat_result_received(ok: bool, reason: Variant, _seat: Variant) -> void
 func _on_board_result_received(ok: bool, reason: Variant, ship_id: int) -> void:
 	if ok:
 		_ship_id = ship_id
+		_station_id = ""
 		_characters = []
 		_interior_history = []
 		# No continuity across a ship change: prediction restarts from the
 		# server position outright the next time _update_own_prediction runs.
 		_predicting = false
+		# Stale cargo/market panels from the old place must not linger.
+		_cargo = null
+		_market = null
 	else:
-		_show_transient_message("board failed: %s" % str(reason))
+		_append_chat("board failed: %s" % str(reason))
+
+func _on_cargo_received(cargo: CargoState) -> void:
+	if cargo.ship_id == _ship_id:
+		_cargo = cargo
+
+
+func _on_market_received(market: MarketData) -> void:
+	_market = market
+
+
+## Trade wording mirrors the server's settlement rules (cargo.gleam): a buy
+## is paid in full at order time and the goods load aboard over the transfer
+## (the "loading N x…" status line tracks it); a sell stages the goods on
+## the ramp now and pays per unit as it lands on the dock.
+func _on_trade_result_received(ok: bool, reason: Variant, commodity: String, quantity: int, price: int) -> void:
+	var verb := _pending_trade_verb
+	_pending_trade_verb = ""
+	if not ok:
+		_append_chat("trade failed: %s" % str(reason))
+	elif verb == "sell":
+		_append_chat("sold %d %s @ %d cr ea — paid per unit as it unloads" % [
+			quantity, _commodity_name(commodity), price])
+	else:
+		_append_chat("bought %d %s @ %d cr ea (%d cr paid) — loading aboard" % [
+			quantity, _commodity_name(commodity), price, quantity * price])
 
 func _on_error_received(code: String, message: String) -> void:
-	_show_transient_message("%s: %s" % [code, message])
+	_append_chat("%s: %s" % [code, message])
 
-func _show_transient_message(message: String) -> void:
-	_transient_message = message
-	_transient_expire_msec = Time.get_ticks_msec() + int(TRANSIENT_MESSAGE_SEC * 1000.0)
+## Display name for a commodity id, from the current market if it lists it.
+func _commodity_name(commodity: String) -> String:
+	if _market != null:
+		for store in _market.stores:
+			if store.commodity == commodity:
+				return store.name
+	return commodity
+
+func _append_chat(message: String) -> void:
+	_chat_lines.append(message)
+	while _chat_lines.size() > CHAT_LOG_MAX_LINES:
+		_chat_lines.remove_at(0)
+	_chat_log.text = "\n".join(_chat_lines)
+
+## Public for the automation hook, like view_mode_name(): the chat log's
+## current lines, newest last.
+func chat_lines() -> PackedStringArray:
+	return _chat_lines
+
+## Renders the trade panel: visible whenever _trade_panel_open(), showing
+## live prices/stock/hold at a broker (with a selection cursor and the key
+## legend) or a read-only manifest at the ship's cargo console.
+func _update_trade_panel() -> void:
+	var open := _trade_panel_open()
+	_trade_panel.visible = open
+	if not open:
+		return
+	var lines: PackedStringArray = []
+	var interactive := _at_broker()
+	var title := "MARKET" if interactive else "CARGO MANIFEST (read-only)"
+	if _market != null and _world != null:
+		title += " — %s" % _world.station_name(_market.station_id)
+	lines.append(title)
+	if _cargo != null:
+		lines.append("wallet %d cr   hold %d/%d" % [_cargo.wallet, _cargo.hold_total(), _cargo.capacity])
+	lines.append("")
+	if _market == null:
+		lines.append("(waiting for market data…)")
+	else:
+		_trade_selection = clampi(_trade_selection, 0, maxi(0, _market.stores.size() - 1))
+		for i in _market.stores.size():
+			var store := _market.stores[i]
+			var cursor := "> " if interactive and i == _trade_selection else "  "
+			var held := _cargo.hold_quantity(store.commodity) if _cargo != null else 0
+			lines.append("%s%-12s %5d cr   stock %4d   hold %3d" % [
+				cursor, store.name, store.price, store.quantity, held])
+	lines.append("")
+	if interactive:
+		lines.append("W/S select   D buy 1   A sell 1   (Shift = x10)   E stand")
+	else:
+		lines.append("trading happens at station brokers — E stand")
+	_trade_panel.text = "\n".join(lines)
 
 func _update_status_label() -> void:
 	var lines: PackedStringArray = []
@@ -623,12 +927,30 @@ func _update_status_label() -> void:
 			lines.append("disconnected")
 
 	lines.append("view: %s" % view_mode_name())
+	if _station_id != "":
+		lines.append("ashore at %s" % _station_name(_station_id))
+		if _near_airlock():
+			lines.append("X: cycle airlock — board your ship")
+		else:
+			lines.append("your ship is through the Airlock")
+	if _cargo != null:
+		lines.append("wallet %d cr - hold %d/%d" % [_cargo.wallet, _cargo.hold_total(), _cargo.capacity])
+		for transfer in _cargo.transfers:
+			var verb := "loading" if transfer["direction"] == "to_ship" else "unloading"
+			lines.append("%s %d %s…" % [verb, transfer["remaining"], transfer["commodity"]])
 
 	var own := _own_ship()
 	if own != null:
 		lines.append("speed %.1f u/s" % own.velocity().length())
 		if own.is_docked():
 			lines.append("docked at %s" % _station_name(own.docked_at))
+			if _station_id == "":
+				var docked_station := _world.find_station(own.docked_at) if _world != null else null
+				if docked_station != null and docked_station.concourse != null:
+					if _near_airlock():
+						lines.append("X: cycle airlock to %s concourse" % docked_station.name)
+					else:
+						lines.append("go ashore at the Airlock (aft)")
 		elif _view_mode == ViewMode.SYSTEM:
 			var near := _nearest_dockable_station_name()
 			if near != "":
@@ -648,9 +970,6 @@ func _update_status_label() -> void:
 		if target != null:
 			lines.append("B: board ship #%d" % target.id)
 
-	if _transient_message != "" and Time.get_ticks_msec() < _transient_expire_msec:
-		lines.append(_transient_message)
-
 	_status_label.text = "\n".join(lines)
 
 func _station_name(station_id: String) -> String:
@@ -666,7 +985,7 @@ func _nearest_dockable_station_name() -> String:
 	if own == null or own.is_docked() or _world == null:
 		return ""
 	var own_pos := own.position()
-	var t := _sim_time()
+	var t := _render_sim_time
 	for station in _world.stations:
 		var pos := _world.station_position(station.id, t)
 		if own_pos.distance_to(pos) <= station.dock_radius:

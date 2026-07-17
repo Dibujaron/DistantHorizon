@@ -7,6 +7,7 @@
 //// velocity, then the updated velocity advances the position.
 
 import dh_server/world.{type World}
+import gleam/dict.{type Dict}
 import gleam/float
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -22,6 +23,30 @@ pub const turn_rate = 3.0
 
 /// Maximum speed relative to a station, u/s, allowed to dock.
 pub const max_dock_speed = 60.0
+
+/// Starting money for every newly spawned ship (M3 flat grant; M4's loan
+/// structure replaces this).
+pub const starting_wallet = 2000
+
+/// Which way an in-progress cargo transfer moves goods.
+pub type TransferDirection {
+  ToShip
+  ToStation
+}
+
+/// An in-progress cargo movement between the docked ship and its station.
+/// `progress` accumulates `rate * dt` each tick; whole units move as it
+/// crosses each 1.0. `price_each` is locked at order time.
+pub type Transfer {
+  Transfer(
+    commodity: String,
+    direction: TransferDirection,
+    remaining: Int,
+    progress: Float,
+    price_each: Int,
+    rate: Float,
+  )
+}
 
 /// Helm input, always stored clamped: rotate in [-1, 1], thrust in [0, 1].
 pub type Controls {
@@ -44,6 +69,9 @@ pub type Ship {
     heading: Float,
     controls: Controls,
     dock: DockState,
+    wallet: Int,
+    hold: Dict(String, Int),
+    transfers: List(Transfer),
   )
 }
 
@@ -68,6 +96,9 @@ pub fn spawn_docked(id: Int, world: World, t: Float) -> Ship {
     heading: 0.0,
     controls: Controls(rotate: 0.0, thrust: 0.0),
     dock: Docked(station_id),
+    wallet: starting_wallet,
+    hold: dict.new(),
+    transfers: [],
   )
 }
 
@@ -145,6 +176,7 @@ pub fn try_dock(ship: Ship, world: World, t: Float) -> Result(Ship, String) {
 pub fn undock(ship: Ship, world: World, t: Float) -> Result(Ship, String) {
   case ship.dock {
     Flying -> Error("not_docked")
+    Docked(_) if ship.transfers != [] -> Error("transfer_in_progress")
     Docked(station_id) -> {
       let #(sx, sy) = world.station_position(world, station_id, t)
       let #(svx, svy) = world.station_velocity(world, station_id, t)

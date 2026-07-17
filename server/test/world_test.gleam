@@ -25,6 +25,7 @@ fn star_only_world() -> World {
     schema: 1,
     name: "star only",
     seed: 1,
+    commodities: [],
     bodies: [
       Body(
         id: "star",
@@ -48,6 +49,7 @@ fn station_only_world() -> World {
     schema: 1,
     name: "station only",
     seed: 1,
+    commodities: [],
     bodies: [
       Body(
         id: "anchor",
@@ -66,6 +68,9 @@ fn station_only_world() -> World {
         parent: "anchor",
         orbit: Orbit(radius: 400.0, period_s: 180.0, phase: 0.0),
         dock_radius: 100.0,
+        crane: False,
+        concourse: None,
+        market: [],
       ),
     ],
     spawn_station: "s1",
@@ -74,7 +79,7 @@ fn station_only_world() -> World {
 
 pub fn load_bundled_world_test() {
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  assert w.schema == 1
+  assert w.schema == 2
   assert list.length(w.bodies) == 3
   assert list.length(w.stations) == 2
   assert w.spawn_station == "meridian_highport"
@@ -191,4 +196,110 @@ pub fn station_velocity_chains_through_planet_test() {
   let #(vx, vy) = world.station_velocity(w, "meridian_highport", t)
   assert close(vx, expected_vx)
   assert close(vy, expected_vy)
+}
+
+pub fn load_reads_trade_fields_test() {
+  let assert Ok(w) = world.load("worlds/m1_system.json")
+  assert list.length(w.commodities) == 4
+  let assert Ok(highport) = world.get_station(w, "meridian_highport")
+  assert highport.crane == True
+  let assert option.Some(plan) = highport.concourse
+  assert plan.spawn_tile == #(4, 4)
+  assert list.length(highport.market) == 4
+  let assert Ok(solis) = world.get_station(w, "solis_ring")
+  assert solis.crane == False
+}
+
+pub fn decode_defaults_trade_fields_when_absent_test() {
+  // A schema-1 station (no crane/concourse/market keys) must still load.
+  let doc =
+    "{\"schema\":1,\"name\":\"T\",\"seed\":1,"
+    <> "\"bodies\":[{\"id\":\"star\",\"name\":\"S\",\"kind\":\"star\","
+    <> "\"parent\":null,\"orbit\":null,\"radius\":10.0,\"mu\":0.0}],"
+    <> "\"stations\":[{\"id\":\"stn\",\"name\":\"Stn\",\"parent\":\"star\","
+    <> "\"orbit\":{\"radius\":50.0,\"period_s\":60.0,\"phase\":0.0},"
+    <> "\"dock_radius\":10.0}],"
+    <> "\"spawn_station\":\"stn\"}"
+  let assert Ok(w) = world.decode(doc)
+  let assert Ok(stn) = world.get_station(w, "stn")
+  assert stn.crane == False
+  assert stn.concourse == option.None
+  assert stn.market == []
+  assert w.commodities == []
+}
+
+pub fn decode_rejects_market_with_unknown_commodity_test() {
+  let doc =
+    tiny_world_with_market(
+      "[{\"commodity\":\"unobtainium\",\"initial\":5,\"price\":10,\"elasticity\":1}]",
+    )
+  let assert Error(_) = world.decode(doc)
+}
+
+pub fn decode_rejects_market_without_concourse_test() {
+  // Market present, but no concourse at all.
+  let doc =
+    "{\"schema\":2,\"name\":\"T\",\"seed\":1,"
+    <> "\"commodities\":[{\"id\":\"water\",\"name\":\"Water\"}],"
+    <> "\"bodies\":[{\"id\":\"star\",\"name\":\"S\",\"kind\":\"star\","
+    <> "\"parent\":null,\"orbit\":null,\"radius\":10.0,\"mu\":0.0}],"
+    <> "\"stations\":[{\"id\":\"stn\",\"name\":\"Stn\",\"parent\":\"star\","
+    <> "\"orbit\":{\"radius\":50.0,\"period_s\":60.0,\"phase\":0.0},"
+    <> "\"dock_radius\":10.0,"
+    <> "\"market\":[{\"commodity\":\"water\",\"initial\":5,\"price\":10,\"elasticity\":1}]}],"
+    <> "\"spawn_station\":\"stn\"}"
+  let assert Error(_) = world.decode(doc)
+}
+
+pub fn decode_rejects_market_without_broker_console_test() {
+  // Concourse exists but has no broker-kind console.
+  let doc = tiny_world_with_concourse_consoles("[]")
+  let assert Error(_) = world.decode(doc)
+}
+
+pub fn decode_accepts_market_with_broker_console_test() {
+  let doc =
+    tiny_world_with_concourse_consoles(
+      "[{\"id\":\"broker_main\",\"kind\":\"broker\",\"x\":1,\"y\":0}]",
+    )
+  let assert Ok(_) = world.decode(doc)
+}
+
+/// Tiny valid world with one station whose market is `market_json` and
+/// whose concourse has a broker console.
+fn tiny_world_with_market(market_json: String) -> String {
+  "{\"schema\":2,\"name\":\"T\",\"seed\":1,"
+  <> "\"commodities\":[{\"id\":\"water\",\"name\":\"Water\"}],"
+  <> "\"bodies\":[{\"id\":\"star\",\"name\":\"S\",\"kind\":\"star\","
+  <> "\"parent\":null,\"orbit\":null,\"radius\":10.0,\"mu\":0.0}],"
+  <> "\"stations\":[{\"id\":\"stn\",\"name\":\"Stn\",\"parent\":\"star\","
+  <> "\"orbit\":{\"radius\":50.0,\"period_s\":60.0,\"phase\":0.0},"
+  <> "\"dock_radius\":10.0,"
+  <> "\"concourse\":{\"grid\":{\"width\":3,\"height\":2},"
+  <> "\"walkable\":[\"###\",\"###\"],\"rooms\":[],"
+  <> "\"consoles\":[{\"id\":\"broker_main\",\"kind\":\"broker\",\"x\":1,\"y\":0}],"
+  <> "\"spawn_tile\":[1,1]},"
+  <> "\"market\":"
+  <> market_json
+  <> "}],"
+  <> "\"spawn_station\":\"stn\"}"
+}
+
+/// Same tiny world, market fixed to water, concourse consoles swappable.
+fn tiny_world_with_concourse_consoles(consoles_json: String) -> String {
+  "{\"schema\":2,\"name\":\"T\",\"seed\":1,"
+  <> "\"commodities\":[{\"id\":\"water\",\"name\":\"Water\"}],"
+  <> "\"bodies\":[{\"id\":\"star\",\"name\":\"S\",\"kind\":\"star\","
+  <> "\"parent\":null,\"orbit\":null,\"radius\":10.0,\"mu\":0.0}],"
+  <> "\"stations\":[{\"id\":\"stn\",\"name\":\"Stn\",\"parent\":\"star\","
+  <> "\"orbit\":{\"radius\":50.0,\"period_s\":60.0,\"phase\":0.0},"
+  <> "\"dock_radius\":10.0,"
+  <> "\"concourse\":{\"grid\":{\"width\":3,\"height\":2},"
+  <> "\"walkable\":[\"###\",\"###\"],\"rooms\":[],"
+  <> "\"consoles\":"
+  <> consoles_json
+  <> ","
+  <> "\"spawn_tile\":[1,1]},"
+  <> "\"market\":[{\"commodity\":\"water\",\"initial\":5,\"price\":10,\"elasticity\":1}]}],"
+  <> "\"spawn_station\":\"stn\"}"
 }

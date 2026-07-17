@@ -29,9 +29,25 @@ signal interior_received(tick: int, ship_id: int, characters: Array[CharacterSta
 ## "not_seated". `seat` is the console id (or null) after the attempt.
 signal seat_result_received(ok: bool, reason: Variant, seat: Variant)
 ## Reply to a `board` request. `reason` is null when `ok`, otherwise one of
-## "unknown_ship" | "not_docked_together" | "same_ship". `ship_id` is your
-## ship after the attempt (unchanged from before the attempt if not `ok`).
+## "unknown_ship" | "not_docked_together" | "same_ship" | "not_docked_here".
+## `ship_id` is your ship after the attempt (unchanged from before the
+## attempt if not `ok`).
 signal board_result_received(ok: bool, reason: Variant, ship_id: int)
+## Reply to a `disembark` request. `reason` is null when `ok`, otherwise
+## one of "not_aboard" | "not_docked" | "no_concourse". `station_id` is
+## the concourse you now stand in (null on failure).
+signal disembark_result_received(ok: bool, reason: Variant, station_id: Variant)
+## Reply to a `buy`/`sell` request. `price` is the locked unit price on
+## success, 0 on failure.
+signal trade_result_received(ok: bool, reason: Variant, commodity: String, quantity: int, price: int)
+## A station's market (reply to `get_market`, and pushed at 15 Hz while
+## standing in that station's concourse).
+signal market_received(market: MarketData)
+## Our ship's wallet/hold/transfers, at 15 Hz to crew wherever they stand.
+signal cargo_received(cargo: CargoState)
+## `characters` standing in a station concourse, 15 Hz, only while we're
+## in it — the station-flavored sibling of `interior`.
+signal concourse_received(tick: int, station_id: String, characters: Array[CharacterState])
 
 enum ConnectionState { CONNECTING, CONNECTED, DISCONNECTED }
 
@@ -59,6 +75,9 @@ var logged_in: bool = false
 ## another ship).
 var character_id: int = -1
 var ship_class: ShipClassData = null
+## Station whose concourse our character is standing in, "" while aboard.
+## Maintained from disembark_result/board_result, same as ship_id.
+var station_id: String = ""
 
 var _socket: WebSocketPeer
 var _reconnect_timer := 0.0
@@ -142,6 +161,16 @@ func _handle_packet(packet: PackedByteArray) -> void:
 			_handle_seat_result(message)
 		"board_result":
 			_handle_board_result(message)
+		"disembark_result":
+			_handle_disembark_result(message)
+		"trade_result":
+			_handle_trade_result(message)
+		"market":
+			_handle_market(message)
+		"cargo":
+			_handle_cargo(message)
+		"concourse":
+			_handle_concourse(message)
 		_:
 			# Other message types (e.g. stats) are fine to ignore.
 			pass
@@ -173,6 +202,7 @@ func _handle_welcome(message: Dictionary) -> void:
 	if w is Dictionary:
 		world = WorldData.from_dict(w)
 	character_id = int(message.get("character_id", -1))
+	station_id = ""
 	var class_doc: Variant = message.get("ship_class")
 	if class_doc is Dictionary:
 		ship_class = ShipClassData.from_dict(class_doc)
@@ -220,7 +250,44 @@ func _handle_board_result(message: Dictionary) -> void:
 	var new_ship_id := int(message.get("ship_id", ship_id))
 	if ok:
 		ship_id = new_ship_id
+		station_id = ""
 	board_result_received.emit(ok, reason, new_ship_id)
+
+func _handle_disembark_result(message: Dictionary) -> void:
+	var ok := bool(message.get("ok", false))
+	var reason: Variant = message.get("reason")
+	var result_station: Variant = message.get("station_id")
+	if ok:
+		station_id = str(result_station)
+	disembark_result_received.emit(ok, reason, result_station)
+
+func _handle_trade_result(message: Dictionary) -> void:
+	trade_result_received.emit(
+		bool(message.get("ok", false)),
+		message.get("reason"),
+		str(message.get("commodity", "")),
+		int(message.get("quantity", 0)),
+		int(message.get("price", 0)))
+
+func _handle_market(message: Dictionary) -> void:
+	market_received.emit(MarketData.from_dict(message))
+
+func _handle_cargo(message: Dictionary) -> void:
+	cargo_received.emit(CargoState.from_dict(message))
+
+func _handle_concourse(message: Dictionary) -> void:
+	var raw_characters: Variant = message.get("characters")
+	if not raw_characters is Array:
+		push_warning("[net] concourse without characters array, ignoring")
+		return
+	var characters: Array[CharacterState] = []
+	for character_data: Variant in raw_characters:
+		if character_data is Dictionary:
+			characters.append(CharacterState.from_dict(character_data))
+	concourse_received.emit(
+		int(message.get("tick", -1)),
+		str(message.get("station_id", "")),
+		characters)
 
 func _handle_snapshot(message: Dictionary) -> void:
 	var raw_ships: Variant = message.get("ships")

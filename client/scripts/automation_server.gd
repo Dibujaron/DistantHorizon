@@ -43,6 +43,8 @@ var _handling: bool = false
 var _latest_ships: Array[ShipState] = []
 ## Latest `interior` message's crew (CharacterState), tracked the same way.
 var _latest_characters: Array[CharacterState] = []
+## Latest `cargo` message for our own ship (M3), tracked the same way.
+var _latest_cargo: CargoState = null
 
 func _ready() -> void:
 	if not OS.is_debug_build():
@@ -59,6 +61,8 @@ func _ready() -> void:
 		return
 	NetworkClient.snapshot_received.connect(_on_snapshot_received)
 	NetworkClient.interior_received.connect(_on_interior_received)
+	NetworkClient.concourse_received.connect(_on_concourse_received)
+	NetworkClient.cargo_received.connect(_on_cargo_received)
 	print("[automation] listening on %s:%d" % [HOST, PORT])
 
 func _on_snapshot_received(_tick: int, ships: Array[ShipState]) -> void:
@@ -71,6 +75,17 @@ func _on_interior_received(_tick: int, ship_id: int, characters: Array[Character
 	if ship_id != NetworkClient.ship_id:
 		return
 	_latest_characters = characters
+
+## Concourse crew replaces the character list while we're ashore,
+## mirroring the interior guard above.
+func _on_concourse_received(_tick: int, station_id: String, characters: Array[CharacterState]) -> void:
+	if station_id != NetworkClient.station_id:
+		return
+	_latest_characters = characters
+
+func _on_cargo_received(cargo: CargoState) -> void:
+	if cargo.ship_id == NetworkClient.ship_id:
+		_latest_cargo = cargo
 
 func _process(_delta: float) -> void:
 	if _server == null:
@@ -206,6 +221,12 @@ func _dump_state() -> Dictionary:
 		"scene_tree": _dump_scene_tree(),
 		"view_mode": _view_mode_name(),
 		"character": null,
+		"station_id": NetworkClient.station_id if NetworkClient.station_id != "" else null,
+		"wallet": _latest_cargo.wallet if _latest_cargo != null else null,
+		"hold": _latest_cargo.hold if _latest_cargo != null else {},
+		"transfers": _latest_cargo.transfers.size() if _latest_cargo != null else 0,
+		"trade_panel_open": _trade_panel_open_from_scene(),
+		"chat": _chat_lines_from_scene(),
 	}
 	var own_ship := _find_own_ship()
 	if own_ship != null:
@@ -264,6 +285,26 @@ func _camera_zoom() -> float:
 	if zoom == null:
 		return 0.0
 	return float(zoom)
+
+## main.gd's trade panel visibility is otherwise private render-loop state
+## (`_trade_panel_open()`); it exposes one small public method,
+## trade_panel_open(), mirroring `_view_mode_name()` above.
+func _trade_panel_open_from_scene() -> bool:
+	var main_node := get_tree().current_scene
+	if main_node == null or not main_node.has_method("trade_panel_open"):
+		return false
+	return bool(main_node.call("trade_panel_open"))
+
+## main.gd's chat log is otherwise private render-loop state; it exposes
+## one small public method, chat_lines(), mirroring view_mode_name().
+func _chat_lines_from_scene() -> Array:
+	var main_node := get_tree().current_scene
+	if main_node == null or not main_node.has_method("chat_lines"):
+		return []
+	var lines: Array = []
+	for line: String in main_node.call("chat_lines"):
+		lines.append(line)
+	return lines
 
 func _status_label_text() -> String:
 	var main_node := get_tree().current_scene
