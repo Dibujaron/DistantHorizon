@@ -359,7 +359,8 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
       case process.subject_owner(client) {
         Ok(pid) -> {
           let t = int.to_float(state.tick) *. ship.dt
-          let new_ship = ship.spawn_docked(state.next_ship_id, state.world, t)
+          let new_ship =
+            ship.spawn_docked(state.next_ship_id, state.world, t, 0)
           let new_character =
             character.spawn_seated_at_helm(
               state.next_character_id,
@@ -424,7 +425,7 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
     RequestDock(character_id, reply) ->
       with_helm_ship(state, character_id, reply, fn(state, found) {
         let t = int.to_float(state.tick) *. ship.dt
-        case ship.try_dock(found, state.world, t) {
+        case ship.try_dock(found, state.world, t, fn(_) { Ok(0) }) {
           Ok(updated) -> {
             process.send(reply, Ok(Nil))
             actor.continue(
@@ -718,8 +719,12 @@ fn handle_board(
         // Ashore: board any ship docked at this station, your own included
         // — but only from the concourse airlock, the counterpart of the
         // walk-to-the-airlock disembark gate.
-        character.OnStation(station_id) ->
-          case target.dock == ship.Docked(station_id) {
+        character.OnStation(station_id) -> {
+          let docked_here = case target.dock {
+            ship.Docked(sid, _) -> sid == station_id
+            ship.Flying -> False
+          }
+          case docked_here {
             False -> fail("not_docked_here")
             True -> {
               // Standing on a concourse implies the station has one.
@@ -732,6 +737,7 @@ fn handle_board(
               }
             }
           }
+        }
         // Aboard (the M2 flow): cross to another ship co-docked with yours.
         character.Aboard ->
           case char.ship_id == target_ship_id {
@@ -799,7 +805,7 @@ fn market_station_for(state: State, char: Character) -> Result(String, Nil) {
         Error(Nil) -> Error(Nil)
         Ok(s) ->
           case s.dock {
-            ship.Docked(station_id) -> Ok(station_id)
+            ship.Docked(station_id, _) -> Ok(station_id)
             ship.Flying -> Error(Nil)
           }
       }
@@ -830,7 +836,7 @@ fn handle_disembark(
         Ok(s) ->
           case s.dock {
             ship.Flying -> fail("not_docked")
-            ship.Docked(station_id) ->
+            ship.Docked(station_id, _) ->
               // The deck and the concourse connect at their airlocks: you
               // walk to your ship's airlock and step through, you don't
               // teleport off from anywhere aboard.
@@ -911,8 +917,12 @@ fn handle_trade(
             True ->
               case find_ship(state.ships, char.ship_id) {
                 Error(Nil) -> fail("ship_not_docked")
-                Ok(s) ->
-                  case s.dock == ship.Docked(station_id) {
+                Ok(s) -> {
+                  let ship_docked_here = case s.dock {
+                    ship.Docked(sid, _) -> sid == station_id
+                    ship.Flying -> False
+                  }
+                  case ship_docked_here {
                     False -> fail("ship_not_docked")
                     True -> {
                       let assert Ok(station) =
@@ -951,6 +961,7 @@ fn handle_trade(
                       }
                     }
                   }
+                }
               }
           }
         }
@@ -1067,7 +1078,8 @@ fn do_sell(
 
 fn docked_at_same_station(a: Ship, b: Ship) -> Bool {
   case a.dock, b.dock {
-    ship.Docked(station_a), ship.Docked(station_b) -> station_a == station_b
+    ship.Docked(station_a, _), ship.Docked(station_b, _) ->
+      station_a == station_b
     _, _ -> False
   }
 }
@@ -1158,7 +1170,7 @@ fn run_tick(state: State) -> actor.Next(State, Msg) {
       let #(done, markets) = acc
       case s.transfers, s.dock {
         [], _ -> #([s, ..done], markets)
-        [_, ..], ship.Docked(station_id) -> {
+        [_, ..], ship.Docked(station_id, _) -> {
           let #(stepped, deliveries) = cargo.step_transfers(s)
           let markets =
             list.fold(deliveries, markets, fn(markets, delivery) {

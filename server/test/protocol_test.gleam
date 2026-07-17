@@ -203,7 +203,7 @@ pub fn encode_snapshot_round_trip_test() {
       vy: 13.9,
       heading: 0.0,
       controls: ship.Controls(rotate: 0.0, thrust: 0.0),
-      dock: ship.Docked("meridian_highport"),
+      dock: ship.Docked("meridian_highport", 0),
       wallet: ship.starting_wallet,
       hold: dict.new(),
       transfers: [],
@@ -399,7 +399,7 @@ pub fn encode_market_test() {
 
 pub fn encode_cargo_sorts_hold_and_lists_transfers_test() {
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  let s = ship.spawn_docked(7, w, 0.0)
+  let s = ship.spawn_docked(7, w, 0.0, 0)
   let s =
     ship.Ship(
       ..s,

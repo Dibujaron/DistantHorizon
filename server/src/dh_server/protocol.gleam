@@ -411,7 +411,7 @@ fn encode_ship(s: Ship) -> Json {
 fn encode_docked(dock: ship.DockState) -> Json {
   case dock {
     ship.Flying -> json.null()
-    ship.Docked(station_id) -> json.string(station_id)
+    ship.Docked(station_id, _) -> json.string(station_id)
   }
 }
 
