@@ -111,40 +111,42 @@ async def test_docking_regrafts_everyones_plan(server):
 
 async def test_undock_splits_by_tile(server):
     pilot, pilot_welcome, _pilot_login_space = await _login("m31_pilot")
-    stayer, stayer_welcome, stayer_login_space = await _login("m31_stayer")
     try:
-        # The stayer walks off their own ship onto the concourse floor: east
-        # to clear the single-tile airlock pinch (column derived from their
-        # own login graft), then south onto the floor -- mirrors
-        # test_m3_trade.py's _descend_to_broker legs.
-        assert (await stayer.stand())["ok"]
-        stayer_airlock_x = _airlock_center_x(
-            _graft_dx(stayer_login_space, stayer_welcome["ship_id"])
-        )
-        await stayer.move(1, 0)
-        await _wait_for_own_position(
-            stayer, STATION_SPACE, lambda me: me.x >= stayer_airlock_x - 0.1
-        )
-        await stayer.move(0, 1)
-        await _wait_for_own_position(
-            stayer, STATION_SPACE, lambda me: me.y >= 7.2
-        )
-        await stayer.move(0, 0)
+        stayer, stayer_welcome, stayer_login_space = await _login("m31_stayer")
+        try:
+            # The stayer walks off their own ship onto the concourse floor:
+            # east to clear the single-tile airlock pinch (column derived
+            # from their own login graft), then south onto the floor --
+            # mirrors test_m3_trade.py's _descend_to_broker legs.
+            assert (await stayer.stand())["ok"]
+            stayer_airlock_x = _airlock_center_x(
+                _graft_dx(stayer_login_space, stayer_welcome["ship_id"])
+            )
+            await stayer.move(1, 0)
+            await _wait_for_own_position(
+                stayer, STATION_SPACE, lambda me: me.x >= stayer_airlock_x - 0.1
+            )
+            await stayer.move(0, 1)
+            await _wait_for_own_position(
+                stayer, STATION_SPACE, lambda me: me.y >= 7.2
+            )
+            await stayer.move(0, 0)
 
-        # The pilot undocks: pilot leaves in their own ship space, the
-        # stayer stays ashore, crew membership (cargo feed) untouched.
-        assert (await pilot.undock())["ok"]
-        pilot_space = await pilot.next_space()
-        assert pilot_space["space"] == f"ship:{pilot_welcome['ship_id']}"
-        assert pilot_space["you"]["seat"] == "helm_main"
-        stayer_space = await stayer.next_space()
-        assert stayer_space["space"] == STATION_SPACE
-        graft_ships = {g["ship_id"] for g in stayer_space["grafts"]}
-        assert pilot_welcome["ship_id"] not in graft_ships
-        assert stayer_welcome["ship_id"] in graft_ships
+            # The pilot undocks: pilot leaves in their own ship space, the
+            # stayer stays ashore, crew membership (cargo feed) untouched.
+            assert (await pilot.undock())["ok"]
+            pilot_space = await pilot.next_space()
+            assert pilot_space["space"] == f"ship:{pilot_welcome['ship_id']}"
+            assert pilot_space["you"]["seat"] == "helm_main"
+            stayer_space = await stayer.next_space()
+            assert stayer_space["space"] == STATION_SPACE
+            graft_ships = {g["ship_id"] for g in stayer_space["grafts"]}
+            assert pilot_welcome["ship_id"] not in graft_ships
+            assert stayer_welcome["ship_id"] in graft_ships
+        finally:
+            await stayer.close()
     finally:
         await pilot.close()
-        await stayer.close()
 
 
 async def test_walkers_are_scoped_and_epoch_tagged(server):
@@ -169,10 +171,12 @@ async def test_fourth_login_is_refused_station_full(server):
             clients.append(c)
         overflow = DHClient(name="m31_overflow")
         await overflow.connect()
-        with pytest.raises(AuthError) as excinfo:
-            await overflow.login("m31_overflow", "pw")
-        assert excinfo.value.code == "station_full"
-        await overflow.close()
+        try:
+            with pytest.raises(AuthError) as excinfo:
+                await overflow.login("m31_overflow", "pw")
+            assert excinfo.value.code == "station_full"
+        finally:
+            await overflow.close()
     finally:
         for c in clients:
             await c.close()
