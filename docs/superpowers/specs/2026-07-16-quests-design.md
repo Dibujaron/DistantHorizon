@@ -283,6 +283,18 @@ Resolved or refined while writing the implementation plan:
   point, and is how salvage/retrieval quests work within the single-shot model.
 - **`min_passenger_berths`** added to the predicate vocabulary (content demanded it).
 
+**Added during implementation (dibujaron review, 2026-07-16/17):**
+
+- **`effects` block — world consequences.** Quest outcomes previously affected only the
+  crew (`rewards`) and other quests (triggers); nothing affected the world, so "the
+  settlement dies if you fail" was asserted by flavor text and caused by nothing. Outcomes
+  now carry an optional `effects: { on_complete | on_failed | on_expired }` block of world
+  effects (v1 vocabulary: `settlement_dies`). When a real settlement-health sim exists,
+  effects become discrete story-beat inputs to it, not overrides.
+- **`${slot}` interpolation in display text.** `name`, `flavor`, and item `name` strings
+  substitute bound-slot display names at offer time ("Water for ${dest}") — templates
+  can't hardcode place names their slots bind generically.
+
 **Deferred TODOs (dibujaron, mid-implementation 2026-07-16):**
 
 - **Dialogue.** Quests currently carry only a single `flavor` string. Dialogue points
