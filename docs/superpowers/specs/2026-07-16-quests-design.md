@@ -294,6 +294,12 @@ Resolved or refined while writing the implementation plan:
   they do, an event becomes an additional trigger source posting these same templates
   (likely an `event` acquisition mode or an event-side trigger list). Not modeled in
   schema v1.
+- **Substitutable variables in flavor text** (eventually dialogue too). Hardcoded names
+  like "Jaya Okafor" should instead be drawn from constrained name pools — possibly
+  generated — e.g. `${name:wake}`. Constraints beyond faction affiliation: race at least
+  (a Selkie name and a void-born name shouldn't come from one pool); other characteristics
+  open. The item schema's "name omitted = resolver generates from seed" is the same
+  machinery from the other end. Not modeled in schema v1.
 
 ## Design principles honored
 
