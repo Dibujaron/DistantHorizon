@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-06/schema#",
   "$id": "https://distanthorizon.dev/schemas/quest.schema.json",
   "title": "Distant Horizon quest template",
-  "description": "A seed-agnostic quest template. Slots bind against the generated world at world-gen or trigger time; constraints share one AST vocabulary across slots, eligibility (checked at offer/accept), conduct (latched invariants while active), completion (turn-in check), and fail_when (author-listed failure conditions). See docs/superpowers/specs/2026-07-16-quests-design.md. TODO(dialogue): dialogue beyond the single 'flavor' string is not yet modeled — dialogue points should become arrays of variant phrasings, each with a speaker (offering broker by default; rumor-bearers and passenger items are also speakers). TODO(events): events do not exist yet; when they do they become an additional trigger source posting these templates (likely an 'event' acquisition mode). TODO(name-pools): hardcoded names in flavor text (e.g. 'Jaya Okafor') should become substitutable variables drawn from constrained name pools — constrained by faction affiliation, race, and possibly more — sharing machinery with item name generation ('name omitted = resolver generates from seed').",
+  "description": "A seed-agnostic quest template. Slots bind against the generated world at world-gen or trigger time; constraints share one AST vocabulary across slots, eligibility (checked at offer/accept), conduct (latched invariants while active), completion (turn-in check), and fail_when (author-listed failure conditions). See docs/superpowers/specs/2026-07-16-quests-design.md. TODO(dialogue): dialogue beyond the single 'flavor' string is not yet modeled — dialogue points should become arrays of variant phrasings, each with a speaker (offering broker by default; rumor-bearers and passenger items are also speakers). TODO(events): events do not exist yet; when they do they become an additional trigger source posting these templates (likely an 'event' acquisition mode). TODO(name-pools): hardcoded names in flavor text (e.g. 'Jaya Okafor') should become substitutable variables drawn from constrained name pools — constrained by faction affiliation, race, and possibly more — sharing machinery with item name generation ('name omitted = resolver generates from seed'). TODO(trigger-resolution): triggers currently fire immediately and always; they should eventually support chance (probabilistic follow-up), delay_s (a fuse before the child posts), and weighted one-of-N selection (a trigger that picks one child from several options by weight).",
   "type": "object",
   "required": ["schema", "id", "name", "flavor", "acquisition", "slots", "completion", "rewards"],
   "additionalProperties": false,
@@ -123,6 +123,10 @@
         "exports": { "$ref": "#/definitions/ref_string" },
         "settlement_class": { "enum": ["outpost", "settlement", "terminal", "hub"] },
         "has_crane": { "type": "boolean" },
+        "built_by": {
+          "$ref": "#/definitions/ref_string",
+          "description": "The station's builder — a manufacturer id (lore.md: yards build stations too; e.g. built_by: apogee_grand matches any Apogee Grand hotel station in the seed)."
+        },
         "anchor_present": { "$ref": "#/definitions/ref_string" },
 
         "min_cargo_units": { "type": "integer", "minimum": 1 },

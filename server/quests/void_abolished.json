@@ -8,7 +8,7 @@
     "uce": { "kind": "faction", "constraints": { "id": "uce" } },
     "dest": {
       "kind": "station",
-      "constraints": { "any": [{ "id": "apogee_grand" }, { "settlement_class": "hub" }] }
+      "constraints": { "any": [{ "built_by": "apogee_grand" }, { "settlement_class": "hub" }] }
     },
     "offer_broker": {
       "kind": "broker",
