@@ -283,6 +283,18 @@ Resolved or refined while writing the implementation plan:
   point, and is how salvage/retrieval quests work within the single-shot model.
 - **`min_passenger_berths`** added to the predicate vocabulary (content demanded it).
 
+**Deferred TODOs (dibujaron, mid-implementation 2026-07-16):**
+
+- **Dialogue.** Quests currently carry only a single `flavor` string. Dialogue points
+  should eventually be *arrays of variant phrasings* (so repeated offers don't go stale),
+  and each needs a *speaker*: the offering broker is the natural default, but rumors
+  already imply non-broker speakers (the drunk dockhand), and passenger items (the VIP,
+  IMRI) are obvious dialogue sources mid-quest. Not modeled in schema v1.
+- **Event triggers.** Some quests should be event-triggered. Events don't exist yet; when
+  they do, an event becomes an additional trigger source posting these same templates
+  (likely an `event` acquisition mode or an event-side trigger list). Not modeled in
+  schema v1.
+
 ## Design principles honored
 
 - **Citizen rule:** every quest is faction business somebody would post or ask of a capable

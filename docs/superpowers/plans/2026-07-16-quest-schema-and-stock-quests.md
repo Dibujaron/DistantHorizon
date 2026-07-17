@@ -166,7 +166,7 @@ Create `server/schemas/quest.schema.json` (this is the format's complete, self-d
   "$schema": "http://json-schema.org/draft-06/schema#",
   "$id": "https://distanthorizon.dev/schemas/quest.schema.json",
   "title": "Distant Horizon quest template",
-  "description": "A seed-agnostic quest template. Slots bind against the generated world at world-gen or trigger time; constraints share one AST vocabulary across slots, eligibility (checked at offer/accept), conduct (latched invariants while active), completion (turn-in check), and fail_when (author-listed failure conditions). See docs/superpowers/specs/2026-07-16-quests-design.md.",
+  "description": "A seed-agnostic quest template. Slots bind against the generated world at world-gen or trigger time; constraints share one AST vocabulary across slots, eligibility (checked at offer/accept), conduct (latched invariants while active), completion (turn-in check), and fail_when (author-listed failure conditions). See docs/superpowers/specs/2026-07-16-quests-design.md. TODO(dialogue): dialogue beyond the single 'flavor' string is not yet modeled — dialogue points should become arrays of variant phrasings, each with a speaker (offering broker by default; rumor-bearers and passenger items are also speakers). TODO(events): events do not exist yet; when they do they become an additional trigger source posting these templates (likely an 'event' acquisition mode).",
   "type": "object",
   "required": ["schema", "id", "name", "flavor", "acquisition", "slots", "completion", "rewards"],
   "additionalProperties": false,
