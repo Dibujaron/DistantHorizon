@@ -137,13 +137,42 @@
         },
         "berths": {
           "type": "array",
-          "description": "Optional field (decode.optional_field, default []). Authored mooring anchors on the concourse's top edge (M3.1); empty means ships cannot dock here.",
+          "description": "Optional field (decode.optional_field, default []). Authored docking ports on the concourse's top edge (M3.1); empty means ships cannot dock here. Each port is an object (issue #14); a bare legacy [x, y] tile array is still accepted by the decoder and defaults orientation/anchor.",
           "items": {
-            "type": "array",
-            "description": "[x, y] tile coordinate.",
-            "items": { "type": "integer" },
-            "minItems": 2,
-            "maxItems": 2
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["tile"],
+                "properties": {
+                  "tile": {
+                    "type": "array",
+                    "description": "[x, y] interior/composite tile the ship moors onto.",
+                    "items": { "type": "integer" },
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "orientation": {
+                    "type": "number",
+                    "description": "Optional (default pi/2, north). The port's outward normal in world radians (y-up, 0 = +x/east): the direction a moored hull sits from, and departs toward, the station centre."
+                  },
+                  "anchor": {
+                    "type": "array",
+                    "description": "Optional (default [0, 0]). The mooring point's world-unit offset from the station centre — the exterior pose a docked hull holds and is released at on undock (issue #13).",
+                    "items": { "type": "number" },
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                }
+              },
+              {
+                "type": "array",
+                "description": "Legacy [x, y] tile coordinate (orientation/anchor defaulted).",
+                "items": { "type": "integer" },
+                "minItems": 2,
+                "maxItems": 2
+              }
+            ]
           }
         }
       }

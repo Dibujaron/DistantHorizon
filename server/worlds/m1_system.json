@@ -44,7 +44,11 @@
        ],
        "spawn_tile": [47, 3]
      },
-     "berths": [[22, 1], [54, 1], [86, 1]],
+     "berths": [
+       {"tile": [22, 1], "orientation": 1.5707963267948966, "anchor": [-32.6, 26.8]},
+       {"tile": [54, 1], "orientation": 1.5707963267948966, "anchor": [5.7, 26.8]},
+       {"tile": [86, 1], "orientation": 1.5707963267948966, "anchor": [44.0, 26.8]}
+     ],
      "market": [
        {"commodity": "water",     "initial": 120, "price": 4,  "elasticity": 1},
        {"commodity": "food",      "initial": 80,  "price": 10, "elasticity": 2},
@@ -72,7 +76,9 @@
        ],
        "spawn_tile": [5, 2]
      },
-     "berths": [[5, 1]],
+     "berths": [
+       {"tile": [5, 1], "orientation": 1.5707963267948966, "anchor": [-3.9, 17.8]}
+     ],
      "market": [
        {"commodity": "water",     "initial": 100, "price": 3,  "elasticity": 1},
        {"commodity": "food",      "initial": 50,  "price": 14, "elasticity": 2},

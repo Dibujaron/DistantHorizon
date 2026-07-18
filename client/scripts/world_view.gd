@@ -314,7 +314,9 @@ func _station_is_pip(sset: AssetLibrary.SpriteSet, view_scale: float) -> bool:
 
 
 func _update_station_sprites(screen_center: Vector2, view_scale: float, touched: Dictionary) -> void:
-	# Docked ships park at berth anchors, in docking order per station.
+	# Docked ships park at the anchor of their OWN claimed berth (snapshot
+	# `berth`), not arrival order — so a moored hull sits at, and undocks
+	# from, the same berth the server pins it to (#13).
 	var docked_by_station: Dictionary = {}
 	for ship in ships:
 		if ship.is_docked():
@@ -351,23 +353,37 @@ func _update_parked_ships(station_sprite: Sprite2D, station: WorldData.Station,
 	var units_per_px := _station_units_per_px(station, sset)
 	var half := Vector2(sset.px_size()) * 0.5
 	var used := {}
-	for i in range(mini(docked.size(), berth_anchors.size())):
-		var ship: ShipState = docked[i]
+	var occupied := {}
+	for ship_variant: Variant in docked:
+		var ship: ShipState = ship_variant
+		var idx := ship.berth
+		if idx < 0 or idx >= berth_anchors.size():
+			continue  # unknown/out-of-range berth: no exterior slot to park in
+		occupied[idx] = true
 		used["parked_%d" % ship.id] = true
+		# Orientation-driven rotation (#14): the moored hull draws at the same
+		# heading the server sends in the snapshot (the port-orientation-derived
+		# moored heading), via the same screen-angle formula flying ships use
+		# (_update_ship_sprites). No longer hardcoded side-on — and because it
+		# matches the flying formula, the hull's rotation is continuous through
+		# undock (#13). The side-on default heading (west) still yields -PI/2.
 		_park_sprite(station_sprite, "parked_%d" % ship.id, "mockingbird",
-			berth_anchors[i] - half, units_per_px)
+			berth_anchors[idx] - half, units_per_px, -ship.heading + PI / 2)
 	# Flavor: on the crane station, a workaday Longhorn holds the last berth
-	# when no real ship does (DESIGN.md M3.5: Longhorn as parked traffic).
-	if station.crane and docked.size() < berth_anchors.size():
-		used["parked_longhorn"] = true
-		_park_sprite(station_sprite, "parked_longhorn", "longhorn",
-			berth_anchors[berth_anchors.size() - 1] - half, units_per_px)
+	# when no real ship does (DESIGN.md M3.5: Longhorn as parked traffic). It
+	# carries no snapshot, so it keeps the side-on default pose.
+	if station.crane and berth_anchors.size() > 0:
+		var last := berth_anchors.size() - 1
+		if not occupied.has(last):
+			used["parked_longhorn"] = true
+			_park_sprite(station_sprite, "parked_longhorn", "longhorn",
+				berth_anchors[last] - half, units_per_px, -PI / 2)
 	for child in station_sprite.get_children():
 		child.visible = used.has(String(child.name))
 
 
 func _park_sprite(parent: Sprite2D, key: String, kind: String,
-		local_px: Vector2, station_units_per_px: float) -> void:
+		local_px: Vector2, station_units_per_px: float, rotation: float) -> void:
 	var sset := _lib.ship(kind)
 	if sset == null:
 		return
@@ -382,8 +398,10 @@ func _park_sprite(parent: Sprite2D, key: String, kind: String,
 		parent.add_child(s)
 	s.visible = true
 	s.position = local_px
-	# Moored ships lie side-on: 90 CCW, nose west, port flank to the bar.
-	s.rotation = -PI / 2
+	# Rotation is orientation-derived (passed in): the default moored heading
+	# (west) still gives the classic side-on -PI/2, nose west, port flank to
+	# the bar.
+	s.rotation = rotation
 	s.scale = Vector2.ONE * (SHIP_WORLD_UNITS_PER_PX / station_units_per_px)
 
 

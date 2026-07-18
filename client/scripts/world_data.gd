@@ -52,6 +52,35 @@ class Body:
 		return body
 
 
+## An authored docking port on a station (wire: the station's `berths`).
+## `tile` is the interior/composite berth tile; `orientation` is the port's
+## outward normal in world radians (y-up, 0 = +x/east); `anchor` is the
+## mooring point's world-unit offset from the station centre. The moored
+## hull's heading and exterior pose derive from these (#14) — the default
+## (north, zero anchor) reproduces M3.5's side-on mooring. Accepts the object
+## form `{tile, orientation?, anchor?}` and the legacy bare `[x, y]` array.
+class Berth:
+	const DEFAULT_ORIENTATION := 1.5707963267948966  ## pi/2, north; server default
+
+	var tile: Vector2i
+	var orientation: float = DEFAULT_ORIENTATION
+	var anchor: Vector2 = Vector2.ZERO
+
+	static func from_variant(data: Variant) -> Berth:
+		var berth := Berth.new()
+		if data is Array and data.size() >= 2:
+			berth.tile = Vector2i(int(data[0]), int(data[1]))
+		elif data is Dictionary:
+			var tile: Variant = data.get("tile", [0, 0])
+			if tile is Array and tile.size() >= 2:
+				berth.tile = Vector2i(int(tile[0]), int(tile[1]))
+			berth.orientation = float(data.get("orientation", DEFAULT_ORIENTATION))
+			var anchor: Variant = data.get("anchor", [0.0, 0.0])
+			if anchor is Array and anchor.size() >= 2:
+				berth.anchor = Vector2(float(anchor[0]), float(anchor[1]))
+		return berth
+
+
 ## A dockable station on a rail around its parent body.
 class Station:
 	var id: String
@@ -65,6 +94,10 @@ class Station:
 	## name are absent on concourses, so they are backfilled from the
 	## station for display.
 	var concourse: ShipClassData = null
+	## Authored docking ports (may be empty). Carries the port orientation so
+	## the client can derive mooring alignment from data rather than assuming
+	## side-on (#14).
+	var berths: Array[Berth] = []
 
 	static func from_dict(data: Dictionary) -> Station:
 		var station := Station.new()
@@ -80,6 +113,8 @@ class Station:
 			station.concourse = ShipClassData.from_dict(concourse)
 			station.concourse.id = station.id
 			station.concourse.name = station.name
+		for berth_data: Variant in data.get("berths", []):
+			station.berths.append(Berth.from_variant(berth_data))
 		return station
 
 
