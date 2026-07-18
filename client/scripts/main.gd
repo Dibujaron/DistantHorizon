@@ -448,7 +448,9 @@ func _update_world_view() -> void:
 		# No snapshot with our ship yet: center on the spawn station so the
 		# view isn't empty while we wait.
 		own_pos = _world.station_position(_world.spawn_station, t)
-	_world_view.set_frame_data(_world, t, extrapolated, _ship_id, _zoom, own_pos, own_undocked)
+	_world_view.set_frame_data(
+		_world, t, extrapolated, _ship_id, _zoom, own_pos, own_undocked,
+		_last_sent_thrust)
 
 ## Own character (while _predicting, i.e. standing) draws at the locally-
 ## predicted position; while seated (or before prediction has (re)started)
