@@ -158,6 +158,9 @@ var _trade_selection: int = 0
 @onready var _trade_panel: Label = %TradePanel
 @onready var _chat_log: Label = %ChatLog
 
+## The Rijay main menu (null when cmdline creds auto-login, e.g. automation).
+var _menu: MainMenu = null
+
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(BACKGROUND_COLOR)
 	NetworkClient.snapshot_received.connect(_on_snapshot_received)
@@ -171,10 +174,19 @@ func _ready() -> void:
 	NetworkClient.cargo_received.connect(_on_cargo_received)
 	NetworkClient.market_received.connect(_on_market_received)
 	NetworkClient.trade_result_received.connect(_on_trade_result_received)
+	# M3.5 UI shell: the game shell speaks Rijay — amber terminal HUD.
+	UiTheme.skin_label(_status_label, 20, UiTheme.AMBER, UiTheme.AMBER_DIM)
+	UiTheme.skin_label(_chat_log, 18, UiTheme.AMBER_DIM)
+	UiTheme.skin_label(_trade_panel, 18, UiTheme.AMBER, UiTheme.CONSOLE_ORANGE)
+	if NetworkClient.manual_login:
+		_menu = MainMenu.new()
+		add_child(_menu)
 	_snap_view_visuals()
 	_update_status_label()
 
 func _physics_process(delta: float) -> void:
+	if _menu != null and _menu.visible:
+		return  # the login terminal owns input until we're aboard
 	_poll_helm_input()
 	var move_input := _poll_move_input()
 	_update_own_prediction(move_input, delta)
@@ -188,6 +200,8 @@ func _process(delta: float) -> void:
 	_update_trade_panel()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _menu != null and _menu.visible:
+		return  # the login terminal owns input until we're aboard
 	if _at_broker() and event is InputEventKey and event.pressed and not event.echo:
 		if _handle_trade_input(event):
 			get_viewport().set_input_as_handled()
