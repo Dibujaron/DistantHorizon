@@ -274,39 +274,68 @@ Rijay's real product is dignity: it's the ship a spacer buys outright the day th
 the visible difference between flying your own hull and flying the Company's. Space Toyota, and proud of it.
 Real-world equivalent: Toyota. Star Citizen equivalent: RSI.
 
-- The Mockingbird
-    - Flagship product, and the game's flagship ship overall
-    - A midsize generalist: configurable for cargo, passengers, or both; one of the largest hulls that can land planetside —
-      with the right package (below)
-    - Resembles the Republic Cruiser from Star Wars, with the neck and cockpit of the Firefly
-    - Engine block is three large engines. The iconic engine fins are **not stock**: they come with the atmospheric-landing
-      package (aero surfaces, heat shielding) — an upgrade the workaday station-to-station Mockingbird skips. Fins on a
-      Mockingbird are capability you can read at a glance: this one goes downwell, where the big ships can't follow. Style and
-      function arriving together.
-    - Best as a tramp ship; two docking ports at the waist
-    - The default starting ship — precisely because it isn't special. The Company has re-lent Mockingbirds for a century; yours
-      is one of thousands of previously-foreclosed hulls in the sky, and your crew is special to nobody but you (per themes.md,
-      Loneliness). Repossessed hulls get refurbished the Company way: with whatever Consolidated fleet parts fit the hole,
-      badly — a Consol center engine shoved between two Rijay originals, fleet-spec fittings wherever the good ones got
-      stripped. A starter Mockingbird is genuinely *worse* than an honest Consol: a battered classic, badly fixed with cheap
-      parts.
-    - Which is the early game: putting it right. Swapping out the Company patches teaches the module system one part at a time,
-      every fix is visible on your own hull, and you can get surprisingly far on a starter you've actually taken care of. Early
-      dignity nobody else will ever notice — the stolen-hubcap principle: *you'll* notice.
-- The Sparrow
-    - The Toyota Corolla of space fighters
+Ship Classes:
+  - The Mockingbird
+      - Flagship product, and the game's flagship ship overall
+      - A midsize generalist: configurable for cargo, passengers, or both; one of the largest hulls that can land planetside —
+        with the right package (below)
+      - Resembles the Republic Cruiser from Star Wars, with the neck and cockpit of the Firefly
+      - Engine block is three medium engines. The iconic engine fins are **not stock**: they come with the atmospheric-landing
+        package (aero surfaces, heat shielding) — an upgrade the workaday station-to-station Mockingbird skips. Fins on a
+        Mockingbird are capability you can read at a glance: this one goes downwell, where the big ships can't follow. Style and
+        function arriving together.
+      - Best as a tramp ship; two docking ports at the waist (narrowest point between engine block and main body)
+      - The default starting ship — precisely because it isn't special. The Company has re-lent Mockingbirds for a century; yours
+        is one of thousands of previously-foreclosed hulls in the sky, and your crew is special to nobody but you (per themes.md,
+        Loneliness). Repossessed hulls get refurbished the Company way: with whatever Consolidated fleet parts fit the hole,
+        badly — a Consol center engine shoved between two Rijay originals, fleet-spec fittings wherever the good ones got
+        stripped. A starter Mockingbird is genuinely *worse* than an honest Consol: a battered classic, badly fixed with cheap
+        parts.
+        - Which is the early game: putting it right. Swapping out the Company patches teaches the module system one part at a time,
+          every fix is visible on your own hull, and you can get surprisingly far on a starter you've actually taken care of. Early
+          dignity nobody else will ever notice — the stolen-hubcap principle: *you'll* notice.
+      - Interior layout: Two floors. Rear docking ports are on a between-level with a half-flight of stairs down to the lower level, 
+        and a half-flight of stairs up to the upper level. The cockpit hallway connects to the front of the upper floor.
+        The connector area behind the cockpit in the neck contains small crew quarters by default, for 3-4 people.
+        The front of the lower level contains a large door which can be lowered to become a ramp (very much like Firefly);
+        this is used for cargo loading (from the void or atmo). From stations, cargo is loaded through the rear docking port and
+        stairs. Stock configuration has the lower level as a large hold, with amenities and berths on the upper level.
+  - The Sparrow
+    - The Toyota Corolla of space fighters.
+    - Definitely a single-seat vehicle. Does not contain a bed by default. Can maybe be refit to contain one at the cost of range.
+    - Visually like a small mockingbird without the central bulging cargo section. 
+      - Two engines instead of three (by default); upgradeable to three.
+      - Basically just a small central cylindrical pod with a cockpit in front, with an engine strapped to either side at the back.
+      - With atmo landing package, gains wings on the engines.
+  - The Finch
+    - Dedicated passenger carrier
+    - Similar to the mockingbird, especially in cockpit and neck.
+    - Body is much slimmer than the mockingbird, with two rows of windows on the sides (something like an A380 but not as long).
+    - Single medium engine centrally mounted on the stern (Passenger transport requires less thrust overall, 1G only).
+    - Small engines mounted to the sides of the back, on struts.
+      - With atmo landing package these become embedded in medium-size wings.
+Common Components:
+  - Forward Cockpit
+  - Cylindrical engines (small and medium)
+  - Atmo-package engine fins
+  - Window shape?
 
 ### Porter Heavy Engineering
 
 Very practical, means business, industrial vibes. Real-world equivalents: Caterpillar, Ford, John Deere. Star Citizen equivalent:
 Drake.
 
-- The Thumper series
-    - Bestselling product, their F-series trucks: midsize-to-large container vessels carrying containers on external racks, with
-      very little interior space (Thumper 6 has 3x2 racks; Thumper 24 has 6x4; etc.)
-    - Repairs require EVAs
-- The Longhorn
-    - The Mockingbird's niche, minus atmospheric landing on most full-grav worlds; a spartan passenger/cargo convertible
+Ship Classes:
+  - The Thumper series
+      - Bestselling product, their F-series trucks: midsize-to-large container vessels carrying containers on external racks, with
+        very little interior space (Thumper 6 has 3x2 racks; Thumper 24 has 6x4; etc.)
+      - Repairs require EVAs
+  - The Longhorn
+      - The Mockingbird's niche, minus atmospheric landing on most full-grav worlds; a spartan passenger/cargo convertible
+
+Common Components:
+  - Container Racks
+  - Thumper Steering Fins
 
 ### Aratori Royal Design Institute
 
