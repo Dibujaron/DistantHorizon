@@ -121,3 +121,35 @@ def test_flat_albedo_has_no_glow_or_highlight():
     rgba = rasterize(frag, (-40, -115, 80, 190))
     px = (rgba[..., :3] * 255)[rgba[..., 3] > 0.9]
     assert not ((np.abs(px - (255, 157, 77)).max(axis=1)) < 12).any()
+
+
+def test_export_mockingbird(tmp_path):
+    from composer import SHIP_EXPORTS, export_ship
+    spec = next(s for s in SHIP_EXPORTS if s.name == "mockingbird")
+    meta = export_ship(spec, tmp_path)
+    d = tmp_path / "mockingbird"
+    for f in ("albedo.png", "normal.png", "mask.png", "meta.json"):
+        assert (d / f).exists()
+    assert abs(meta["px_h"] - 45) <= 3                     # Classic game scale
+    assert len(meta["anchors"]) == 3
+    for a in meta["anchors"]:
+        assert 0 <= a["x_px"] < meta["px_w"] and 0 <= a["y_px"] < meta["px_h"]
+        assert a["y_px"] > meta["px_h"] * 0.7              # nozzles aft
+    from PIL import Image
+    n = np.asarray(Image.open(d / "normal.png"))
+    assert tuple(n[0, 0][:3]) == (128, 128, 255)           # background flat, GL
+
+
+def test_export_longhorn_foil_shades_flat(tmp_path):
+    """anti-overfit proof at export level: foil interior normals face camera"""
+    from composer import SHIP_EXPORTS, export_ship
+    spec = next(s for s in SHIP_EXPORTS if s.name == "longhorn")
+    meta = export_ship(spec, tmp_path)
+    from PIL import Image
+    n = np.asarray(Image.open(tmp_path / "longhorn" / "normal.png")).astype(float)
+    n = n / 127.5 - 1.0
+    # foil interior sample: model (+-28, -95) -> px via meta frame/px_per_unit
+    for mx in (-28, 28):
+        fx = int((mx - meta["frame"][0]) * meta["px_per_unit"])
+        fy = int((-95 - meta["frame"][1]) * meta["px_per_unit"])
+        assert n[fy, fx, 2] > 0.9, "hammer foil must shade as a thin flat plate"
