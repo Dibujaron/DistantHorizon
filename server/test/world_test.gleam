@@ -311,14 +311,42 @@ fn tiny_world_with_concourse_consoles(consoles_json: String) -> String {
 pub fn berths_decode_test() {
   let assert Ok(w) = world.load("worlds/m1_system.json")
   let assert Ok(meridian) = world.get_station(w, "meridian_highport")
+  let o = composite.default_orientation
   assert meridian.berths
     == [
-      composite.Berth(x: 22, y: 1),
-      composite.Berth(x: 54, y: 1),
-      composite.Berth(x: 86, y: 1),
+      composite.Berth(
+        x: 22,
+        y: 1,
+        orientation: o,
+        anchor_x: -32.6,
+        anchor_y: 26.8,
+      ),
+      composite.Berth(
+        x: 54,
+        y: 1,
+        orientation: o,
+        anchor_x: 5.7,
+        anchor_y: 26.8,
+      ),
+      composite.Berth(
+        x: 86,
+        y: 1,
+        orientation: o,
+        anchor_x: 44.0,
+        anchor_y: 26.8,
+      ),
     ]
   let assert Ok(solis) = world.get_station(w, "solis_ring")
-  assert solis.berths == [composite.Berth(x: 5, y: 1)]
+  assert solis.berths
+    == [
+      composite.Berth(
+        x: 5,
+        y: 1,
+        orientation: o,
+        anchor_x: -3.9,
+        anchor_y: 17.8,
+      ),
+    ]
 }
 
 pub fn berth_on_non_walkable_tile_is_invalid_test() {

@@ -32,6 +32,17 @@ import simplifile
 
 const two_pi = 6.283185307179586
 
+const pi = 3.141592653589793
+
+/// The single-hull ship's docking-port normal in its OWN frame (ship-local
+/// radians, 0 = nose/+x). pi/2 = the port flank: the Mockingbird moors
+/// side-on. This mirrors the ship class's `dock_port_orientation` (schema 2);
+/// under the single-hull assumption the two are equal, so the server's moored
+/// heading reads this constant rather than threading the class through
+/// `ship.step`. M4 (multi-class refit) should replace this with the docking
+/// ship's own `dock_port_orientation`.
+const default_ship_port_orientation = 1.5707963267948966
+
 pub type Orbit {
   Orbit(radius: Float, period_s: Float, phase: Float)
 }
@@ -184,6 +195,66 @@ pub fn station_velocity(
 /// Look up a station by id.
 pub fn get_station(world: World, station_id: String) -> Result(Station, Nil) {
   list.find(world.stations, fn(s) { s.id == station_id })
+}
+
+/// A station's berth by index (its docking-port record), or `Error(Nil)` if
+/// the station or index is unknown.
+pub fn station_berth(
+  world: World,
+  station_id: String,
+  index: Int,
+) -> Result(composite.Berth, Nil) {
+  case get_station(world, station_id) {
+    Error(Nil) -> Error(Nil)
+    Ok(station) ->
+      case index >= 0 {
+        False -> Error(Nil)
+        True -> list.drop(station.berths, index) |> list.first
+      }
+  }
+}
+
+/// The exterior mooring pose of a ship docked in `berth_index` at
+/// `station_id` at sim time `t`: `#(x, y, vx, vy)` where position is the
+/// station centre plus the berth's authored world anchor, and velocity is the
+/// station's rail velocity (a docked hull rides the rail). This is the pose a
+/// docked ship is pinned to each tick AND released at on undock, so undocking
+/// never teleports the hull toward the station centre (issue #13). Falls back
+/// to the bare station pose (centre + rail velocity) when the berth is unknown
+/// — e.g. a test station with no authored berths — so a hull still moors
+/// rather than the lookup crashing.
+pub fn moored_position(
+  world: World,
+  station_id: String,
+  berth_index: Int,
+  t: Float,
+) -> #(Float, Float, Float, Float) {
+  let #(cx, cy) = station_position(world, station_id, t)
+  let #(vx, vy) = station_velocity(world, station_id, t)
+  case station_berth(world, station_id, berth_index) {
+    Error(Nil) -> #(cx, cy, vx, vy)
+    Ok(berth) -> #(cx +. berth.anchor_x, cy +. berth.anchor_y, vx, vy)
+  }
+}
+
+/// The world heading a ship holds while moored in `berth_index` at
+/// `station_id`: derived so the ship's docking port faces back into the
+/// station. From the berth's outward normal and the (single-hull) ship-port
+/// normal: `heading = berth.orientation + pi - ship_port`. The side-on
+/// default (berth north, port flank) yields pi — nose west, M3.5's look.
+/// Unknown berths fall back to the same default. Replacing the client's and
+/// exterior's hardcoded side-on rotation, this is what generalises mooring to
+/// nose-in / arbitrary approaches (issue #14).
+pub fn moored_heading(
+  world: World,
+  station_id: String,
+  berth_index: Int,
+) -> Float {
+  let orientation = case station_berth(world, station_id, berth_index) {
+    Ok(berth) -> berth.orientation
+    Error(Nil) -> composite.default_orientation
+  }
+  orientation +. pi -. default_ship_port_orientation
 }
 
 /// Summed gravitational acceleration from every body with `mu > 0` at
@@ -421,13 +492,7 @@ fn station_decoder() -> decode.Decoder(Station) {
   use berths <- decode.optional_field(
     "berths",
     [],
-    decode.list({
-      use coords <- decode.then(decode.list(decode.int))
-      case coords {
-        [x, y] -> decode.success(composite.Berth(x: x, y: y))
-        _ -> decode.failure(composite.Berth(0, 0), "two-element [x, y] array")
-      }
-    }),
+    decode.list(berth_decoder()),
   )
   decode.success(Station(
     id: id,
@@ -440,6 +505,68 @@ fn station_decoder() -> decode.Decoder(Station) {
     market: market,
     berths: berths,
   ))
+}
+
+/// Decode one authored docking port. Object form:
+/// `{"tile":[x,y], "orientation":F?, "anchor":[ax,ay]?}` — `tile` required,
+/// `orientation`/`anchor` optional (default: side-on north, zero anchor, i.e.
+/// M3.5's centre-pinned side-on mooring). A bare legacy `[x, y]` array is
+/// still accepted and takes those same defaults, so pre-#14 world docs load
+/// unchanged.
+fn berth_decoder() -> decode.Decoder(composite.Berth) {
+  decode.one_of(berth_object_decoder(), or: [berth_tuple_decoder()])
+}
+
+fn berth_object_decoder() -> decode.Decoder(composite.Berth) {
+  use tile <- decode.field("tile", decode.list(decode.int))
+  use orientation <- decode.optional_field(
+    "orientation",
+    composite.default_orientation,
+    decode.float,
+  )
+  use anchor <- decode.optional_field(
+    "anchor",
+    [0.0, 0.0],
+    decode.list(decode.float),
+  )
+  let #(ax, ay) = case anchor {
+    [x, y] -> #(x, y)
+    _ -> #(0.0, 0.0)
+  }
+  case tile {
+    [x, y] ->
+      decode.success(composite.Berth(
+        x: x,
+        y: y,
+        orientation: orientation,
+        anchor_x: ax,
+        anchor_y: ay,
+      ))
+    _ ->
+      decode.failure(
+        composite.Berth(0, 0, composite.default_orientation, 0.0, 0.0),
+        "berth object with a two-element tile [x, y]",
+      )
+  }
+}
+
+fn berth_tuple_decoder() -> decode.Decoder(composite.Berth) {
+  use coords <- decode.then(decode.list(decode.int))
+  case coords {
+    [x, y] ->
+      decode.success(composite.Berth(
+        x: x,
+        y: y,
+        orientation: composite.default_orientation,
+        anchor_x: 0.0,
+        anchor_y: 0.0,
+      ))
+    _ ->
+      decode.failure(
+        composite.Berth(0, 0, composite.default_orientation, 0.0, 0.0),
+        "two-element [x, y] array",
+      )
+  }
 }
 
 fn world_decoder() -> decode.Decoder(World) {
@@ -516,5 +643,15 @@ fn encode_station(station: Station) -> Json {
 }
 
 fn encode_berth(berth: composite.Berth) -> Json {
-  json.preprocessed_array([json.int(berth.x), json.int(berth.y)])
+  json.object([
+    #("tile", json.preprocessed_array([json.int(berth.x), json.int(berth.y)])),
+    #("orientation", json.float(berth.orientation)),
+    #(
+      "anchor",
+      json.preprocessed_array([
+        json.float(berth.anchor_x),
+        json.float(berth.anchor_y),
+      ]),
+    ),
+  ])
 }

@@ -95,7 +95,19 @@ fn meridian_concourse() -> DeckPlan {
 }
 
 fn meridian_berths() -> List(composite.Berth) {
-  [Berth(x: 22, y: 1), Berth(x: 54, y: 1), Berth(x: 86, y: 1)]
+  // The interior stitch (`build`) reads only x/y; orientation/anchor default
+  // (they drive the exterior pose, not the composite).
+  [berth(22, 1), berth(54, 1), berth(86, 1)]
+}
+
+fn berth(x: Int, y: Int) -> composite.Berth {
+  Berth(
+    x: x,
+    y: y,
+    orientation: composite.default_orientation,
+    anchor_x: 0.0,
+    anchor_y: 0.0,
+  )
 }
 
 pub fn empty_composite_is_the_concourse_at_origin_test() {

@@ -10,6 +10,10 @@ var vx: float
 var vy: float
 var heading: float  ## radians, y-up counter-clockwise (wire convention)
 var docked_at: String  ## station id, or "" while flying free
+## Claimed berth index while docked, -1 while flying. Parks the moored hull
+## at its own berth anchor — the same berth the server releases it at on
+## undock (#13/#14).
+var berth: int = -1
 
 
 static func from_dict(data: Dictionary) -> ShipState:
@@ -22,6 +26,8 @@ static func from_dict(data: Dictionary) -> ShipState:
 	ship.heading = float(data.get("heading", 0.0))
 	var docked: Variant = data.get("docked")
 	ship.docked_at = "" if docked == null else str(docked)
+	var berth: Variant = data.get("berth")
+	ship.berth = -1 if berth == null else int(berth)
 	return ship
 
 
@@ -48,4 +54,5 @@ func extrapolated(elapsed: float) -> ShipState:
 	out.vy = vy
 	out.heading = heading
 	out.docked_at = docked_at
+	out.berth = berth
 	return out

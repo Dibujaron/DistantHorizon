@@ -54,6 +54,10 @@
           "description": "How cargo physically gets aboard: break-bulk hulls load by robot stevedores anywhere; container hulls need a station crane and never open their holds."
         }
       }
+    },
+    "dock_port_orientation": {
+      "type": "number",
+      "description": "Optional field (decode.optional_field, default pi/2). This hull's docking-port outward normal in its own frame (ship-local radians, 0 = nose/+x). pi/2 = port flank (side-on mooring, the default). Combined with a station berth's orientation to fix the moored heading (issue #14)."
     }
   },
   "$defs": {

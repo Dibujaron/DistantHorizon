@@ -26,10 +26,28 @@ import gleam/string
 /// hulls (round 11 note: fin overlap "will be a problem for bigger ships").
 pub const tube_length = 4
 
-/// An authored berth: the walkable concourse stub tile a ship moors onto.
+/// An authored docking port on a concourse: the walkable stub tile a ship
+/// moors onto (`x`, `y`, interior/composite frame) PLUS the exterior mooring
+/// pose. `orientation` is the port's outward normal in world radians (y-up,
+/// 0 = +x/east) — the direction a moored hull sits from, and departs toward,
+/// the station centre. `anchor_x`/`anchor_y` place that mooring point as a
+/// world-unit offset from the station centre (the exterior pose a docked hull
+/// holds and is released at on undock — issue #13). The default orientation
+/// (`default_orientation`, north) with a zero anchor reproduces M3.5's
+/// side-on mooring pinned at the station centre; real stations author an
+/// anchor out on the ring so hulls sit at their berth (see
+/// `world.moored_position`). NB: the interior stitch (`build`) reads only
+/// x/y — orientation/anchor drive the SPACE-side pose only, keeping the two
+/// concerns cleanly separate (issue #14).
 pub type Berth {
-  Berth(x: Int, y: Int)
+  Berth(x: Int, y: Int, orientation: Float, anchor_x: Float, anchor_y: Float)
 }
+
+/// The side-on default port normal: north (+y), i.e. pi/2 radians. A hull
+/// moored against a north-facing berth sits north of the station and departs
+/// northward — M3.5's authored look. Callers that only have a tile (legacy
+/// `[x, y]` berths, tests) default a berth's orientation to this.
+pub const default_orientation = 1.5707963267948966
 
 /// One docked ship to moor: its id, claimed berth index, and deck plan.
 pub type DockedShip {

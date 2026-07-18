@@ -22,6 +22,12 @@ pub type Handling {
   Container
 }
 
+/// The default ship docking-port normal, ship-local radians (0 = nose/+x):
+/// pi/2 = the port flank. A hull with this port moors side-on — the M3.5
+/// look. Kept in sync with `world.default_ship_port_orientation` under the
+/// single-hull assumption (see that constant).
+pub const default_dock_port_orientation = 1.5707963267948966
+
 pub type ShipClass {
   ShipClass(
     schema: Int,
@@ -31,6 +37,12 @@ pub type ShipClass {
     /// Hold size in cargo units.
     cargo_capacity: Int,
     handling: Handling,
+    /// This hull's docking-port outward normal in its OWN frame (ship-local
+    /// radians, 0 = nose/+x). The station berth's `orientation` and this
+    /// value together fix the moored heading (`world.moored_heading`), so a
+    /// hull can dock side-on (pi/2, the default — port flank to the gangway),
+    /// nose-in (0), etc., instead of the old hardcoded side-on (issue #14).
+    dock_port_orientation: Float,
   )
 }
 
@@ -66,7 +78,10 @@ pub fn encode(class: ShipClass) -> Json {
       #("name", json.string(class.name)),
     ]
     |> list.append(deckplan.encode_fields(class.plan))
-    |> list.append([#("cargo", encode_cargo(class))]),
+    |> list.append([
+      #("cargo", encode_cargo(class)),
+      #("dock_port_orientation", json.float(class.dock_port_orientation)),
+    ]),
   )
 }
 
@@ -108,6 +123,11 @@ fn ship_class_decoder() -> decode.Decoder(ShipClass) {
   use name <- decode.field("name", decode.string)
   use plan <- decode.then(deckplan.decoder())
   use cargo <- decode.field("cargo", cargo_decoder())
+  use dock_port_orientation <- decode.optional_field(
+    "dock_port_orientation",
+    default_dock_port_orientation,
+    decode.float,
+  )
   let #(capacity, handling) = cargo
   decode.success(ShipClass(
     schema: schema,
@@ -116,6 +136,7 @@ fn ship_class_decoder() -> decode.Decoder(ShipClass) {
     plan: plan,
     cargo_capacity: capacity,
     handling: handling,
+    dock_port_orientation: dock_port_orientation,
   ))
 }
 

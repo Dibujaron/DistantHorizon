@@ -99,6 +99,11 @@ var spawn_tile: Vector2i = Vector2i.ZERO
 ## this class leave them at 0/"" — a concourse has no hold.
 var cargo_capacity: int = 0
 var handling: String = ""
+## This hull's docking-port outward normal, ship-local radians (0 = nose/+x);
+## PI/2 = port flank (side-on mooring, the default). With the station berth's
+## orientation this fixes the moored heading (#14). Concourse plans, which
+## carry no such field, keep the default.
+var dock_port_orientation: float = PI / 2.0
 
 ## Authored per-edge structure: "x,y" -> { "n"/"e"/"s"/"w": Edge }. Empty
 ## means "derive every edge from adjacency" (fully backward compatible). Filled
@@ -132,6 +137,8 @@ static func from_dict(data: Dictionary) -> ShipClassData:
 	if cargo is Dictionary:
 		doc.cargo_capacity = int(cargo.get("capacity", 0))
 		doc.handling = str(cargo.get("handling", ""))
+	doc.dock_port_orientation = float(
+		data.get("dock_port_orientation", PI / 2.0))
 	var edges_data: Variant = data.get("edges")
 	if edges_data is Dictionary:
 		for cell_key: Variant in edges_data:

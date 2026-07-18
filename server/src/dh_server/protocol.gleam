@@ -33,7 +33,10 @@
 ////    "hold":[{"commodity","quantity"}...],
 ////    "transfers":[{"commodity","direction","remaining"}...]}
 ////   {"v":1,"type":"snapshot","tick":N,
-////    "ships":[{"id","x","y","vx","vy","heading","thrust","docked"}...]}
+////    "ships":[{"id","x","y","vx","vy","heading","thrust","docked",
+////              "berth"}...]} — "berth" is the claimed berth index while
+////   docked (null while flying), so the client parks each moored hull at its
+////   own berth anchor (the same berth the server releases it at on undock).
 ////   {"v":1,"type":"space","space":"station:<id>"|"ship:N","epoch":N,
 ////    "plan":{"grid":{...},"walkable":[...],"rooms":[...],"consoles":[...],
 ////            "spawn_tile":[x,y]},
@@ -414,6 +417,7 @@ fn encode_ship(s: Ship) -> Json {
     #("heading", json.float(s.heading)),
     #("thrust", json.float(s.controls.thrust)),
     #("docked", encode_docked(s.dock)),
+    #("berth", encode_berth_index(s.dock)),
   ])
 }
 
@@ -421,6 +425,16 @@ fn encode_docked(dock: ship.DockState) -> Json {
   case dock {
     ship.Flying -> json.null()
     ship.Docked(station_id, _) -> json.string(station_id)
+  }
+}
+
+/// The claimed berth index of a docked ship (null while flying) — lets the
+/// client park a moored hull at its own berth anchor, matching the berth the
+/// server pins it to and releases it from (issues #13/#14).
+fn encode_berth_index(dock: ship.DockState) -> Json {
+  case dock {
+    ship.Flying -> json.null()
+    ship.Docked(_, berth) -> json.int(berth)
   }
 }
 
