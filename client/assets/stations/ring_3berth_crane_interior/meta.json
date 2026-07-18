@@ -1,13 +1,13 @@
 {
   "name": "ring_3berth_crane_interior",
   "px_w": 302,
-  "px_h": 112,
+  "px_h": 158,
   "px_per_unit": 0.4,
   "frame": [
     -391.0,
     -127.0,
     757.0,
-    279.0
+    395.0
   ],
   "classic_px": 132,
   "c1_base": [

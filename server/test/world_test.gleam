@@ -141,7 +141,7 @@ pub fn station_position_chains_through_planet_test() {
   let assert Ok(w) = world.load("worlds/m1_system.json")
   let #(px, py) = world.body_position(w, "meridian", 0.0)
   let #(sx, sy) = world.station_position(w, "meridian_highport", 0.0)
-  assert close(sx, px +. 400.0) && close(sy, py +. 0.0)
+  assert close(sx, px +. 850.0) && close(sy, py +. 0.0)
 }
 
 pub fn station_velocity_magnitude_test() {
@@ -184,11 +184,11 @@ pub fn station_velocity_chains_through_planet_test() {
   // Hand-computed expectation from the bundled world: meridian's orbital
   // velocity around the star (radius 4000, period 900, phase 0) plus
   // meridian_highport's own orbital velocity term around meridian
-  // (radius 400, period 180, phase 0).
+  // (radius 850, period 180, phase 0).
   let planet_angle = two_pi *. t /. 900.0
   let planet_omega_r = two_pi *. 4000.0 /. 900.0
   let station_angle = two_pi *. t /. 180.0
-  let station_omega_r = two_pi *. 400.0 /. 180.0
+  let station_omega_r = two_pi *. 850.0 /. 180.0
   let expected_vx =
     0.0
     -. planet_omega_r

@@ -1,34 +1,35 @@
 ﻿//// The composite (stitched) plan: concourse + docked-ship moorings.
 //// Iteration 4: ships moor SIDE-ON (plans rotated 90 CCW, nose west,
-//// port flank south) at the end of a 3-tile generated docking tube.
+//// port flank south) at the end of a 4-tile generated docking tube.
 
 import dh_server/composite.{Berth, DockedShip, Mooring}
 import dh_server/deckplan.{type DeckPlan, Console, DeckPlan, Grid, Room}
 import gleam/list
 
 /// The Mockingbird deck plan, matching server/classes/mockingbird.json:
-/// 14x22, nose up, split-level. Docking corridor 'B' row 21 cols 5-8; the
-/// spawn/gangway is its PORT end (5,21) — rotated side-on for mooring,
+/// 14x23, nose up, split-level. Docking corridor 'B' row 22 cols 5-8; the
+/// spawn/gangway is its PORT end (5,22) — rotated side-on for mooring,
 /// that end faces the station.
 fn mockingbird_plan() -> DeckPlan {
   DeckPlan(
-    grid: Grid(width: 14, height: 22),
+    grid: Grid(width: 14, height: 23),
     walkable: [
       "..............",
       "..............",
       "......UU......",
       "......UU......",
       "......UU......",
+      "......UU......",
       ".....2222.....",
       "....222222....",
-      "...22222222...",
-      "...22222222...",
-      "...22222222...",
-      "...22222222...",
-      "...22222222...",
-      "...22222222...",
-      "...22222222...",
       "....222222....",
+      "...22222222...",
+      "...22222222...",
+      "...22222222...",
+      "...22222222...",
+      "...22222222...",
+      "...22222222...",
+      "...22222222...",
       "....222222....",
       "....222222....",
       "....222222....",
@@ -38,14 +39,14 @@ fn mockingbird_plan() -> DeckPlan {
       ".....BBBB.....",
     ],
     rooms: [
-      Room(id: "cockpit", name: "Cockpit", x: 6, y: 2, w: 2, h: 3, deck: "upper"),
-      Room(id: "dock", name: "Docking Deck", x: 5, y: 20, w: 4, h: 2, deck: ""),
+      Room(id: "cockpit", name: "Cockpit", x: 6, y: 2, w: 2, h: 4, deck: "upper"),
+      Room(id: "dock", name: "Docking Deck", x: 5, y: 21, w: 4, h: 2, deck: ""),
     ],
     consoles: [
       Console(id: "helm_main", kind: "helm", x: 6, y: 2),
-      Console(id: "cargo_main", kind: "cargo", x: 5, y: 20),
+      Console(id: "cargo_main", kind: "cargo", x: 5, y: 21),
     ],
-    spawn_tile: #(5, 21),
+    spawn_tile: #(5, 22),
   )
 }
 
@@ -92,19 +93,19 @@ pub fn empty_composite_is_the_concourse_at_origin_test() {
 
 pub fn rotate_ccw_lays_the_ship_side_on_test() {
   let r = deckplan.rotate_ccw(mockingbird_plan())
-  assert r.grid == Grid(width: 22, height: 14)
-  // Port dormer (5,21) -> (21,8): the corridor's SOUTH end, nose west.
-  assert r.spawn_tile == #(21, 8)
-  assert deckplan.char_at(r, 21, 8) == "B"
+  assert r.grid == Grid(width: 23, height: 14)
+  // Port dormer (5,22) -> (22,8): the corridor's SOUTH end, nose west.
+  assert r.spawn_tile == #(22, 8)
+  assert deckplan.char_at(r, 22, 8) == "B"
   // Helm (6,2) -> (2,7), still upper.
   assert deckplan.char_at(r, 2, 7) == "U"
   let assert Ok(helm) = deckplan.find_console(r, "helm_main")
   assert helm.x == 2 && helm.y == 7
-  // The port 'L' half-flight (5,20) -> (20,8).
-  assert deckplan.char_at(r, 20, 8) == "L"
-  // Rooms rotate as rects: cockpit (6,2,2,3) -> (2, 14-6-2=6, 3, 2).
+  // The port 'L' half-flight (5,21) -> (21,8).
+  assert deckplan.char_at(r, 21, 8) == "L"
+  // Rooms rotate as rects: cockpit (6,2,2,4) -> (2, 14-6-2=6, 4, 2).
   let assert Ok(cockpit) = list.find(r.rooms, fn(rm) { rm.id == "cockpit" })
-  assert cockpit.x == 2 && cockpit.y == 6 && cockpit.w == 3 && cockpit.h == 2
+  assert cockpit.x == 2 && cockpit.y == 6 && cockpit.w == 4 && cockpit.h == 2
 }
 
 pub fn one_ship_moors_side_on_at_a_tube_test() {
@@ -112,27 +113,28 @@ pub fn one_ship_moors_side_on_at_a_tube_test() {
     composite.build(meridian_concourse(), meridian_berths(), [
       DockedShip(ship_id: 1, berth: 0, plan: mockingbird_plan()),
     ])
-  // Rotated ship at berth 22: raw offset (22-21, 1-1-3-8) = (1, -11) ->
-  // shift (0, 11): the frame is x-stable however many ships are moored.
+  // Rotated ship at berth 22: raw offset (22-22, 1-1-4-8) = (0, -12) ->
+  // shift (0, 12): the frame is x-stable however many ships are moored.
   assert c.concourse_dx == 0
-  assert c.concourse_dy == 11
-  assert c.moorings == [Mooring(ship_id: 1, dx: 1, dy: 0)]
-  assert c.plan.grid == Grid(width: 94, height: 17)
-  // Dormer at (22,8); THREE generated tube tiles; berth stub at (22,12).
+  assert c.concourse_dy == 12
+  assert c.moorings == [Mooring(ship_id: 1, dx: 0, dy: 0)]
+  assert c.plan.grid == Grid(width: 94, height: 18)
+  // Dormer at (22,8); FOUR generated tube tiles; berth stub at (22,13).
   assert deckplan.char_at(c.plan, 22, 8) == "B"
   assert deckplan.char_at(c.plan, 22, 9) == "#"
   assert deckplan.char_at(c.plan, 22, 10) == "#"
   assert deckplan.char_at(c.plan, 22, 11) == "#"
   assert deckplan.char_at(c.plan, 22, 12) == "#"
+  assert deckplan.char_at(c.plan, 22, 13) == "#"
   // Beside the tube: still void — the hull floats clear of the bar.
   assert !deckplan.is_walkable(c.plan, 21, 10)
   assert !deckplan.is_walkable(c.plan, 23, 10)
-  // Moored helm at (3,7), upper; deck alphabet carries through rotation.
-  assert deckplan.char_at(c.plan, 3, 7) == "U"
+  // Moored helm at (2,7), upper; deck alphabet carries through rotation.
+  assert deckplan.char_at(c.plan, 2, 7) == "U"
   assert deckplan.char_at(c.plan, 21, 8) == "L"
-  assert deckplan.char_at(c.plan, 11, 7) == "2"
-  // Concourse broker tile (10,3) -> composite (10,14), still generic.
-  assert deckplan.char_at(c.plan, 10, 14) == "#"
+  assert deckplan.char_at(c.plan, 10, 7) == "2"
+  // Concourse broker tile (10,3) -> composite (10,15), still generic.
+  assert deckplan.char_at(c.plan, 10, 15) == "#"
 }
 
 pub fn ship_console_and_room_ids_are_namespaced_test() {
@@ -142,12 +144,12 @@ pub fn ship_console_and_room_ids_are_namespaced_test() {
     ])
   let assert Ok(helm) = deckplan.find_console(c.plan, "s3:helm_main")
   assert helm.kind == "helm"
-  assert helm.x == 3
+  assert helm.x == 2
   assert helm.y == 7
   // Concourse consoles keep their plain ids, translated.
   let assert Ok(broker) = deckplan.find_console(c.plan, "broker_main")
   assert broker.x == 10
-  assert broker.y == 14
+  assert broker.y == 15
   // Ship rooms are namespaced too, and keep their deck tag.
   let assert Ok(cockpit) =
     list.find(c.plan.rooms, fn(r) { r.id == "s3:cockpit" })
@@ -165,9 +167,9 @@ pub fn three_ships_moor_side_by_side_test() {
   let assert Ok(g1) = composite.find_mooring(c, 1)
   let assert Ok(g2) = composite.find_mooring(c, 2)
   let assert Ok(g3) = composite.find_mooring(c, 3)
-  assert g1 == Mooring(ship_id: 1, dx: 1, dy: 0)
-  assert g2 == Mooring(ship_id: 2, dx: 33, dy: 0)
-  assert g3 == Mooring(ship_id: 3, dx: 65, dy: 0)
+  assert g1 == Mooring(ship_id: 1, dx: 0, dy: 0)
+  assert g2 == Mooring(ship_id: 2, dx: 32, dy: 0)
+  assert g3 == Mooring(ship_id: 3, dx: 64, dy: 0)
   // Each ship's helm console exists under its own namespace.
   let assert Ok(_) = deckplan.find_console(c.plan, "s1:helm_main")
   let assert Ok(_) = deckplan.find_console(c.plan, "s2:helm_main")
@@ -203,14 +205,14 @@ pub fn tile_on_mooring_test() {
       DockedShip(ship_id: 1, berth: 0, plan: mockingbird_plan()),
     ])
   let assert Ok(g) = composite.find_mooring(c, 1)
-  // Composite (3.5, 7.5) is the moored helm tile; (10.5, 14.5) concourse.
-  assert composite.tile_on_mooring(g, mockingbird_plan(), 3.5, 7.5)
-  assert !composite.tile_on_mooring(g, mockingbird_plan(), 10.5, 14.5)
+  // Composite (2.5, 7.5) is the moored helm tile; (10.5, 15.5) concourse.
+  assert composite.tile_on_mooring(g, mockingbird_plan(), 2.5, 7.5)
+  assert !composite.tile_on_mooring(g, mockingbird_plan(), 10.5, 15.5)
   // The docking TUBE belongs to the station, not the ship: a body caught
   // mid-tube on undock stays ashore.
   assert !composite.tile_on_mooring(g, mockingbird_plan(), 22.5, 10.5)
   // The berth stub belongs to the concourse too.
-  assert !composite.tile_on_mooring(g, mockingbird_plan(), 22.5, 12.5)
+  assert !composite.tile_on_mooring(g, mockingbird_plan(), 22.5, 13.5)
 }
 
 pub fn ship_frame_round_trip_test() {
@@ -223,9 +225,9 @@ pub fn ship_frame_round_trip_test() {
   // The moored dormer center maps back to the unrotated spawn center.
   let #(sx, sy) = composite.to_ship_frame(g, plan, 22.5, 8.5)
   assert sx == 5.5
-  assert sy == 21.5
+  assert sy == 22.5
   // And forward again (dock join): ship frame -> mooring-local + offset.
-  let #(rx, ry) = composite.from_ship_frame(plan, 5.5, 21.5)
-  assert rx == 21.5
+  let #(rx, ry) = composite.from_ship_frame(plan, 5.5, 22.5)
+  assert rx == 22.5
   assert ry == 8.5
 }

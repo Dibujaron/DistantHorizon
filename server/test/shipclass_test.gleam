@@ -7,13 +7,13 @@ pub fn load_bundled_mockingbird_test() {
   let assert Ok(c) = shipclass.load("classes/mockingbird.json")
   assert c.schema == 2
   assert c.id == "mockingbird"
-  assert c.plan.grid == Grid(width: 14, height: 22)
-  assert list.length(c.plan.walkable) == 22
-  assert list.length(c.plan.rooms) == 6
+  assert c.plan.grid == Grid(width: 14, height: 23)
+  assert list.length(c.plan.walkable) == 23
+  assert list.length(c.plan.rooms) == 7
   assert list.length(c.plan.consoles) == 2
   // The spawn tile is the PORT docking dormer on the between-level ('B')
   // corridor at the waist — side ports, never the stern.
-  assert c.plan.spawn_tile == #(5, 21)
+  assert c.plan.spawn_tile == #(5, 22)
   assert list.any(c.plan.rooms, fn(r) { r.id == "dock" })
   // Split-level metadata: the hold is a lower-deck room.
   let assert Ok(hold) = list.find(c.plan.rooms, fn(r) { r.id == "hold" })
@@ -40,25 +40,25 @@ pub fn find_console_unknown_is_error_test() {
 
 pub fn is_walkable_true_for_interior_tile_test() {
   let assert Ok(c) = shipclass.load("classes/mockingbird.json")
-  // Row 7: "...22222222..." -> x=3..10 walkable; row 21 corridor likewise.
-  assert deckplan.is_walkable(c.plan, 3, 7)
-  assert deckplan.is_walkable(c.plan, 10, 7)
-  assert deckplan.is_walkable(c.plan, 5, 21)
+  // Row 10: "...22222222..." -> x=3..10 walkable; row 22 corridor likewise.
+  assert deckplan.is_walkable(c.plan, 3, 10)
+  assert deckplan.is_walkable(c.plan, 10, 10)
+  assert deckplan.is_walkable(c.plan, 5, 22)
 }
 
 pub fn is_walkable_false_for_hull_tile_test() {
   let assert Ok(c) = shipclass.load("classes/mockingbird.json")
-  assert !deckplan.is_walkable(c.plan, 2, 7)
-  assert !deckplan.is_walkable(c.plan, 11, 7)
+  assert !deckplan.is_walkable(c.plan, 2, 10)
+  assert !deckplan.is_walkable(c.plan, 11, 10)
   assert !deckplan.is_walkable(c.plan, 6, 0)
 }
 
 pub fn is_walkable_false_out_of_bounds_test() {
   let assert Ok(c) = shipclass.load("classes/mockingbird.json")
-  assert !deckplan.is_walkable(c.plan, -1, 7)
-  assert !deckplan.is_walkable(c.plan, 14, 7)
+  assert !deckplan.is_walkable(c.plan, -1, 10)
+  assert !deckplan.is_walkable(c.plan, 14, 10)
   assert !deckplan.is_walkable(c.plan, 6, -1)
-  assert !deckplan.is_walkable(c.plan, 6, 22)
+  assert !deckplan.is_walkable(c.plan, 6, 23)
 }
 
 /// A minimal valid class, for hand-crafting single-field violations without

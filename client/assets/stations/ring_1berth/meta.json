@@ -1,13 +1,13 @@
 {
   "name": "ring_1berth",
   "px_w": 28,
-  "px_h": 43,
+  "px_h": 38,
   "px_per_unit": 0.2,
   "frame": [
     -83.0,
     -81.0,
     142.0,
-    215.0
+    188.0
   ],
   "classic_px": 66,
   "c1_base": [

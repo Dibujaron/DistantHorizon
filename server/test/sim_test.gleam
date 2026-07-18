@@ -253,9 +253,9 @@ fn wait_for_walkers_with(
 /// Iteration 4 (side-on mooring): the moored ship lies nose-west; the
 /// upper corridor from the cockpit runs EAST along composite row 7 to the
 /// vertical docking corridor at the ship's waist (its column is the berth
-/// column, 19 east of the helm), then SOUTH through the port dormer, the
-/// 3-tile docking tube and the berth stub onto the concourse floor (rows
-/// 13-15). Works from any berth; hull void pins both runs.
+/// column, 20 east of the helm), then SOUTH through the port dormer, the
+/// 4-tile docking tube and the berth stub onto the concourse floor (rows
+/// 14-16). Works from any berth; hull void pins both runs.
 fn walk_down_the_gangway(
   s: process.Subject(sim.Msg),
   client: process.Subject(sim.ClientMsg),
@@ -265,16 +265,16 @@ fn walk_down_the_gangway(
     sim.request_stand(s, char, 1000)
   let #(x0, _y0) = wait_for_position(client, char, 60)
   let helm_x = int.to_float(float.round(float.floor(x0))) +. 0.5
-  let gangway_x = helm_x +. 19.0
+  let gangway_x = helm_x +. 20.0
   sim.set_move(s, char, 1.0, 0.0)
   wait_for_walker(client, char, fn(x, _y) { x >=. gangway_x -. 0.1 }, 900)
   sim.set_move(s, char, 0.0, 1.0)
-  wait_for_walker(client, char, fn(_x, y) { y >=. 14.2 }, 300)
+  wait_for_walker(client, char, fn(_x, y) { y >=. 15.2 }, 300)
   helm_x
 }
 
 /// walk_down_the_gangway, then along the floor to `broker_main` at
-/// composite (10.5, 14.5) — the stitched-space replacement for M3's
+/// composite (10.5, 15.5) — the stitched-space replacement for M3's
 /// stand/walk/disembark.
 fn walk_to_broker(
   s: process.Subject(sim.Msg),
@@ -282,7 +282,7 @@ fn walk_to_broker(
   char: Int,
 ) -> Nil {
   let helm_x = walk_down_the_gangway(s, client, char)
-  case helm_x +. 19.0 <. 10.5 {
+  case helm_x +. 20.0 <. 10.5 {
     True -> {
       sim.set_move(s, char, 1.0, 0.0)
       wait_for_walker(client, char, fn(x, _y) { x >=. 10.4 }, 900)
@@ -296,7 +296,7 @@ fn walk_to_broker(
 }
 
 /// Reverse of `walk_to_broker`: along the floor to the ship's gangway
-/// column (19 east of the helm column), north up the tube into the
+/// column (20 east of the helm column), north up the tube into the
 /// docking corridor, then west along the upper corridor to the cockpit.
 /// `helm_x` is whatever composite column the character's helm actually
 /// sits at (captured before walking away) — never assumes berth 0.
@@ -306,7 +306,7 @@ fn walk_broker_to_helm(
   char: Int,
   helm_x: Float,
 ) -> Nil {
-  let gangway_x = helm_x +. 19.0
+  let gangway_x = helm_x +. 20.0
   case gangway_x <. 10.5 {
     True -> {
       sim.set_move(s, char, -1.0, 0.0)
@@ -326,7 +326,7 @@ fn walk_broker_to_helm(
 
 /// A visitor walks onto another ship's deck, wherever both ships' berths
 /// landed: down their own gangway, along the floor to the target ship's
-/// gangway column (19 east of its helm column), north through the berth
+/// gangway column (20 east of its helm column), north through the berth
 /// stub and the docking tube into the target's 'B' corridor (composite
 /// y <= 7.6 is standing on target-ship tiles). `target_helm_x` is the
 /// target ship's helm column, e.g. read off a shared `walkers` message.
@@ -337,7 +337,7 @@ fn walk_visitor_onto_ship(
   target_helm_x: Float,
 ) -> Nil {
   let _own_helm_x = walk_down_the_gangway(s, client, char)
-  let target_gangway_x = target_helm_x +. 19.0
+  let target_gangway_x = target_helm_x +. 20.0
   let #(x_now, _) = wait_for_position(client, char, 60)
   case target_gangway_x <. x_now {
     True -> {
@@ -618,10 +618,10 @@ pub fn body_on_a_despawning_mooring_is_refloored_test() {
   process.kill(pid_a)
   assert wait_for_clients(s, 1, 100)
   // She lands at the concourse spawn tile: (47,3) + concourse offset
-  // (0,11) = (47,14) tile -> center (47.5, 14.5). The frame is stable
+  // (0,12) = (47,15) tile -> center (47.5, 15.5). The frame is stable
   // (berths sit >= 18 tiles from the west edge), so the rebuild does not
   // shift it.
-  wait_for_walker(client_b, char_b, fn(x, y) { x == 47.5 && y == 14.5 }, 120)
+  wait_for_walker(client_b, char_b, fn(x, y) { x == 47.5 && y == 15.5 }, 120)
   // ...and she is unstuck: fresh move input changes her position again.
   sim.set_move(s, char_b, 1.0, 0.0)
   wait_for_walker(client_b, char_b, fn(x, _y) { x >. 47.5 }, 120)

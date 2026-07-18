@@ -1,13 +1,13 @@
 {
   "name": "ring_3berth_crane",
   "px_w": 151,
-  "px_h": 56,
+  "px_h": 79,
   "px_per_unit": 0.2,
   "frame": [
     -391.0,
     -127.0,
     757.0,
-    279.0
+    395.0
   ],
   "classic_px": 66,
   "c1_base": [

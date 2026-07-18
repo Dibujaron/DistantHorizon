@@ -203,22 +203,22 @@ def test_walk_ashore_and_screenshot(server, tmp_path):
         # Walk down onto the concourse. The moored ship lies SIDE-ON (nose
         # west, port flank to the station): from the cockpit, the upper
         # corridor runs EAST along the ship to the vertical docking
-        # corridor at the waist (19 tiles east of the helm — the berth
-        # column), then SOUTH through the port dormer, the 3-tile docking
+        # corridor at the waist (20 tiles east of the helm — the berth
+        # column), then SOUTH through the port dormer, the 4-tile docking
         # tube and the berth stub onto the concourse floor (composite rows
-        # 13..15 regardless of berth; only the column shifts). Plain
+        # 14..16 regardless of berth; only the column shifts). Plain
         # movement, no disembark verb.
         helm_x = state["character"]["x"]
         _walk_until(
             automation,
             "move_right",
-            lambda c: c.get("x", 0.0) >= helm_x + 18.9,
+            lambda c: c.get("x", 0.0) >= helm_x + 19.9,
             "east along the upper corridor to the docking corridor",
         )
         _walk_until(
             automation,
             "move_down",
-            lambda c: c.get("y", 0.0) >= 14.2,
+            lambda c: c.get("y", 0.0) >= 15.2,
             "down the docking tube onto the concourse floor",
         )
 
@@ -228,7 +228,7 @@ def test_walk_ashore_and_screenshot(server, tmp_path):
             automation,
             lambda s: (
                 s.get("space") == "station:meridian_highport"
-                and (s.get("character") or {}).get("y", 0.0) >= 13.5
+                and (s.get("character") or {}).get("y", 0.0) >= 14.5
                 and s.get("wallet") == 2000  # starting wallet, m1_system.json
             ),
             STATE_TIMEOUT_S,

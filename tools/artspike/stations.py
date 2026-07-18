@@ -47,12 +47,13 @@ def station_hull(grid_w, grid_h, berth_tiles, crane, seed):
     def tile_cx(tile_x):
         return x0 + (tile_x + 0.5) * UNITS_PER_TILE
 
+    # hab ring below: proportionally BIG (round 11 note: the long thin
+    # spine needed mass) — flat annulus, proud truss rims, portholes
+    ring_r = min(120.0, bar_w * 0.35)
+    ring_cy = bar_bot + ring_r + 28.0
     # spoke from bar down to the ring (drawn first: sits behind everything)
-    L.append(Layer(rrect(-7, bar_bot - 4, 14, 44, 3, PHE_GRAY_D, sw=2),
-                   flat(0.36)))
-    # hab ring below: flat annulus, proud truss rims, portholes (paint)
-    ring_cy = bar_bot + 82.0
-    ring_r = min(52.0, bar_w * 0.42)
+    L.append(Layer(rrect(-7, bar_bot - 4, 14, ring_cy - ring_r - bar_bot + 10,
+                         3, PHE_GRAY_D, sw=2), flat(0.36)))
     L.append(Layer(circle(0, ring_cy, ring_r, "none", stroke=PHE_GRAY, sw=13),
                    flat(0.42)))
     L.append(Layer(circle(0, ring_cy, ring_r, "none", stroke=INK, sw=1.6)))
@@ -72,13 +73,14 @@ def station_hull(grid_w, grid_h, berth_tiles, crane, seed):
     for a in (0, 90, 180, 270):
         L.append(Layer(group(rrect(-4.5, -ring_r, 9, ring_r, 3, PHE_GRAY_D,
                                    sw=1.8), ty=ring_cy, rot=a), flat(0.38)))
-    L.append(Layer(circle(0, ring_cy, 24, PHE_GRAY, sw=2.2),
+    hub_r = ring_r * 0.32
+    L.append(Layer(circle(0, ring_cy, hub_r, PHE_GRAY, sw=2.2),
                    dome(0.44, 0.58)))
-    L.append(Layer(circle(0, ring_cy, 14, PHE_GRAY_D, sw=1.8)))
+    L.append(Layer(circle(0, ring_cy, hub_r * 0.58, PHE_GRAY_D, sw=1.8)))
     hub_ticks = ""
     for i in range(8):
-        hub_ticks += group(line(0, -17, 0, -22, INK, 1.4, .7),
-                           ty=ring_cy, rot=i * 45 + 22.5)
+        hub_ticks += group(line(0, -hub_r * 0.72, 0, -hub_r * 0.92, INK, 1.4,
+                                .7), ty=ring_cy, rot=i * 45 + 22.5)
     L.append(Layer(hub_ticks))
     # fuel tank cluster off the ring's lower-left
     L.append(Layer(line(-ring_r * 0.7, ring_cy + ring_r * 0.7,

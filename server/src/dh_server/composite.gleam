@@ -21,8 +21,10 @@ import gleam/result
 import gleam/string
 
 /// Docking-tube length, tiles: the walkable gap generated between a moored
-/// ship's port dormer and its berth stub.
-pub const tube_length = 3
+/// ship's port dormer and its berth stub. Four tiles clears the
+/// Mockingbird's fins off the bar apron with a little room for bigger
+/// hulls (round 11 note: fin overlap "will be a problem for bigger ships").
+pub const tube_length = 4
 
 /// An authored berth: the walkable concourse stub tile a ship moors onto.
 pub type Berth {
