@@ -76,6 +76,11 @@ const STAIR_LIGHT := Color(0.30, 0.32, 0.40)
 const STAIR_DARK := Color(0.10, 0.11, 0.15)
 const STAIR_NOSING := Color(0.48, 0.50, 0.58, 0.8)
 
+## #21 procedural walk cycle for the single-frame character art.
+const WALK_STEP_RATE := 3.2   # step-phase advance per tile travelled
+const WALK_BOB_PX := 2.4      # peak vertical bounce
+const WALK_TILT := 0.06       # peak side-to-side waddle, radians
+
 const VIEW_CONE_DIM := Color(0.0, 0.0, 0.0, 0.55)
 const VIEW_CONE_DARK := Color(0.02, 0.025, 0.045, 0.92)
 const VIEW_RANGE_TILES := 5.5   # how far you can make out PEOPLE outside
@@ -121,6 +126,10 @@ var _lib: AssetLibrary = null
 var _floor_tex: Array[Texture2D] = []
 var _facing: Dictionary = {}        # character id -> -1.0 | 1.0
 var _last_char_x: Dictionary = {}   # character id -> last tile x
+## #21 walk-cycle state: step phase, last drawn position, eased bob height.
+var _walk_phase: Dictionary = {}    # character id -> step phase
+var _last_pos: Dictionary = {}      # character id -> last drawn tile position
+var _bob: Dictionary = {}           # character id -> eased vertical bob (px)
 ## LOS cache: Vector2i tile -> bool visible; recomputed when the own tile,
 ## the plan, or the toggle changes.
 var _los: Dictionary = {}
@@ -644,9 +653,13 @@ func _draw_characters(origin: Vector2) -> void:
 			_facing[character.id] = facing
 			_last_char_x[character.id] = character.x
 			# feet at the collision circle's bottom edge; art is 22x34,
-			# drawn at CHAR_SIZE (a touch bigger, user note round 9)
-			draw_set_transform(screen_pos + Vector2(0, radius_px), 0.0,
-				Vector2(facing, 1.0))
+			# drawn at CHAR_SIZE (a touch bigger, user note round 9). #21: a
+			# procedural walk cycle bobs and waddles the body while it moves.
+			var anim := _walk_anim(character.id, character.position())
+			var bob: float = anim.x
+			var tilt: float = anim.y
+			draw_set_transform(screen_pos + Vector2(0, radius_px - bob),
+				tilt * facing, Vector2(facing, 1.0))
 			draw_texture_rect(tex,
 				Rect2(Vector2(-CHAR_SIZE.x * 0.5, -CHAR_SIZE.y), CHAR_SIZE),
 				false)
@@ -659,3 +672,25 @@ func _draw_characters(origin: Vector2) -> void:
 			draw_string(
 				_font, screen_pos + Vector2(radius_px + 3.0, 4.0), label,
 				HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, CHARACTER_LABEL_COLOR)
+
+
+## Procedural walk cycle for the single-frame character art (#21). A step phase
+## advances by distance travelled since last frame (so cadence tracks real
+## speed, not wall-clock), driving a double-bounce vertical bob and a slight
+## side-to-side waddle; a stopped body eases back to a planted rest. Returns
+## (bob_px, tilt_radians). Real sprite-sheet frames could replace this later —
+## cycle them on `_walk_phase` and drop the bob/tilt.
+func _walk_anim(id: int, pos: Vector2) -> Vector2:
+	var last: Vector2 = _last_pos.get(id, pos)
+	var moved := pos.distance_to(last)
+	_last_pos[id] = pos
+	var phase: float = _walk_phase.get(id, 0.0)
+	var moving := moved > 0.0008
+	if moving:
+		phase += moved * WALK_STEP_RATE
+		_walk_phase[id] = phase
+	var target_bob := (absf(sin(phase * PI)) * WALK_BOB_PX) if moving else 0.0
+	var bob: float = lerpf(_bob.get(id, 0.0), target_bob, 0.3)
+	_bob[id] = bob
+	var tilt := (sin(phase * TAU) * WALK_TILT) if moving else 0.0
+	return Vector2(bob, tilt)
