@@ -34,6 +34,15 @@ const DEFAULT_ZOOM := 0.5  # M3.5: sprites read at this height (ships clamp to f
 ## dropped past this cap.
 const CHAT_LOG_MAX_LINES := 8
 
+## Chat/log messages fade out over time so the feed self-clears (issue #16).
+## A message stays fully opaque for CHAT_MESSAGE_HOLD_SEC after it arrives,
+## then its opacity ramps to 0 over the next CHAT_MESSAGE_FADE_SEC, after
+## which it's dropped from the log. Ages are wall-clock (Time.get_ticks_msec,
+## the same source as the interior-history arrival stamps), so the fade is
+## time-based and independent of how many messages arrive or the framerate.
+const CHAT_MESSAGE_HOLD_SEC := 10.0
+const CHAT_MESSAGE_FADE_SEC := 2.5
+
 ## Duration of the animated zoom + crossfade between INTERIOR and SYSTEM
 ## views (spec: M2 ship interior design, "Client", ~0.6s).
 const ZOOM_TRANSITION_SEC := 0.6
@@ -130,7 +139,10 @@ var _transition_from: ViewMode = ViewMode.SYSTEM
 var _transition_to: ViewMode = ViewMode.SYSTEM
 var _transition_elapsed: float = 0.0
 
-var _chat_lines: PackedStringArray = []
+## Chat/log feed, oldest first. Each entry is `{"text": String,
+## "arrival_msec": int}`; arrival_msec (Time.get_ticks_msec at append) drives
+## the time-based fade in _update_chat_fade. Capped to CHAT_LOG_MAX_LINES.
+var _chat_messages: Array[Dictionary] = []
 
 ## "buy" or "sell" while a trade request is in flight, so the next
 ## `trade_result` (which doesn't echo the direction) can be worded
@@ -206,6 +218,7 @@ func _process(delta: float) -> void:
 	_update_world_view()
 	_update_interior_view()
 	_update_trade_panel()
+	_update_chat_fade()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if _menu != null and _menu.visible:
@@ -888,15 +901,69 @@ func _commodity_name(commodity: String) -> String:
 	return commodity
 
 func _append_chat(message: String) -> void:
-	_chat_lines.append(message)
-	while _chat_lines.size() > CHAT_LOG_MAX_LINES:
-		_chat_lines.remove_at(0)
-	_chat_log.text = "\n".join(_chat_lines)
+	_chat_messages.append({"text": message, "arrival_msec": Time.get_ticks_msec()})
+	while _chat_messages.size() > CHAT_LOG_MAX_LINES:
+		_chat_messages.remove_at(0)
+	# A fresh message means the feed is active again: reset the log to fully
+	# opaque now rather than waiting a frame for _update_chat_fade.
+	_chat_log.modulate.a = 1.0
+	_render_chat_log()
+
+## Ages the chat feed each frame (see CHAT_MESSAGE_HOLD_SEC/FADE_SEC): drops
+## fully-faded messages and drives the log's opacity. ChatLog is a single
+## Label (one modulate for the whole node), so opacity is keyed to the NEWEST
+## message — it holds fully opaque through the hold window, then ramps to 0
+## over the fade window, which is exactly the "newest stays opaque, feed fades
+## and clears once quiet" behaviour issue #16 asks for. Messages are removed
+## individually by their own age, so removal never depends on message count.
+func _update_chat_fade() -> void:
+	if _chat_messages.is_empty():
+		return
+	var now := Time.get_ticks_msec()
+	var hold_msec := int(CHAT_MESSAGE_HOLD_SEC * 1000.0)
+	var fade_msec := int(CHAT_MESSAGE_FADE_SEC * 1000.0)
+	# Messages are appended oldest-first, so ages decrease down the array:
+	# the front is always the oldest, hence the first to fully fade. Pop from
+	# the front while fully faded (this also rebuilds the visible text).
+	var removed := false
+	while not _chat_messages.is_empty():
+		if now - int(_chat_messages[0]["arrival_msec"]) >= hold_msec + fade_msec:
+			_chat_messages.remove_at(0)
+			removed = true
+		else:
+			break
+	if removed:
+		_render_chat_log()
+	if _chat_messages.is_empty():
+		_chat_log.modulate.a = 1.0  # nothing left; reset for the next message
+		return
+	var newest_age := now - int(_chat_messages[-1]["arrival_msec"])
+	_chat_log.modulate.a = _chat_alpha_for_age(newest_age, hold_msec, fade_msec)
+
+## Opacity (1..0) for a message of the given age: fully opaque through the
+## hold window, a linear ramp across the fade window, then fully transparent.
+func _chat_alpha_for_age(age_msec: int, hold_msec: int, fade_msec: int) -> float:
+	if age_msec <= hold_msec:
+		return 1.0
+	if age_msec >= hold_msec + fade_msec:
+		return 0.0
+	return 1.0 - float(age_msec - hold_msec) / float(fade_msec)
+
+func _render_chat_log() -> void:
+	_chat_log.text = "\n".join(_chat_texts())
+
+## The chat feed's lines, oldest first. Backs both the visible label and the
+## automation hook chat_lines().
+func _chat_texts() -> PackedStringArray:
+	var texts: PackedStringArray = []
+	for msg in _chat_messages:
+		texts.append(String(msg["text"]))
+	return texts
 
 ## Public for the automation hook, like view_mode_name(): the chat log's
 ## current lines, newest last.
 func chat_lines() -> PackedStringArray:
-	return _chat_lines
+	return _chat_texts()
 
 ## Renders the trade panel: visible whenever _trade_panel_open(), showing
 ## live prices/stock/hold at a broker (with a selection cursor and the key
