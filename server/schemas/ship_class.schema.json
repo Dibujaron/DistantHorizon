@@ -17,10 +17,10 @@
     "grid": { "$ref": "#/$defs/grid" },
     "walkable": {
       "type": "array",
-      "description": "One string per row, top to bottom; '#' walkable, anything else (canonically '.') hull/void. Row count and each row's length must match grid.height/grid.width, and there must be a console of kind \"helm\" (enforced by the Gleam decoder's validate step, not by this schema).",
+      "description": "One string per row, top to bottom. Alphabet: '.' hull/void, '#' generic single floor (admits both decks), 'L' lower-deck only, 'U' upper-deck only, '2' two stacked floors (no vertical connection), 'B' between-level (one floor connecting both decks). Row count and each row's length must match grid.height/grid.width, and there must be a console of kind \"helm\" (enforced by the Gleam decoder's validate step, not by this schema).",
       "items": {
         "type": "string",
-        "pattern": "^[#.]*$"
+        "pattern": "^[#.LU2B]*$"
       }
     },
     "rooms": {
@@ -76,7 +76,12 @@
         "x": { "type": "integer" },
         "y": { "type": "integer" },
         "w": { "type": "integer" },
-        "h": { "type": "integer" }
+        "h": { "type": "integer" },
+        "deck": {
+          "type": "string",
+          "enum": ["lower", "upper"],
+          "description": "Split-level rendering metadata: draw this room's label only on the given deck's view. Omitted = both decks."
+        }
       }
     },
     "console": {

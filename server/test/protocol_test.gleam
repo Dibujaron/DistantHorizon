@@ -1,4 +1,4 @@
-import dh_server/character
+﻿import dh_server/character
 import dh_server/composite
 import dh_server/deckplan
 import dh_server/market
@@ -14,7 +14,7 @@ import gleam/option.{None, Some}
 import gleam/string
 
 fn test_class() -> shipclass.ShipClass {
-  let assert Ok(c) = shipclass.load("classes/sparrow.json")
+  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
   c
 }
 
@@ -120,8 +120,8 @@ pub fn encode_welcome_contains_character_id_and_ship_class_test() {
   let text = protocol.encode_welcome(0, 1, 42, w, test_class())
   assert string.contains(text, "\"character_id\":42")
   assert string.contains(text, "\"ship_class\":")
-  assert string.contains(text, "\"id\":\"sparrow\"")
-  assert string.contains(text, "\"spawn_tile\":[5,4]")
+  assert string.contains(text, "\"id\":\"mockingbird\"")
+  assert string.contains(text, "\"spawn_tile\":[5,22]")
   assert string.contains(text, "\"consoles\":")
   assert string.contains(text, "helm_main")
 }
@@ -265,6 +265,7 @@ pub fn encode_walkers_test() {
       place: character.OnStation("meridian_highport"),
       x: 2.5,
       y: 2.5,
+      deck: deckplan.Lower,
       seat: Some("s1:helm_main"),
       move_dx: 0.0,
       move_dy: 0.0,
@@ -276,6 +277,7 @@ pub fn encode_walkers_test() {
   assert string.contains(text, "\"type\":\"walkers\"")
   assert string.contains(text, "\"space\":\"station:meridian_highport\"")
   assert string.contains(text, "\"epoch\":3")
+  assert string.contains(text, "\"deck\":\"lower\"")
   assert string.contains(text, "\"seat\":\"s1:helm_main\"")
 }
 
@@ -296,6 +298,7 @@ pub fn encode_space_test() {
       place: character.OnStation("meridian_highport"),
       x: 2.5,
       y: 2.5,
+      deck: deckplan.Upper,
       seat: None,
       move_dx: 0.0,
       move_dy: 0.0,
@@ -306,6 +309,7 @@ pub fn encode_space_test() {
       2,
       plan,
       [composite.Mooring(ship_id: 1, dx: 1, dy: 0)],
+      Some(#(0, 4)),
       you,
     )
   assert string.contains(text, "\"type\":\"space\"")
@@ -314,7 +318,11 @@ pub fn encode_space_test() {
     text,
     "\"moorings\":[{\"ship_id\":1,\"dx\":1,\"dy\":0}]",
   )
-  assert string.contains(text, "\"you\":{\"x\":2.5,\"y\":2.5,\"seat\":null}")
+  assert string.contains(text, "\"concourse\":{\"dx\":0,\"dy\":4}")
+  assert string.contains(
+    text,
+    "\"you\":{\"x\":2.5,\"y\":2.5,\"deck\":\"upper\",\"seat\":null}",
+  )
 }
 
 pub fn ship_space_id_test() {

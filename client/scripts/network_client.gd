@@ -82,8 +82,31 @@ var _socket: WebSocketPeer
 var _reconnect_timer := 0.0
 var _login_sent := false
 
+## M3.5 UI shell: without cmdline credentials the main menu owns login —
+## the socket connects immediately but no login is sent until
+## request_login() delivers what the player typed. Automation and dev
+## launches that pass --username= keep the instant auto-login path.
+var manual_login := false
+var _menu_username := ""
+var _menu_password := ""
+
 func _ready() -> void:
+	var has_creds := false
+	for arg: String in OS.get_cmdline_user_args():
+		if arg.begins_with("--username="):
+			has_creds = true
+	manual_login = not has_creds
 	_start_connecting()
+
+## Called by the main menu: store credentials and log in now (or as soon as
+## the socket opens). Safe to call again after an error_received retry.
+func request_login(username: String, password: String) -> void:
+	_menu_username = username
+	_menu_password = password
+	manual_login = false
+	_login_sent = false
+	if _socket != null and _socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		_send_login()
 
 func _process(delta: float) -> void:
 	if _socket == null:
@@ -101,7 +124,7 @@ func _process(delta: float) -> void:
 			if state != ConnectionState.CONNECTED:
 				_set_state(ConnectionState.CONNECTED)
 				print("[net] connected to %s" % SERVER_URL)
-				if not _login_sent:
+				if not _login_sent and not manual_login:
 					_send_login()
 			while _socket.get_available_packet_count() > 0:
 				_handle_packet(_socket.get_packet())
@@ -173,6 +196,8 @@ func _handle_packet(packet: PackedByteArray) -> void:
 ## Read `--username=` / `--password=` from `OS.get_cmdline_user_args()`
 ## (args after `--` when launching Godot), falling back to pilot/pilot.
 func _login_credentials() -> Array:
+	if _menu_username != "":
+		return [_menu_username, _menu_password]
 	var username := DEFAULT_USERNAME
 	var password := DEFAULT_PASSWORD
 	for arg: String in OS.get_cmdline_user_args():

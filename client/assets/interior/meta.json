@@ -1,0 +1,29 @@
+{
+  "tile_px": 64,
+  "wall_px": 14,
+  "files": [
+    "floor_0",
+    "floor_1",
+    "floor_2",
+    "wall_n",
+    "wall_corner",
+    "hazard",
+    "console_helm",
+    "console_cargo",
+    "console_broker",
+    "picto_airlock",
+    "picto_trade",
+    "picto_cargo",
+    "picto_helm",
+    "digit_0",
+    "digit_1",
+    "digit_2",
+    "digit_3",
+    "digit_4",
+    "digit_5",
+    "digit_6",
+    "digit_7",
+    "digit_8",
+    "digit_9"
+  ]
+}

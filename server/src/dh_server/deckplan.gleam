@@ -14,9 +14,32 @@ pub type Grid {
   Grid(width: Int, height: Int)
 }
 
+/// Which floor a walker is on in a split-level plan. Single-level plans
+/// never consult it (every tile admits both decks).
+pub type Deck {
+  Lower
+  Upper
+}
+
+pub fn deck_to_string(deck: Deck) -> String {
+  case deck {
+    Lower -> "lower"
+    Upper -> "upper"
+  }
+}
+
+pub fn deck_from_string(raw: String) -> Deck {
+  case raw {
+    "lower" -> Lower
+    _ -> Upper
+  }
+}
+
 /// A labelled rectangle of tiles, for rendering/labels only (no door graph).
+/// `deck` is rendering metadata for split-level plans: "lower"/"upper"
+/// draws the label only on that deck's view, "" (default) on both.
 pub type Room {
-  Room(id: String, name: String, x: Int, y: Int, w: Int, h: Int)
+  Room(id: String, name: String, x: Int, y: Int, w: Int, h: Int, deck: String)
 }
 
 /// A single-tile interactable. `kind` is e.g. `"helm"`, `"cargo"` or
@@ -28,8 +51,11 @@ pub type Console {
 pub type DeckPlan {
   DeckPlan(
     grid: Grid,
-    /// One string per row, top to bottom; `'#'` walkable, anything else
-    /// (canonically `'.'`) hull/void.
+    /// One string per row, top to bottom. Alphabet: `'.'` hull/void, `'#'`
+    /// generic single floor (admits both decks), `'L'` lower-deck only,
+    /// `'U'` upper-deck only, `'2'` two stacked floors (both decks exist,
+    /// no vertical connection), `'B'` between-level (one floor connecting
+    /// both decks — half-flights of stairs).
     walkable: List(String),
     rooms: List(Room),
     consoles: List(Console),
@@ -38,14 +64,77 @@ pub type DeckPlan {
   )
 }
 
-/// Whether tile `(x, y)` is in bounds and walkable.
-pub fn is_walkable(plan: DeckPlan, x: Int, y: Int) -> Bool {
+/// The walkable character at tile `(x, y)`, `"."` out of bounds.
+pub fn char_at(plan: DeckPlan, x: Int, y: Int) -> String {
   case x >= 0 && x < plan.grid.width && y >= 0 && y < plan.grid.height {
-    False -> False
+    False -> "."
     True -> {
       let assert Ok(row) = list.drop(plan.walkable, y) |> list.first
-      string.slice(from: row, at_index: x, length: 1) == "#"
+      string.slice(from: row, at_index: x, length: 1)
     }
+  }
+}
+
+/// Whether tile `(x, y)` is in bounds and walkable on ANY deck.
+pub fn is_walkable(plan: DeckPlan, x: Int, y: Int) -> Bool {
+  char_at(plan, x, y) != "."
+}
+
+/// Whether a walker currently on `deck` may stand on tile `(x, y)`.
+pub fn walkable_for(plan: DeckPlan, deck: Deck, x: Int, y: Int) -> Bool {
+  case char_at(plan, x, y) {
+    "." -> False
+    "L" -> deck == Lower
+    "U" -> deck == Upper
+    _ -> True
+  }
+}
+
+/// The deck a walker is on after arriving at tile `(x, y)`: exclusive
+/// tiles (`L`/`U`) force it, everything else keeps the current deck.
+pub fn deck_of_tile(plan: DeckPlan, current: Deck, x: Int, y: Int) -> Deck {
+  case char_at(plan, x, y) {
+    "L" -> Lower
+    "U" -> Upper
+    _ -> current
+  }
+}
+
+/// Rotate a plan 90° counter-clockwise: a nose-up ship lies nose-WEST,
+/// port side SOUTH — the mooring orientation (ships dock side-on, the
+/// docking corridor's port END meeting the gangway). Rotated tile
+/// `(x', y')` = original `(width - 1 - y', x')`; deck semantics are
+/// unchanged (upper stays upper — decks stack out of the plane).
+pub fn rotate_ccw(plan: DeckPlan) -> DeckPlan {
+  let w = plan.grid.width
+  let h = plan.grid.height
+  let walkable =
+    list.map(range(0, w), fn(yr) {
+      list.map(range(0, h), fn(xr) { char_at(plan, w - 1 - yr, xr) })
+      |> string.concat
+    })
+  let rooms =
+    list.map(plan.rooms, fn(r) {
+      Room(..r, x: r.y, y: w - r.x - r.w, w: r.h, h: r.w)
+    })
+  let consoles =
+    list.map(plan.consoles, fn(c) { Console(..c, x: c.y, y: w - 1 - c.x) })
+  let #(sx, sy) = plan.spawn_tile
+  DeckPlan(
+    grid: Grid(width: h, height: w),
+    walkable: walkable,
+    rooms: rooms,
+    consoles: consoles,
+    spawn_tile: #(sy, w - 1 - sx),
+  )
+}
+
+/// [from, to) as a list of ints (the pinned gleam_stdlib has no
+/// `list.range`; matches the local helper idiom used elsewhere).
+fn range(from: Int, to: Int) -> List(Int) {
+  case from >= to {
+    True -> []
+    False -> [from, ..range(from + 1, to)]
   }
 }
 
@@ -82,6 +171,13 @@ pub fn validate(plan: DeckPlan) -> Result(DeckPlan, String) {
   use <- guard(
     !list.any(plan.walkable, fn(row) { string.length(row) != plan.grid.width }),
     "a walkable row's length does not match grid.width",
+  )
+  use <- guard(
+    !list.any(plan.walkable, fn(row) {
+      string.to_graphemes(row)
+      |> list.any(fn(ch) { !string.contains(".#LU2B", ch) })
+    }),
+    "walkable rows may only contain . # L U 2 B",
   )
   use <- guard(
     !list.any(plan.consoles, fn(c) { !is_walkable(plan, c.x, c.y) }),
@@ -155,7 +251,8 @@ fn room_decoder() -> decode.Decoder(Room) {
   use y <- decode.field("y", decode.int)
   use w <- decode.field("w", decode.int)
   use h <- decode.field("h", decode.int)
-  decode.success(Room(id: id, name: name, x: x, y: y, w: w, h: h))
+  use deck <- decode.optional_field("deck", "", decode.string)
+  decode.success(Room(id: id, name: name, x: x, y: y, w: w, h: h, deck: deck))
 }
 
 fn console_decoder() -> decode.Decoder(Console) {
@@ -182,14 +279,18 @@ fn encode_grid(grid: Grid) -> Json {
 }
 
 fn encode_room(room: Room) -> Json {
-  json.object([
+  let fields = [
     #("id", json.string(room.id)),
     #("name", json.string(room.name)),
     #("x", json.int(room.x)),
     #("y", json.int(room.y)),
     #("w", json.int(room.w)),
     #("h", json.int(room.h)),
-  ])
+  ]
+  case room.deck {
+    "" -> json.object(fields)
+    deck -> json.object(list.append(fields, [#("deck", json.string(deck))]))
+  }
 }
 
 fn encode_console(console: Console) -> Json {

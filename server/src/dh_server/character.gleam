@@ -14,7 +14,7 @@
 //// within one composite space, and the dock/undock place transitions live
 //// in the sim's join-on-dock / split-on-undock handling.
 
-import dh_server/deckplan.{type DeckPlan}
+import dh_server/deckplan.{type Deck, type DeckPlan}
 import dh_server/ship
 import gleam/float
 import gleam/int
@@ -46,6 +46,9 @@ pub type Character {
     place: Place,
     x: Float,
     y: Float,
+    /// Which floor of a split-level plan the body is on. Exclusive tiles
+    /// (`L`/`U`) update it on arrival; single-level plans never change it.
+    deck: Deck,
     /// The console id this character is seated at, if any.
     seat: Option(String),
     move_dx: Float,
@@ -77,17 +80,39 @@ pub fn step(character: Character, plan: DeckPlan) -> Character {
     Some(_) -> character
     None -> {
       let #(ndx, ndy) = normalize(character.move_dx, character.move_dy)
+      // Standing on a between-level tile ('B' — the half-flight landing)
+      // grants access to EITHER deck's tiles: that is how a walker changes
+      // decks. Everywhere else the current deck gates exclusive tiles.
+      let deck = case
+        deckplan.char_at(
+          plan,
+          tile_index(character.x),
+          tile_index(character.y),
+        )
+      {
+        "B" -> option.None
+        _ -> option.Some(character.deck)
+      }
       let candidate_x = character.x +. ndx *. walk_speed *. ship.dt
-      let x = case circle_walkable(plan, candidate_x, character.y) {
+      let x = case circle_walkable(plan, deck, candidate_x, character.y) {
         True -> candidate_x
         False -> character.x
       }
       let candidate_y = character.y +. ndy *. walk_speed *. ship.dt
-      let y = case circle_walkable(plan, x, candidate_y) {
+      let y = case circle_walkable(plan, deck, x, candidate_y) {
         True -> candidate_y
         False -> character.y
       }
-      Character(..character, x: x, y: y)
+      // Arriving on an exclusive (L/U) tile commits the walker to that
+      // deck; the center tile decides, mirroring the client prediction.
+      let new_deck =
+        deckplan.deck_of_tile(
+          plan,
+          character.deck,
+          tile_index(x),
+          tile_index(y),
+        )
+      Character(..character, x: x, y: y, deck: new_deck)
     }
   }
 }
@@ -117,7 +142,19 @@ pub fn try_sit(
             True -> Error("occupied")
             False -> {
               let #(cx, cy) = deckplan.tile_center(console.x, console.y)
-              case distance(character.x, character.y, cx, cy) <=. sit_range {
+              // A console on the other deck of a split-level plan is a
+              // floor away no matter the planar distance — "too_far".
+              let on_deck =
+                deckplan.walkable_for(
+                  plan,
+                  character.deck,
+                  console.x,
+                  console.y,
+                )
+              case
+                on_deck
+                && distance(character.x, character.y, cx, cy) <=. sit_range
+              {
                 False -> Error("too_far")
                 True ->
                   Ok(
@@ -125,6 +162,12 @@ pub fn try_sit(
                       ..character,
                       x: cx,
                       y: cy,
+                      deck: deckplan.deck_of_tile(
+                        plan,
+                        character.deck,
+                        console.x,
+                        console.y,
+                      ),
                       seat: Some(console_id),
                       move_dx: 0.0,
                       move_dy: 0.0,
@@ -202,13 +245,19 @@ fn normalize(dx: Float, dy: Float) -> #(Float, Float) {
 /// to. Used by the sim to detect a body left in void when a mooring despawns
 /// under it (a plain `deckplan.is_walkable` on the center tile is not enough:
 /// the collision radius matters at tile edges).
-pub fn can_stand_at(plan: DeckPlan, x: Float, y: Float) -> Bool {
-  circle_walkable(plan, x, y)
+pub fn can_stand_at(plan: DeckPlan, deck: Deck, x: Float, y: Float) -> Bool {
+  circle_walkable(plan, option.Some(deck), x, y)
 }
 
 /// Whether every tile overlapped by the character collision circle
-/// centered at `(cx, cy)` is walkable.
-fn circle_walkable(plan: DeckPlan, cx: Float, cy: Float) -> Bool {
+/// centered at `(cx, cy)` is walkable for a body on `deck` (`None` = the
+/// between-level's deck-agnostic access).
+fn circle_walkable(
+  plan: DeckPlan,
+  deck: Option(Deck),
+  cx: Float,
+  cy: Float,
+) -> Bool {
   let tx0 = tile_index(cx -. radius)
   let tx1 = tile_index(cx +. radius)
   let ty0 = tile_index(cy -. radius)
@@ -217,7 +266,11 @@ fn circle_walkable(plan: DeckPlan, cx: Float, cy: Float) -> Bool {
     all_tiles(ty0, ty1, fn(ty) {
       case tile_overlaps_circle(tx, ty, cx, cy) {
         False -> True
-        True -> deckplan.is_walkable(plan, tx, ty)
+        True ->
+          case deck {
+            None -> deckplan.is_walkable(plan, tx, ty)
+            Some(d) -> deckplan.walkable_for(plan, d, tx, ty)
+          }
       }
     })
   })

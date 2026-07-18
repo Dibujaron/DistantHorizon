@@ -1,60 +1,64 @@
-import dh_server/deckplan.{Console, Grid}
+﻿import dh_server/deckplan.{Console, Grid}
 import dh_server/shipclass
 import gleam/json
 import gleam/list
 
-pub fn load_bundled_sparrow_test() {
-  let assert Ok(c) = shipclass.load("classes/sparrow.json")
+pub fn load_bundled_mockingbird_test() {
+  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
   assert c.schema == 2
-  assert c.id == "sparrow"
-  assert c.plan.grid == Grid(width: 10, height: 6)
-  assert list.length(c.plan.walkable) == 6
-  assert list.length(c.plan.rooms) == 5
+  assert c.id == "mockingbird"
+  assert c.plan.grid == Grid(width: 14, height: 23)
+  assert list.length(c.plan.walkable) == 23
+  assert list.length(c.plan.rooms) == 8
   assert list.length(c.plan.consoles) == 2
-  // The spawn tile doubles as the airlock (see character.near_airlock);
-  // the sparrow labels it with its aft Airlock room.
-  assert c.plan.spawn_tile == #(5, 4)
-  assert list.any(c.plan.rooms, fn(r) { r.id == "airlock" })
+  // The spawn tile is the PORT docking dormer on the between-level ('B')
+  // corridor at the waist — side ports, never the stern.
+  assert c.plan.spawn_tile == #(5, 22)
+  assert list.any(c.plan.rooms, fn(r) { r.id == "dock" })
+  // Split-level metadata: the hold is a lower-deck room.
+  let assert Ok(hold) = list.find(c.plan.rooms, fn(r) { r.id == "hold" })
+  assert hold.deck == "lower"
 }
 
 pub fn decode_encode_round_trips_test() {
-  let assert Ok(c) = shipclass.load("classes/sparrow.json")
+  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
   let text = shipclass.encode(c) |> json.to_string
   let assert Ok(c2) = shipclass.decode(text)
   assert c == c2
 }
 
 pub fn helm_console_is_helm_main_test() {
-  let assert Ok(c) = shipclass.load("classes/sparrow.json")
+  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
   let assert Ok(console) = shipclass.helm_console(c)
-  assert console == Console(id: "helm_main", kind: "helm", x: 1, y: 2)
+  assert console == Console(id: "helm_main", kind: "helm", x: 6, y: 4)
 }
 
 pub fn find_console_unknown_is_error_test() {
-  let assert Ok(c) = shipclass.load("classes/sparrow.json")
+  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
   assert deckplan.find_console(c.plan, "nope") == Error(Nil)
 }
 
 pub fn is_walkable_true_for_interior_tile_test() {
-  let assert Ok(c) = shipclass.load("classes/sparrow.json")
-  // Row 2: ".########." -> x=1..8 walkable.
-  assert deckplan.is_walkable(c.plan, 1, 2)
-  assert deckplan.is_walkable(c.plan, 8, 2)
+  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
+  // Row 12: "...22222222..." -> x=3..10 walkable; row 22 corridor likewise.
+  assert deckplan.is_walkable(c.plan, 3, 12)
+  assert deckplan.is_walkable(c.plan, 10, 12)
+  assert deckplan.is_walkable(c.plan, 5, 22)
 }
 
 pub fn is_walkable_false_for_hull_tile_test() {
-  let assert Ok(c) = shipclass.load("classes/sparrow.json")
-  assert !deckplan.is_walkable(c.plan, 0, 2)
-  assert !deckplan.is_walkable(c.plan, 9, 2)
-  assert !deckplan.is_walkable(c.plan, 5, 0)
+  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
+  assert !deckplan.is_walkable(c.plan, 2, 12)
+  assert !deckplan.is_walkable(c.plan, 11, 12)
+  assert !deckplan.is_walkable(c.plan, 6, 0)
 }
 
 pub fn is_walkable_false_out_of_bounds_test() {
-  let assert Ok(c) = shipclass.load("classes/sparrow.json")
-  assert !deckplan.is_walkable(c.plan, -1, 2)
-  assert !deckplan.is_walkable(c.plan, 10, 2)
-  assert !deckplan.is_walkable(c.plan, 5, -1)
-  assert !deckplan.is_walkable(c.plan, 5, 6)
+  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
+  assert !deckplan.is_walkable(c.plan, -1, 12)
+  assert !deckplan.is_walkable(c.plan, 14, 12)
+  assert !deckplan.is_walkable(c.plan, 6, -1)
+  assert !deckplan.is_walkable(c.plan, 6, 23)
 }
 
 /// A minimal valid class, for hand-crafting single-field violations without
@@ -138,7 +142,7 @@ pub fn decode_rejects_garbage_test() {
 }
 
 pub fn decode_reads_cargo_block_test() {
-  let assert Ok(c) = shipclass.load("classes/sparrow.json")
+  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
   assert c.cargo_capacity == 40
   assert c.handling == shipclass.BreakBulk
 }

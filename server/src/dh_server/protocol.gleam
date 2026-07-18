@@ -38,13 +38,15 @@
 ////    "plan":{"grid":{...},"walkable":[...],"rooms":[...],"consoles":[...],
 ////            "spawn_tile":[x,y]},
 ////    "moorings":[{"ship_id":N,"dx":N,"dy":N}...],
+////    "concourse":null|{"dx":N,"dy":N},
 ////    "you":{"x":F,"y":F,"seat":null|S}} — the plan a client should now be
 ////   walking, with their own position/seat in its frame. Sent on login and
 ////   to every occupant of a space whose plan changed (dock/undock/despawn
 ////   rebuild). Ship spaces carry epoch 0 and moorings []. The client adopts
 ////   the plan, snaps to `you`, and resets prediction/interpolation.
 ////   {"v":1,"type":"walkers","tick":N,"space":S,"epoch":N,
-////    "characters":[{"id","name","x","y","seat"}...]} — sent at 15 Hz, one
+////    "characters":[{"id","name","x","y","deck","seat"}...]} — sent at 15
+////   Hz ("deck" is "lower"|"upper" — split-level rendering), one
 ////   per occupied space, only to that space's occupants (replaces M2/M3
 ////   `interior` + `concourse`). Clients drop walkers whose space/epoch
 ////   don't match their current `space` message.
@@ -313,11 +315,16 @@ pub fn space_id_string(space: SpaceId) -> String {
 
 /// Serialize a `space` message: the plan a client should now be walking,
 /// with their own position/seat in its frame. Personalized per client.
+/// `concourse` is the station concourse's translation into the composite
+/// frame (tile 0,0 of the authored concourse sits at composite dx,dy) —
+/// the client anchors the station's exterior backdrop with it. None for
+/// ship spaces, encoded as `"concourse": null`.
 pub fn encode_space(
   space: SpaceId,
   epoch: Int,
   plan: DeckPlan,
   moorings: List(composite.Mooring),
+  concourse: option.Option(#(Int, Int)),
   you: Character,
 ) -> String {
   json.object([
@@ -328,10 +335,19 @@ pub fn encode_space(
     #("plan", deckplan.encode(plan)),
     #("moorings", json.array(moorings, encode_mooring)),
     #(
+      "concourse",
+      case concourse {
+        option.None -> json.null()
+        option.Some(#(dx, dy)) ->
+          json.object([#("dx", json.int(dx)), #("dy", json.int(dy))])
+      },
+    ),
+    #(
       "you",
       json.object([
         #("x", json.float(you.x)),
         #("y", json.float(you.y)),
+        #("deck", json.string(deckplan.deck_to_string(you.deck))),
         #("seat", json.nullable(you.seat, json.string)),
       ]),
     ),
@@ -375,6 +391,7 @@ fn encode_character(c: Character) -> Json {
     #("name", json.string(c.name)),
     #("x", json.float(c.x)),
     #("y", json.float(c.y)),
+    #("deck", json.string(deckplan.deck_to_string(c.deck))),
     #("seat", json.nullable(c.seat, json.string)),
   ])
 }

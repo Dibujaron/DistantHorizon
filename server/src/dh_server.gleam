@@ -19,7 +19,7 @@ import gleam/string
 
 const default_world_path = "worlds/m1_system.json"
 
-const default_ship_class_path = "classes/sparrow.json"
+const default_ship_class_path = "classes/mockingbird.json"
 
 const default_database_url = "postgres://postgres@127.0.0.1:5432/dh_dev"
 

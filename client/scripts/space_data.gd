@@ -30,8 +30,14 @@ var id: String = ""
 var epoch: int = 0
 var plan: ShipClassData = null
 var moorings: Array[Mooring] = []
+## Where the authored concourse's tile (0,0) sits in the composite frame
+## (station spaces only) — anchors the station's exterior backdrop.
+var has_concourse: bool = false
+var concourse_dx: int = 0
+var concourse_dy: int = 0
 var you_x: float = 0.0
 var you_y: float = 0.0
+var you_deck: String = "upper"  ## split-level: seeds own-deck prediction
 var you_seat: Variant = null  ## console id or null
 
 
@@ -45,10 +51,16 @@ static func from_dict(data: Dictionary) -> SpaceData:
 	for mooring_data: Variant in data.get("moorings", []):
 		if mooring_data is Dictionary:
 			space.moorings.append(Mooring.from_dict(mooring_data))
+	var concourse: Variant = data.get("concourse")
+	if concourse is Dictionary:
+		space.has_concourse = true
+		space.concourse_dx = int(concourse.get("dx", 0))
+		space.concourse_dy = int(concourse.get("dy", 0))
 	var you: Variant = data.get("you")
 	if you is Dictionary:
 		space.you_x = float(you.get("x", 0.0))
 		space.you_y = float(you.get("y", 0.0))
+		space.you_deck = str(you.get("deck", "upper"))
 		space.you_seat = you.get("seat")
 	return space
 

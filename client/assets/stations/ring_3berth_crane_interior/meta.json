@@ -1,0 +1,47 @@
+{
+  "name": "ring_3berth_crane_interior",
+  "px_w": 302,
+  "px_h": 158,
+  "px_per_unit": 0.4,
+  "frame": [
+    -391.0,
+    -127.0,
+    757.0,
+    395.0
+  ],
+  "classic_px": 132,
+  "c1_base": [
+    0,
+    0,
+    0
+  ],
+  "c2_base": [
+    0,
+    0,
+    0
+  ],
+  "anchors": [
+    {
+      "kind": "berth",
+      "x_px": 69.4,
+      "y_px": 11.8
+    },
+    {
+      "kind": "berth",
+      "x_px": 165.4,
+      "y_px": 11.8
+    },
+    {
+      "kind": "berth",
+      "x_px": 261.40000000000003,
+      "y_px": 11.8
+    }
+  ],
+  "interior": {
+    "px_per_tile": 3.0,
+    "origin_px": [
+      15.4,
+      26.8
+    ]
+  }
+}

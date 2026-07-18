@@ -14,6 +14,7 @@ var id: int
 var name: String
 var x: float
 var y: float
+var deck: String  ## "lower" | "upper" — split-level rendering (M3.5 it. 3)
 var seat: String  ## console id, or "" while standing
 
 
@@ -23,6 +24,7 @@ static func from_dict(data: Dictionary) -> CharacterState:
 	character.name = str(data.get("name", ""))
 	character.x = float(data.get("x", 0.0))
 	character.y = float(data.get("y", 0.0))
+	character.deck = str(data.get("deck", "upper"))
 	var seat_value: Variant = data.get("seat")
 	character.seat = "" if seat_value == null else str(seat_value)
 	return character
