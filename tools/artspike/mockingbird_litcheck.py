@@ -15,10 +15,11 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 import lightspike as L
+from composer import flatten
 from manufacturers import ship_mockingbird
 
 # --- retarget the spike at the Mockingbird -----------------------------------
-L.ship_kx6 = ship_mockingbird          # render_frame() draws via this name
+L.ship_kx6 = lambda: flatten(ship_mockingbird())   # render_frame() draws this
 L.CLASSIC_PX = 45                      # Classic Mockingbird sprite height
 L.MODEL_UNITS = 195
 

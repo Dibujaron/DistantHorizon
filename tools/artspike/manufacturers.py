@@ -19,6 +19,7 @@ Run:  pip install resvg-py && python manufacturers.py
 import math
 import random
 import resvg_py
+from composer import Hull, Layer, Anchor, flat, cyl_x, dome, flatten
 from shipforge import (poly, mirror, rrect, circle, line, group, shrink,
                        container, starfield, label, BG, INK, LABEL, BOXES,
                        GLOW_CORE)
@@ -156,53 +157,70 @@ def ship_thumper6():
 def ship_longhorn():
     """barebones passenger liner, sprite name Hammerhead: wide cephalofoil
     bow with top glass, orange-ribbed neck, big gridded lounge glass aft,
-    cross-outrigger engine pods"""
-    s = ""
+    cross-outrigger engine pods. Returns a Hull (lit-pipeline layers with
+    authored heights) — the hammer foil is the pipeline's flat-plate proof:
+    a thin wing that must NOT shade as a domed blob."""
+    L = []
+    A = []
     # stern outriggers first (under body): crossbar + orange-capped pods
-    s += rrect(-46, 26, 92, 8, 2, PHE_GRAY_D, sw=2)
+    L.append(Layer(rrect(-46, 26, 92, 8, 2, PHE_GRAY_D, sw=2), flat(0.30)))
     for sx in (-1, 1):
-        s += rrect(sx * 40 - 7, 18, 14, 24, 3, PHE_GRAY, sw=2)
-        s += rrect(sx * 49 - 3, 16, 6, 28, 2, PHE_POD, sw=1.8)
-        s += poly([(sx * 40 - 5, 42), (sx * 40 + 5, 42),
-                   (sx * 40 + 6, 49), (sx * 40 - 6, 49)], PHE_GRAY_D, sw=1.6)
-        s += f'<ellipse cx="{sx * 40}" cy="52" rx="6" ry="5" fill="url(#glow)"/>'
+        L.append(Layer(rrect(sx * 40 - 7, 18, 14, 24, 3, PHE_GRAY, sw=2),
+                       cyl_x(0.32, 0.50)))
+        L.append(Layer(rrect(sx * 49 - 3, 16, 6, 28, 2, PHE_POD, sw=1.8),
+                       flat(0.45)))
+        L.append(Layer(poly([(sx * 40 - 5, 42), (sx * 40 + 5, 42),
+                             (sx * 40 + 6, 49), (sx * 40 - 6, 49)],
+                            PHE_GRAY_D, sw=1.6), flat(0.28)))
+        L.append(Layer(f'<ellipse cx="{sx * 40}" cy="52" rx="6" ry="5" '
+                       f'fill="url(#glow)"/>', role="glow"))
+        A.append(Anchor("nozzle", sx * 40, 52))
     # the hammer: thin, winglike, purpose unclear (ask Porter)
     hammer = mirror([(0, -108), (18, -107), (38, -102), (50, -94), (46, -86),
                      (28, -82), (10, -80), (0, -80)])
-    s += poly(hammer, PHE_GRAY, sw=2.5)
-    s += poly(shrink(hammer, .84), "#9aa0a8", stroke="none", opacity=.45)
+    L.append(Layer(poly(hammer, PHE_GRAY, sw=2.5), flat(0.40)))
+    L.append(Layer(poly(shrink(hammer, .84), "#9aa0a8", stroke="none",
+                        opacity=.45), role="sheet_only"))
     for sx in (-1, 1):  # small orange wingtip caps, nothing weirder
-        s += rrect(sx * 48 - 4, -96, 8, 9, 1.5, PHE_POD, sw=1.6)
+        L.append(Layer(rrect(sx * 48 - 4, -96, 8, 9, 1.5, PHE_POD, sw=1.6),
+                       flat(0.44)))
     for wx in (-32, -16, 0, 16, 32):  # observation windows along the foil
-        s += rrect(wx - 3, -98, 6, 7, 1.5, GLASS, stroke=INK, sw=1.1)
+        L.append(Layer(rrect(wx - 3, -98, 6, 7, 1.5, GLASS, stroke=INK,
+                             sw=1.1)))
     for sx in (-1, 1):  # panel seams + vents so the foil isn't a blank
-        s += line(sx * 10, -104, sx * 40, -99, INK, 1.2, .5)
+        L.append(Layer(line(sx * 10, -104, sx * 40, -99, INK, 1.2, .5)))
         for vx in (24, 30, 36):
-            s += line(sx * vx, -87, sx * (vx + 4), -85, INK, 1.6, .55)
+            L.append(Layer(line(sx * vx, -87, sx * (vx + 4), -85, INK, 1.6,
+                                .55)))
     # glass block at the hammer's top center
-    s += rrect(-11, -120, 22, 15, 3, PHE_GRAY, sw=2)
-    s += rrect(-8, -117, 16, 9, 1.5, GLASS, stroke=INK, sw=1.2)
-    s += line(0, -117, 0, -108, INK, 1.4)
+    L.append(Layer(rrect(-11, -120, 22, 15, 3, PHE_GRAY, sw=2), flat(0.46)))
+    L.append(Layer(rrect(-8, -117, 16, 9, 1.5, GLASS, stroke=INK, sw=1.2)))
+    L.append(Layer(line(0, -117, 0, -108, INK, 1.4)))
     # the neck: ribbed, windows down the middle
-    s += rrect(-14, -80, 28, 70, 2, PHE_GRAY, sw=2.2)
+    L.append(Layer(rrect(-14, -80, 28, 70, 2, PHE_GRAY, sw=2.2),
+                   cyl_x(0.42, 0.58)))
     for i in range(3):
         y = -72 + i * 21
         for rx in (-21, 14):
-            s += rrect(rx, y, 7, 10, 1.5, PHE_POD, sw=1.6)
-        s += rrect(-3.5, y + 2, 7, 8, 1.5, GLASS, stroke=INK, sw=1.1)
+            L.append(Layer(rrect(rx, y, 7, 10, 1.5, PHE_POD, sw=1.6),
+                           flat(0.50)))
+        L.append(Layer(rrect(-3.5, y + 2, 7, 8, 1.5, GLASS, stroke=INK,
+                             sw=1.1)))
     # lower body: wide oval with the big gridded lounge glass
     lower = mirror([(0, -12), (15, -9), (23, 2), (27, 22), (24, 46), (15, 60),
                     (0, 64)])
-    s += poly(lower, PHE_GRAY, sw=2.5)
-    s += poly(shrink(lower, .84), "#9aa0a8", stroke="none", opacity=.45)
-    s += rrect(-14, 2, 28, 48, 11, GLASS, stroke=INK, sw=1.8)
+    L.append(Layer(poly(lower, PHE_GRAY, sw=2.5), dome(0.36, 0.60, blur=6.0)))
+    L.append(Layer(poly(shrink(lower, .84), "#9aa0a8", stroke="none",
+                        opacity=.45), role="sheet_only"))
+    L.append(Layer(rrect(-14, 2, 28, 48, 11, GLASS, stroke=INK, sw=1.8)))
     for fx in (-4.5, 4.5):
-        s += line(fx, 4, fx, 48, INK, 1.3)
+        L.append(Layer(line(fx, 4, fx, 48, INK, 1.3)))
     for i in range(3):
-        s += line(-13, 14 + i * 12, 13, 14 + i * 12, INK, 1.3)
+        L.append(Layer(line(-13, 14 + i * 12, 13, 14 + i * 12, INK, 1.3)))
     # stern nub
-    s += poly([(-8, 64), (8, 64), (6, 70), (-6, 70)], PHE_GRAY_D, sw=1.8)
-    return s
+    L.append(Layer(poly([(-8, 64), (8, 64), (6, 70), (-6, 70)], PHE_GRAY_D,
+                        sw=1.8), flat(0.38)))
+    return Hull(layers=L, anchors=A)
 
 # ----------------------------------------------------------- Rijay parts ----
 def rijay_hull(half, stripe=True):
@@ -255,73 +273,89 @@ def rijay_cockpit(cy, w):
 MB_Y, MB_SP, MB_R, MB_LN, MB_FL = 40, 21, 7.5, 28, 0.8
 
 def mb_drums(stock=False):
+    """-> (layers, nozzle anchors). Each drum is its own cyl_x layer so the
+    per-row cylinder profile follows that drum's silhouette alone."""
     y, r, ln = MB_Y, MB_R, MB_LN
-    s = ""
+    layers, anchors = [], []
     for i in (-1, 0, 1):
         cx = i * MB_SP
-        s += rrect(cx - r, y, 2 * r, ln, r * .95, RIJ_BLUE, sw=2.2)
+        layers.append(Layer(rrect(cx - r, y, 2 * r, ln, r * .95, RIJ_BLUE,
+                                  sw=2.2), cyl_x(0.40, 0.78)))
         if stock:  # painted center stripe; on the atmo bird the fin ridge is it
-            s += line(cx, y + 2.5, cx, y + ln - 2.5, RIJ_WHITE, 2.6, .95)
-        s += rrect(cx - r * .72, y + ln - 2.5, r * 1.44, 5.5, 2.2, RIJ_BLUE_D,
-                   sw=1.6)
-        s += (f'<ellipse cx="{cx:.1f}" cy="{y + ln + 8:.1f}" rx="{r * .85:.1f}" '
-              f'ry="10" fill="url(#glow)"/>')
-        s += (f'<ellipse cx="{cx:.1f}" cy="{y + ln + 3.5:.1f}" rx="{r * .5:.1f}" '
-              f'ry="5.5" fill="{GLOW_CORE}" stroke="none"/>')
-    return s
+            layers.append(Layer(line(cx, y + 2.5, cx, y + ln - 2.5, RIJ_WHITE,
+                                     2.6, .95)))
+        layers.append(Layer(rrect(cx - r * .72, y + ln - 2.5, r * 1.44, 5.5,
+                                  2.2, RIJ_BLUE_D, sw=1.6), cyl_x(0.38, 0.60)))
+        layers.append(Layer(
+            f'<ellipse cx="{cx:.1f}" cy="{y + ln + 8:.1f}" rx="{r * .85:.1f}" '
+            f'ry="10" fill="url(#glow)"/>', role="glow"))
+        layers.append(Layer(
+            f'<ellipse cx="{cx:.1f}" cy="{y + ln + 3.5:.1f}" rx="{r * .5:.1f}" '
+            f'ry="5.5" fill="{GLOW_CORE}" stroke="none"/>', role="glow"))
+        anchors.append(Anchor("nozzle", cx, y + ln + 3.5))
+    return layers, anchors
 
 def mb_dorsal_fins():
     y, ln, fl = MB_Y, MB_LN, MB_FL
-    s = ""
+    layers = []
     for i in (-1, 0, 1):  # thin ridges from above; ventral trio hidden beneath
         cx = i * MB_SP
-        s += poly([(cx, y + 3), (cx + 1.9, y + 8), (cx + 1.9, y + ln - 2),
-                   (cx + 1.2, y + ln + 7 * fl), (cx, y + ln + 9 * fl),
-                   (cx - 1.2, y + ln + 7 * fl), (cx - 1.9, y + ln - 2),
-                   (cx - 1.9, y + 8)], RIJ_WHITE, stroke=INK, sw=1.0)
-    return s
+        layers.append(Layer(
+            poly([(cx, y + 3), (cx + 1.9, y + 8), (cx + 1.9, y + ln - 2),
+                  (cx + 1.2, y + ln + 7 * fl), (cx, y + ln + 9 * fl),
+                  (cx - 1.2, y + ln + 7 * fl), (cx - 1.9, y + ln - 2),
+                  (cx - 1.9, y + 8)], RIJ_WHITE, stroke=INK, sw=1.0),
+            flat(0.82)))
+    return layers
 
 def mb_outboard_fins():
     y, r, ln, fl = MB_Y, MB_R, MB_LN, MB_FL
-    s = ""
+    layers = []
     for sx in (-1, 1):  # under the drums; leading edge shares the fore point
         root = sx * MB_SP
         tips = [(root + sx * (r + 8.5 * fl), y + 16),
                 (root + sx * (r + 9.5 * fl), y + ln - 6),
                 (root + sx * (r + 5.5 * fl), y + ln)]
-        s += poly([(root, y + 3)] + tips + [(root, y + ln)], RIJ_BLUE, sw=1.8)
+        layers.append(Layer(poly([(root, y + 3)] + tips + [(root, y + ln)],
+                                 RIJ_BLUE, sw=1.8), flat(0.33)))
         edge = " L ".join(f"{x - sx * 2.2:.1f},{yy + .8:.1f}" for x, yy in tips)
-        s += (f'<path d="M {edge}" fill="none" stroke="{RIJ_WHITE}" '
-              f'stroke-width="2" stroke-linecap="round" '
-              f'stroke-linejoin="round" opacity=".95"/>')
-    return s
+        layers.append(Layer(
+            f'<path d="M {edge}" fill="none" stroke="{RIJ_WHITE}" '
+            f'stroke-width="2" stroke-linecap="round" '
+            f'stroke-linejoin="round" opacity=".95"/>'))
+    return layers
 
 def mb_ports(y=27, edge=16):
-    s = ""
+    layers = []
     for sx in (-1, 1):  # hull-colored dormers, seamless at the inboard edge
         x0 = edge - 2 if sx > 0 else -(edge + 5.2)
-        s += rrect(x0, y, 7.2, 10, 2.5, RIJ_BLUE, stroke=INK, sw=1.6)
+        layers.append(Layer(rrect(x0, y, 7.2, 10, 2.5, RIJ_BLUE, stroke=INK,
+                                  sw=1.6), flat(0.52)))
         px = edge - 4.5 if sx > 0 else -(edge + .2)
-        s += rrect(px, y + .9, 4.7, 8.2, 0, RIJ_BLUE, stroke="none")
-        s += rrect(x0 + (3.6 if sx > 0 else .8), y + 2.8, 2.8, 4.4, 1.1,
-                   RIJ_BLUE_D, stroke=INK, sw=.9)
+        layers.append(Layer(rrect(px, y + .9, 4.7, 8.2, 0, RIJ_BLUE,
+                                  stroke="none")))
+        layers.append(Layer(rrect(x0 + (3.6 if sx > 0 else .8), y + 2.8, 2.8,
+                                  4.4, 1.1, RIJ_BLUE_D, stroke=INK, sw=.9)))
         for by in (y + 2.4, y + 7.6):
-            s += circle(sx * (edge + .6), by, .8, GLASS, stroke="none")
-    return s
+            layers.append(Layer(circle(sx * (edge + .6), by, .8, GLASS,
+                                       stroke="none")))
+    return layers
 
 def mb_canopy(nose_y=-104):
     """the window IS the head tip, with struts — the Firefly cockpit read"""
-    s = mirrored_path((0, nose_y + 2.5), [
+    layers = [Layer(mirrored_path((0, nose_y + 2.5), [
         ("L", 6, nose_y + 9),
         ("Q", 7.5, nose_y + 14, 6.5, nose_y + 19),
-        ("L", 0, nose_y + 22)], GLASS, stroke=INK, sw=1.6)
-    s += line(0, nose_y + 3, 0, nose_y + 21, INK, 1.4)
-    s += line(-6.2, nose_y + 13, 6.2, nose_y + 13, INK, 1.3)
-    return s
+        ("L", 0, nose_y + 22)], GLASS, stroke=INK, sw=1.6),
+        dome(0.58, 0.74, blur=2.0))]
+    layers.append(Layer(line(0, nose_y + 3, 0, nose_y + 21, INK, 1.4)))
+    layers.append(Layer(line(-6.2, nose_y + 13, 6.2, nose_y + 13, INK, 1.3)))
+    return layers
 
 def ship_mockingbird(stock=False):
-    """Rijay's flagship and the game's starter ship. See canon block above."""
-    s = "" if stock else mb_outboard_fins()
+    """Rijay's flagship and the game's starter ship. See canon block above.
+    Returns a Hull: ordered lit-pipeline layers with authored heights."""
+    layers = [] if stock else mb_outboard_fins()
     segs = [("L", 8, -95),                    # hybrid head
             ("Q", 10, -90, 9, -84),
             ("L", 8.5, -78),
@@ -335,26 +369,29 @@ def ship_mockingbird(stock=False):
             ("L", 26.5, 59),                  # solid stern, drums ride on it
             ("Q", 25, 62, 18, 62),
             ("L", 0, 62)]
-    s += mirrored_path((0, -104), segs, RIJ_BLUE, sw=2.5)
+    layers.append(Layer(mirrored_path((0, -104), segs, RIJ_BLUE, sw=2.5),
+                        dome(0.35, 0.62, blur=8.0)))
     hi = mirrored_path((0, -104), segs, "#5aa3ea", stroke="none", opacity=.5)
-    s += group(hi, ty=-4, scale=.85)
+    layers.append(Layer(group(hi, ty=-4, scale=.85), role="sheet_only"))
     # dorsal stripe runs aft to meet the center drum; no outline — it's paint
-    s += poly([(-2, -90), (2, -90), (3.5, 44), (-3.5, 44)], RIJ_WHITE,
-              stroke="none")
+    layers.append(Layer(poly([(-2, -90), (2, -90), (3.5, 44), (-3.5, 44)],
+                             RIJ_WHITE, stroke="none")))
     # flank stripes: break at the ports, brief reconnect on the flare
     for pts in ([(8.5, -76), (9, -62), (24, -34), (27, -18), (27, -4),
                  (19.5, 22)], [(17, 41), (22.5, 46.5)]):
         for sx in (-1, 1):
             d = "M " + " L ".join(f"{sx * (x - 2.4):.1f},{y:.1f}" for x, y in pts)
-            s += (f'<path d="{d}" fill="none" stroke="{RIJ_WHITE}" '
-                  f'stroke-width="2.2" stroke-linecap="round" '
-                  f'stroke-linejoin="round" opacity=".9"/>')
-    s += mb_drums(stock=stock)
+            layers.append(Layer(
+                f'<path d="{d}" fill="none" stroke="{RIJ_WHITE}" '
+                f'stroke-width="2.2" stroke-linecap="round" '
+                f'stroke-linejoin="round" opacity=".9"/>'))
+    drum_layers, anchors = mb_drums(stock=stock)
+    layers += drum_layers
     if not stock:
-        s += mb_dorsal_fins()
-    s += mb_ports()
-    s += mb_canopy()
-    return s
+        layers += mb_dorsal_fins()
+    layers += mb_ports()
+    layers += mb_canopy()
+    return Hull(layers=layers, anchors=anchors)
 
 def ship_swallow():
     """stocky little fighter: wings straight out on the leading edge,
@@ -475,7 +512,7 @@ def build_sheet():
         x = slot_x[mfr][counters[mfr]]; counters[mfr] += 1
         ry = rows[mfr]
         cy = ry + 145
-        body += group(fn(), x, cy, scale=sc)
+        body += group(flatten(fn()), x, cy, scale=sc)
         body += label(x, ry + 290, nm, sub)
     # ------- game-scale strip: rendered at Classic's actual sprite heights
     sy = 1160
@@ -486,7 +523,7 @@ def build_sheet():
     sx = 120
     for mfr, nm, sub, fn, sc, px, mu in SHIPS:
         scale = px / mu
-        body += group(fn(), sx, sy + 42, scale=scale)
+        body += group(flatten(fn()), sx, sy + 42, scale=scale)
         sx += 150
     svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" '
            f'viewBox="0 0 {W} {H}">{defs}{body}</svg>')
