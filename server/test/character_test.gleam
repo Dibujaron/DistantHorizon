@@ -11,7 +11,7 @@ fn close(a: Float, b: Float, tolerance: Float) -> Bool {
 }
 
 /// The bundled Mockingbird: 14x23, nose up, ~1 m tiles. Upper deck:
-/// cockpit col 6-7 rows 4-5; '2' midbody rows 7-20 (mess/commons above
+/// neck/cockpit col 6-7 rows 3-8; '2' midbody rows 9-20 (mess/commons above
 /// the hold). Row 21 stairs: L(5) U(6) U(7) L(8). Row 22: 'B' docking
 /// corridor, port dormer (5,22). Helm at (6,4), cargo console at (5,21).
 fn mockingbird() -> DeckPlan {
@@ -105,29 +105,29 @@ pub fn walking_straight_into_wall_stops_test() {
 
 pub fn walking_diagonally_into_wall_slides_test() {
   let plan = mockingbird()
-  // From (3.5, 11.5), moving up-and-left: tile (2, y) west is hull, so
+  // From (3.5, 14.5), moving up-and-left: tile (2, y) west is hull, so
   // "left" pins at x = 3.3 (3.0 + radius) almost immediately, while "up"
-  // keeps working until the body's north taper above col 3 (tile (3,8) is
-  // void — row 8 starts at col 4) pins y at 9.3 — a slide along the west
+  // keeps working until the body's north taper above col 3 (tile (3,11) is
+  // void — row 11 starts at col 4) pins y at 12.3 — a slide along the west
   // wall, not a dead stop.
-  let c = standing_at(3.5, 11.5) |> character.set_move(-1.0, -1.0)
+  let c = standing_at(3.5, 14.5) |> character.set_move(-1.0, -1.0)
   let soon = run_ticks(c, plan, 30)
   assert close(soon.x, 3.3, 0.05)
-  assert soon.y <. 11.2
-  assert soon.y >. 9.6
+  assert soon.y <. 14.2
+  assert soon.y >. 12.6
   let later = run_ticks(soon, plan, 40)
   // x stays pinned at the wall while y has advanced to its own wall.
   assert close(later.x, 3.3, 0.05)
-  assert close(later.y, 9.3, 0.05)
+  assert close(later.y, 12.3, 0.05)
 }
 
 pub fn character_never_enters_non_walkable_tile_test() {
   let plan = mockingbird()
   // Start at the hull boundary, push hard into it; position must never end
   // up over a '.' tile.
-  let c = standing_at(3.5, 10.5) |> character.set_move(-1.0, 0.0)
+  let c = standing_at(4.5, 10.5) |> character.set_move(-1.0, 0.0)
   let settled = run_ticks(c, plan, 120)
-  assert settled.x >. 3.0
+  assert settled.x >. 4.0
   assert deckplan.is_walkable(
     plan,
     float.round(float.floor(settled.x)),
@@ -140,20 +140,20 @@ pub fn character_never_enters_non_walkable_tile_test() {
 pub fn lower_walker_cannot_enter_upper_tile_test() {
   let plan = mockingbird()
   // A lower walker in the hold must not climb into the cockpit: from
-  // (6.5, 7.5) ('2', deck lower) walking north, tile (6, 6) is 'U' —
-  // blocked at the row-6 boundary.
-  let c = standing_lower(6.5, 7.5) |> character.set_move(0.0, -1.0)
+  // (6.5, 10.5) ('2', deck lower) walking north, tile (6, 8) is 'U' —
+  // blocked at the row-9 boundary.
+  let c = standing_lower(6.5, 10.5) |> character.set_move(0.0, -1.0)
   let settled = run_ticks(c, plan, 180)
-  assert settled.y >. 7.0
+  assert settled.y >. 9.0
   assert settled.deck == deckplan.Lower
 }
 
 pub fn upper_walker_walks_toward_the_cockpit_test() {
   let plan = mockingbird()
-  // Same route, same tiles, upper deck: passes freely into row 6.
-  let c = standing_at(6.5, 7.5) |> character.set_move(0.0, -1.0)
+  // Same route, same tiles, upper deck: passes freely into the neck.
+  let c = standing_at(6.5, 10.5) |> character.set_move(0.0, -1.0)
   let moved = run_ticks(c, plan, 120)
-  assert moved.y <. 6.0
+  assert moved.y <. 9.0
   assert moved.deck == deckplan.Upper
 }
 

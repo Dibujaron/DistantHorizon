@@ -9,7 +9,7 @@ pub fn load_bundled_mockingbird_test() {
   assert c.id == "mockingbird"
   assert c.plan.grid == Grid(width: 14, height: 23)
   assert list.length(c.plan.walkable) == 23
-  assert list.length(c.plan.rooms) == 7
+  assert list.length(c.plan.rooms) == 8
   assert list.length(c.plan.consoles) == 2
   // The spawn tile is the PORT docking dormer on the between-level ('B')
   // corridor at the waist — side ports, never the stern.
@@ -40,23 +40,23 @@ pub fn find_console_unknown_is_error_test() {
 
 pub fn is_walkable_true_for_interior_tile_test() {
   let assert Ok(c) = shipclass.load("classes/mockingbird.json")
-  // Row 10: "...22222222..." -> x=3..10 walkable; row 22 corridor likewise.
-  assert deckplan.is_walkable(c.plan, 3, 10)
-  assert deckplan.is_walkable(c.plan, 10, 10)
+  // Row 12: "...22222222..." -> x=3..10 walkable; row 22 corridor likewise.
+  assert deckplan.is_walkable(c.plan, 3, 12)
+  assert deckplan.is_walkable(c.plan, 10, 12)
   assert deckplan.is_walkable(c.plan, 5, 22)
 }
 
 pub fn is_walkable_false_for_hull_tile_test() {
   let assert Ok(c) = shipclass.load("classes/mockingbird.json")
-  assert !deckplan.is_walkable(c.plan, 2, 10)
-  assert !deckplan.is_walkable(c.plan, 11, 10)
+  assert !deckplan.is_walkable(c.plan, 2, 12)
+  assert !deckplan.is_walkable(c.plan, 11, 12)
   assert !deckplan.is_walkable(c.plan, 6, 0)
 }
 
 pub fn is_walkable_false_out_of_bounds_test() {
   let assert Ok(c) = shipclass.load("classes/mockingbird.json")
-  assert !deckplan.is_walkable(c.plan, -1, 10)
-  assert !deckplan.is_walkable(c.plan, 14, 10)
+  assert !deckplan.is_walkable(c.plan, -1, 12)
+  assert !deckplan.is_walkable(c.plan, 14, 12)
   assert !deckplan.is_walkable(c.plan, 6, -1)
   assert !deckplan.is_walkable(c.plan, 6, 23)
 }
