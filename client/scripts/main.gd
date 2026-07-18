@@ -550,22 +550,24 @@ func _interior_backdrops() -> Array[InteriorView.Backdrop]:
 	if _space == null:
 		if _ship_class != null:
 			out.append(InteriorView.Backdrop.make(
-				"ship", "mockingbird", Vector2.ZERO))
+				"ship", "mockingbird_interior", Vector2.ZERO))
 		return out
 	if _space.is_station():
 		if _space.has_concourse and _world != null:
 			for station in _world.stations:
 				if station.id == _space.station_id():
-					var archetype := "ring_3berth_crane" if station.crane \
-						else "ring_1berth"
+					var archetype := "ring_3berth_crane_interior" \
+						if station.crane else "ring_1berth_interior"
 					out.append(InteriorView.Backdrop.make("station", archetype,
 						Vector2(_space.concourse_dx, _space.concourse_dy)))
 		for mooring in _space.moorings:
+			# Moored ships lie side-on (the composite rotates their plans).
 			out.append(InteriorView.Backdrop.make(
-				"ship", "mockingbird", Vector2(mooring.dx, mooring.dy)))
+				"ship", "mockingbird_interior",
+				Vector2(mooring.dx, mooring.dy), true))
 	elif _space.is_ship():
 		out.append(InteriorView.Backdrop.make(
-			"ship", "mockingbird", Vector2.ZERO))
+			"ship", "mockingbird_interior", Vector2.ZERO))
 	return out
 
 ## Where our own character renders this frame (predicted while walking,

@@ -1,29 +1,42 @@
 {
   "schema": 2, "id": "mockingbird", "name": "Mockingbird",
-  "grid": {"width": 7, "height": 10},
+  "grid": {"width": 14, "height": 22},
   "walkable": [
-    ".......",
-    "...U...",
-    "...U...",
-    "..UUU..",
-    "..UUU..",
-    "..222..",
-    "..222..",
-    "..222..",
-    "..LUL..",
-    "..BBB.."
+    "..............",
+    "..............",
+    "......UU......",
+    "......UU......",
+    "......UU......",
+    ".....2222.....",
+    "....222222....",
+    "...22222222...",
+    "...22222222...",
+    "...22222222...",
+    "...22222222...",
+    "...22222222...",
+    "...22222222...",
+    "...22222222...",
+    "....222222....",
+    "....222222....",
+    "....222222....",
+    "....222222....",
+    ".....2222.....",
+    ".....2222.....",
+    ".....LUUL.....",
+    ".....BBBB....."
   ],
   "rooms": [
-    {"id": "cockpit",  "name": "Cockpit",       "x": 3, "y": 1, "w": 1, "h": 2, "deck": "upper"},
-    {"id": "quarters", "name": "Crew Quarters", "x": 2, "y": 3, "w": 3, "h": 2, "deck": "upper"},
-    {"id": "mess",     "name": "Mess",          "x": 2, "y": 5, "w": 3, "h": 3, "deck": "upper"},
-    {"id": "hold",     "name": "Main Hold",     "x": 2, "y": 5, "w": 3, "h": 4, "deck": "lower"},
-    {"id": "dock",     "name": "Docking Deck",  "x": 2, "y": 9, "w": 3, "h": 1}
+    {"id": "cockpit",  "name": "Cockpit",       "x": 6, "y": 2, "w": 2, "h": 3, "deck": "upper"},
+    {"id": "quarters", "name": "Crew Quarters", "x": 4, "y": 5, "w": 6, "h": 4, "deck": "upper"},
+    {"id": "mess",     "name": "Mess",          "x": 3, "y": 9, "w": 8, "h": 5, "deck": "upper"},
+    {"id": "commons",  "name": "Commons",       "x": 4, "y": 14, "w": 6, "h": 5, "deck": "upper"},
+    {"id": "hold",     "name": "Main Hold",     "x": 3, "y": 5, "w": 8, "h": 15, "deck": "lower"},
+    {"id": "dock",     "name": "Docking Deck",  "x": 5, "y": 20, "w": 4, "h": 2}
   ],
   "consoles": [
-    {"id": "helm_main",  "kind": "helm",  "x": 3, "y": 1},
-    {"id": "cargo_main", "kind": "cargo", "x": 2, "y": 8}
+    {"id": "helm_main",  "kind": "helm",  "x": 6, "y": 2},
+    {"id": "cargo_main", "kind": "cargo", "x": 5, "y": 20}
   ],
-  "spawn_tile": [2, 9],
+  "spawn_tile": [5, 21],
   "cargo": {"capacity": 40, "handling": "breakbulk"}
 }

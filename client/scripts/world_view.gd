@@ -38,11 +38,11 @@ const PLANET_PALETTE := [
 	Color(0.8, 0.4, 0.6),
 ]
 
-## Scale constants (eyeball-tuned; ships are sim points, so their visual
-## size is a presentation choice).
+## Scale canon (iteration 4): EVERY hull sprite renders at 1.5 px per
+## deckplan tile in space, and one world unit is the same for all of them —
+## a ship parked on a station reads at true relative size.
 const SHIP_WORLD_UNITS_PER_PX := 1.33   # Mockingbird 45 px -> ~60 world units
 const SHIP_MIN_SCREEN_SCALE := 1.0      # never below native px: ships stay readable
-const STATION_SPAN_FACTOR := 1.6        # station sprite width ~= 1.6 * dock_radius
 const BODY_SPRITE_PX := 500.0           # Classic body sprites are 500x500
 const PLANET_KINDS := ["barren", "desert", "flowerforest", "forest",
 	"gasgiant", "ice", "lava", "ocean", "terran", "tundra"]
@@ -215,15 +215,15 @@ func _station_archetype(station: WorldData.Station) -> String:
 	return "ring_3berth_crane" if station.crane else "ring_1berth"
 
 
-## World-units-per-texture-px for a station sprite, sized so the whole
-## structure spans ~STATION_SPAN_FACTOR x dock_radius.
-func _station_units_per_px(station: WorldData.Station, sset: AssetLibrary.SpriteSet) -> float:
-	return STATION_SPAN_FACTOR * station.dock_radius / maxf(float(sset.px_size().x), 1.0)
+## World-units-per-texture-px for a station sprite: the shared scale canon
+## (same as ships) so moored traffic reads at true relative size.
+func _station_units_per_px(_station: WorldData.Station, _sset: AssetLibrary.SpriteSet) -> float:
+	return SHIP_WORLD_UNITS_PER_PX
 
 
 ## The zoom at which this station's sprite renders at the interior's tile
-## scale (its 3-px tiles under 64-px interior tiles) — THE WINDOW's matched
-## zoom while docked. `fallback` when the station/asset is unknown.
+## scale (its 1.5-px tiles under 64-px interior tiles) — THE WINDOW's
+## matched zoom while docked. `fallback` when the station/asset is unknown.
 func matched_zoom_station(station_id: String, fallback: float) -> float:
 	if world == null:
 		return fallback
@@ -233,9 +233,8 @@ func matched_zoom_station(station_id: String, fallback: float) -> float:
 		var sset := _lib.station(_station_archetype(station))
 		if sset == null or not sset.has_interior_fit():
 			return fallback
-		var units_per_px := _station_units_per_px(station, sset)
 		return InteriorView.TILE_PIXELS \
-			/ (sset.px_per_tile() * units_per_px * PIXELS_PER_UNIT)
+			/ (sset.px_per_tile() * SHIP_WORLD_UNITS_PER_PX * PIXELS_PER_UNIT)
 	return fallback
 
 
@@ -312,6 +311,8 @@ func _park_sprite(parent: Sprite2D, key: String, kind: String,
 		parent.add_child(s)
 	s.visible = true
 	s.position = local_px
+	# Moored ships lie side-on: 90 CCW, nose west, port flank to the bar.
+	s.rotation = -PI / 2
 	s.scale = Vector2.ONE * (SHIP_WORLD_UNITS_PER_PX / station_units_per_px)
 
 

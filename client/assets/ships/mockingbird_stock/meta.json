@@ -38,7 +38,7 @@
     }
   ],
   "interior": {
-    "px_per_tile": 3.0,
+    "px_per_tile": 1.5,
     "origin_px": [
       0.0,
       0.0

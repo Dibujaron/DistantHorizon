@@ -45,36 +45,40 @@ def main() -> int:
         time.sleep(2.0)
         _shot(automation, "m35_int_seated.png")
 
-        # Stand and walk ashore (same route as the M3.1 smoke test): the
-        # Mockingbird's spine is one column, so it's a straight descent —
-        # cockpit, quarters, mess (upper), the U stair, the B docking deck,
-        # the berth stub, the concourse floor. Grab a mid-ship frame on the
-        # way down (split-level: the hold shot below needs the LOWER stair).
+        # Stand and walk ashore (same route as the smoke test). The moored
+        # ship lies SIDE-ON: east along the upper corridor, then south down
+        # the docking tube. Grab a mid-ship frame on the way, and detour
+        # into the hold via the port half-flight beside the corridor
+        # (split-level: the deck flips).
+        helm_x = state["character"]["x"]
         automation.key("E", True)
         automation.key("E", False)
         _wait_for(automation,
                   lambda s: (s.get("character") or {}).get("seat") is None,
                   "E to stand")
-        _walk_until(automation, "move_down",
-                    lambda c: c.get("y", 0.0) >= 6.0,
-                    "south through the quarters into the mess (upper deck)")
+        _walk_until(automation, "move_right",
+                    lambda c: c.get("x", 0.0) >= helm_x + 8.0,
+                    "east along the upper corridor (mess overhead run)")
         time.sleep(0.3)
         _shot(automation, "m35_int_upper.png")
+        _walk_until(automation, "move_right",
+                    lambda c: c.get("x", 0.0) >= helm_x + 18.9,
+                    "east to the docking corridor at the waist")
         _walk_until(automation, "move_down",
-                    lambda c: c.get("y", 0.0) >= 9.35,
-                    "down to the docking deck (pins on the B row)")
-        # Sidestep onto the port column: it carries the 'L' half-flight up
-        # into the hold AND the gangway down through the berth stub.
-        helm_x = state["character"]["x"]
-        _settle_x(automation, helm_x - 1.0)
-        _walk_until(automation, "move_up",
-                    lambda c: c.get("y", 0.0) <= 8.6,
-                    "up the port half-flight into the hold (lower deck)")
+                    lambda c: c.get("y", 0.0) >= 8.2,
+                    "south to the port dormer")
+        # West off the corridor onto the 'L' half-flight: deck flips LOWER.
+        _walk_until(automation, "move_left",
+                    lambda c: c.get("x", 0.0) <= helm_x + 10.1,
+                    "west into the hold (lower deck)")
         time.sleep(0.3)
         _shot(automation, "m35_int_lower.png")
+        _walk_until(automation, "move_right",
+                    lambda c: c.get("x", 0.0) >= helm_x + 18.9,
+                    "back east to the docking corridor")
         _walk_until(automation, "move_down",
-                    lambda c: c.get("y", 0.0) >= 12.2,
-                    "down the gangway onto the concourse")
+                    lambda c: c.get("y", 0.0) >= 14.2,
+                    "down the docking tube onto the concourse")
         time.sleep(0.5)
         _shot(automation, "m35_int_concourse.png")
 

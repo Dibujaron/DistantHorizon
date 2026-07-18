@@ -1,19 +1,28 @@
-//// Stitched interiors (M3.1): build one combined deck plan from a station
-//// concourse plus every docked ship's plan moored on at a berth, airlock
-//// to airlock. A berth is a walkable stub tile authored on the concourse;
-//// a docked ship is placed so its airlock (spawn tile) sits directly north
-//// of its berth tile. All tiles are then translated into one positive
-//// frame (bounding-box normalization); ship room/console ids are
-//// namespaced "s{ship_id}:{id}" so several moorings never collide. This is
-//// level generation, not coordinate gymnastics: the output is an ordinary
-//// DeckPlan the character sim and the client walk unchanged.
+//// Stitched interiors (M3.1, reworked M3.5 iteration 4): build one
+//// combined deck plan from a station concourse plus every docked ship's
+//// plan moored at a berth. Ships moor SIDE-ON: each docked plan is
+//// rotated 90° CCW (nose west, port flank south) so the docking
+//// corridor's port END faces the station, and a `tube_length`-tile
+//// docking tube of generated walkable tiles bridges the gap between the
+//// dormer and the berth stub — the hull floats clear of the bar. Tube
+//// tiles belong to the STATION (a body mid-tube stays ashore on undock).
+//// All tiles are then translated into one positive frame (bounding-box
+//// normalization); ship room/console ids are namespaced "s{ship_id}:{id}"
+//// so several moorings never collide. This is level generation, not
+//// coordinate gymnastics: the output is an ordinary DeckPlan the
+//// character sim and the client walk unchanged.
 
 import dh_server/deckplan.{
   type Console, type DeckPlan, type Room, Console, DeckPlan, Grid, Room,
 }
 import gleam/int
 import gleam/list
+import gleam/result
 import gleam/string
+
+/// Docking-tube length, tiles: the walkable gap generated between a moored
+/// ship's port dormer and its berth stub.
+pub const tube_length = 3
 
 /// An authored berth: the walkable concourse stub tile a ship moors onto.
 pub type Berth {
@@ -74,8 +83,9 @@ pub fn find_mooring(
 }
 
 /// Whether composite-frame position (x, y) stands on a walkable tile of
-/// this mooring — the undock split test: bodies on ship tiles leave with the
-/// ship, bodies on station tiles stay.
+/// this mooring — the undock split test: bodies on ship tiles leave with
+/// the ship, bodies on station tiles (including the docking tube) stay.
+/// `ship_plan` is the UNROTATED class plan; the mooring frame is rotated.
 pub fn tile_on_mooring(
   mooring: Mooring,
   ship_plan: DeckPlan,
@@ -84,14 +94,39 @@ pub fn tile_on_mooring(
 ) -> Bool {
   let tx = float_floor(x) - mooring.dx
   let ty = float_floor(y) - mooring.dy
-  deckplan.is_walkable(ship_plan, tx, ty)
+  deckplan.is_walkable(deckplan.rotate_ccw(ship_plan), tx, ty)
 }
 
-/// A ship's raw (pre-normalization, concourse-frame) offset: place its
-/// spawn/airlock tile directly north of its berth tile.
-fn raw_offset(berth: Berth, plan: DeckPlan) -> #(Int, Int) {
-  let #(sx, sy) = plan.spawn_tile
-  #(berth.x - sx, berth.y - 1 - sy)
+/// Map a body's composite-frame position into the UNROTATED ship frame
+/// (the undock transform). Inverse of the CCW moor rotation: ship-frame
+/// (x, y) = (width - ry, rx) for mooring-local (rx, ry).
+pub fn to_ship_frame(
+  mooring: Mooring,
+  ship_plan: DeckPlan,
+  x: Float,
+  y: Float,
+) -> #(Float, Float) {
+  let rx = x -. int.to_float(mooring.dx)
+  let ry = y -. int.to_float(mooring.dy)
+  #(int.to_float(ship_plan.grid.width) -. ry, rx)
+}
+
+/// Map a ship-frame position into mooring-local (rotated) coordinates —
+/// the dock-join transform (add the mooring's dx/dy afterwards).
+pub fn from_ship_frame(
+  ship_plan: DeckPlan,
+  x: Float,
+  y: Float,
+) -> #(Float, Float) {
+  #(y, int.to_float(ship_plan.grid.width) -. x)
+}
+
+/// A ship's raw (pre-normalization, concourse-frame) offset: rotate the
+/// plan side-on, then place its spawn/port-dormer tile `tube_length + 1`
+/// tiles north of its berth tile (the tube bridges the gap).
+fn raw_offset(berth: Berth, rotated: DeckPlan) -> #(Int, Int) {
+  let #(sx, sy) = rotated.spawn_tile
+  #(berth.x - sx, berth.y - 1 - tube_length - sy)
 }
 
 /// Build the composite plan. Errors: "unknown_berth" (berth index out of
@@ -102,14 +137,15 @@ pub fn build(
   berths: List(Berth),
   docked: List(DockedShip),
 ) -> Result(Composite, String) {
-  // Resolve each ship's berth and raw offset first.
+  // Rotate each ship side-on, resolve its berth and raw offset.
   let placed =
     list.try_map(docked, fn(ship) {
       case berth_at(berths, ship.berth) {
         Error(Nil) -> Error("unknown_berth")
         Ok(berth) -> {
-          let #(dx, dy) = raw_offset(berth, ship.plan)
-          Ok(#(ship, dx, dy))
+          let moored = DockedShip(..ship, plan: deckplan.rotate_ccw(ship.plan))
+          let #(dx, dy) = raw_offset(berth, moored.plan)
+          Ok(#(moored, berth, dx, dy))
         }
       }
     })
@@ -123,7 +159,7 @@ pub fn build(
           #(0, 0, concourse.grid.width, concourse.grid.height),
           fn(acc, entry) {
             let #(mnx, mny, mxx, mxy) = acc
-            let #(ship, dx, dy) = entry
+            let #(ship, _berth, dx, dy) = entry
             #(
               int.min(mnx, dx),
               int.min(mny, dy),
@@ -138,11 +174,12 @@ pub fn build(
       let height = max_y - min_y
       let moorings =
         list.map(placed, fn(entry) {
-          let #(ship, dx, dy) = entry
+          let #(ship, _berth, dx, dy) = entry
           Mooring(ship_id: ship.ship_id, dx: dx + shift_x, dy: dy + shift_y)
         })
       case
         compose_walkable(concourse, placed, shift_x, shift_y, width, height)
+        |> result.try(carve_tubes(_, placed, shift_x, shift_y))
       {
         Error(e) -> Error(e)
         Ok(walkable) -> {
@@ -150,7 +187,7 @@ pub fn build(
             list.map(concourse.rooms, translate_room(_, shift_x, shift_y))
             |> list.append(
               list.flat_map(placed, fn(entry) {
-                let #(ship, dx, dy) = entry
+                let #(ship, _berth, dx, dy) = entry
                 list.map(ship.plan.rooms, fn(room) {
                   let translated =
                     translate_room(room, dx + shift_x, dy + shift_y)
@@ -162,7 +199,7 @@ pub fn build(
             list.map(concourse.consoles, translate_console(_, shift_x, shift_y))
             |> list.append(
               list.flat_map(placed, fn(entry) {
-                let #(ship, dx, dy) = entry
+                let #(ship, _berth, dx, dy) = entry
                 list.map(ship.plan.consoles, fn(console) {
                   let translated =
                     translate_console(console, dx + shift_x, dy + shift_y)
@@ -206,7 +243,7 @@ pub fn build(
 /// split-level ship plans keep their deck alphabet in the composite.
 fn compose_walkable(
   concourse: DeckPlan,
-  placed: List(#(DockedShip, Int, Int)),
+  placed: List(#(DockedShip, Berth, Int, Int)),
   shift_x: Int,
   shift_y: Int,
   width: Int,
@@ -216,7 +253,7 @@ fn compose_walkable(
     list.try_map(range(0, width), fn(x) {
       let ship_chars =
         list.filter_map(placed, fn(entry) {
-          let #(ship, dx, dy) = entry
+          let #(ship, _berth, dx, dy) = entry
           case deckplan.char_at(ship.plan, x - dx - shift_x, y - dy - shift_y) {
             "." -> Error(Nil)
             ch -> Ok(ch)
@@ -234,6 +271,54 @@ fn compose_walkable(
     })
     |> result_map_concat
   })
+}
+
+/// Overwrite the `tube_length` void tiles directly north of each occupied
+/// berth with generated '#' docking-tube floor. Anything but '.' there
+/// means an authoring/spacing bug: "berth_blocked".
+fn carve_tubes(
+  walkable: List(String),
+  placed: List(#(DockedShip, Berth, Int, Int)),
+  shift_x: Int,
+  shift_y: Int,
+) -> Result(List(String), String) {
+  list.fold(placed, Ok(walkable), fn(acc, entry) {
+    let #(_ship, berth, _dx, _dy) = entry
+    list.fold(range(1, tube_length + 1), acc, fn(acc2, k) {
+      case acc2 {
+        Error(e) -> Error(e)
+        Ok(rows) ->
+          carve_tile(rows, berth.x + shift_x, berth.y - k + shift_y)
+      }
+    })
+  })
+}
+
+fn carve_tile(
+  rows: List(String),
+  x: Int,
+  y: Int,
+) -> Result(List(String), String) {
+  let out =
+    list.index_map(rows, fn(row, i) {
+      case i == y {
+        False -> row
+        True ->
+          string.slice(row, 0, x)
+          <> "#"
+          <> string.slice(row, x + 1, string.length(row))
+      }
+    })
+  // The carved tile must have been void ('.'): anything else means the
+  // tube would punch through a hull or floor.
+  let was = case list.drop(rows, y) |> list.first {
+    Ok(row) -> string.slice(row, x, 1)
+    Error(Nil) -> ""
+  }
+  case was {
+    "." -> Ok(out)
+    _ -> Error("berth_blocked")
+  }
 }
 
 fn result_map_concat(

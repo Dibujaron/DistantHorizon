@@ -1,4 +1,4 @@
-"""Tests for the M3.5 part-composer pipeline. Run: python -m pytest tools/artspike -q"""
+﻿"""Tests for the M3.5 part-composer pipeline. Run: python -m pytest tools/artspike -q"""
 import pathlib
 
 import numpy as np
@@ -135,14 +135,25 @@ def test_export_mockingbird(tmp_path):
     for a in meta["anchors"]:
         assert 0 <= a["x_px"] < meta["px_w"] and 0 <= a["y_px"] < meta["px_h"]
         assert a["y_px"] > meta["px_h"] * 0.7              # nozzles aft
-    # interior fit contract: the 7x10 deckplan sits at 3 px/tile from the
-    # sprite's top-left — if the sprite ever drifts off 21x45 the deckplan
-    # no longer fits the hull, so pin EXACT dimensions here.
+    # interior fit contract (scale canon: 1 tile ~ 1 m): the 14x20 deckplan
+    # sits at 1.5 px/tile on the SPACE sprite — if the sprite ever drifts
+    # off 21x45 the deckplan no longer fits the hull, so pin EXACT
+    # dimensions here.
     assert (meta["px_w"], meta["px_h"]) == (21, 45)
+    assert abs(meta["interior"]["px_per_tile"] - 1.5) < 1e-9
+    assert meta["interior"]["origin_px"] == [0.0, 0.0]
+
+
+def test_export_mockingbird_interior_backdrop(tmp_path):
+    """the 2x walk-mode render: same hull, 42x90 px, 3 px/tile"""
+    from composer import SHIP_EXPORTS, export_ship
+    spec = next(s for s in SHIP_EXPORTS if s.name == "mockingbird_interior")
+    meta = export_ship(spec, tmp_path)
+    assert (meta["px_w"], meta["px_h"]) == (42, 90)
     assert abs(meta["interior"]["px_per_tile"] - 3.0) < 1e-9
     assert meta["interior"]["origin_px"] == [0.0, 0.0]
     from PIL import Image
-    n = np.asarray(Image.open(d / "normal.png"))
+    n = np.asarray(Image.open(tmp_path / "mockingbird_interior" / "normal.png"))
     assert tuple(n[0, 0][:3]) == (128, 128, 255)           # background flat, GL
 
 
@@ -155,17 +166,16 @@ def test_station_hull_berth_anchors(tmp_path):
     assert len(berths) == 3
     for a in berths:
         assert 0 <= a["x_px"] < meta["px_w"] and 0 <= a["y_px"] < meta["px_h"]
-    # interior fit contract: anchors ride ONE TILE EAST of the authored
-    # berth tiles (6, 16, 26) of the 34-wide concourse at exactly 3
-    # px/tile — the gangway meets the moored ship's port dormer, so the
-    # hull center is offset from the berth column.
+    # interior fit contract: ships moor SIDE-ON at the end of a 3-tile
+    # docking tube — the sprite center rides 4.5 tiles WEST and 5 tiles
+    # NORTH of each authored berth tile (22, 54, 86) of the 94-wide
+    # concourse, at exactly 1.5 px/tile on the space render.
     fit = meta["interior"]
-    assert abs(fit["px_per_tile"] - 3.0) < 1e-9
-    for a, b in zip(sorted(berths, key=lambda a: a["x_px"]), (6, 16, 26)):
-        assert abs(a["x_px"] - (fit["origin_px"][0] + (b + 1.5) * 3.0)) < 0.5
-    # anchors park ships ABOVE the concourse top edge
-    for a in berths:
-        assert a["y_px"] < fit["origin_px"][1]
+    ppt = fit["px_per_tile"]
+    assert abs(ppt - 1.5) < 1e-9
+    for a, b in zip(sorted(berths, key=lambda a: a["x_px"]), (22, 54, 86)):
+        assert abs(a["x_px"] - (fit["origin_px"][0] + (b + 0.5 - 4.5) * ppt)) < 0.5
+        assert abs(a["y_px"] - (fit["origin_px"][1] + (0.5 - 5.5) * ppt)) < 0.5
     # no livery on stations: masks are all zero
     from PIL import Image
     m = np.asarray(Image.open(tmp_path / "ring_3berth_crane" / "mask.png"))

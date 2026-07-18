@@ -8,8 +8,10 @@ extends RefCounted
 
 const SHADER_PATH := "res://shaders/lit_sprite.gdshader"
 
-const SHIP_KINDS := ["mockingbird", "mockingbird_stock", "longhorn"]
-const STATION_ARCHETYPES := ["ring_3berth_crane", "ring_1berth"]
+const SHIP_KINDS := ["mockingbird", "mockingbird_interior",
+	"mockingbird_stock", "longhorn"]
+const STATION_ARCHETYPES := ["ring_3berth_crane", "ring_3berth_crane_interior",
+	"ring_1berth", "ring_1berth_interior"]
 const STAR_LAYER_NAMES := ["small", "medium", "large"]
 
 

@@ -1,4 +1,4 @@
-"""stations — M3.5: station exteriors assembled from station data.
+﻿"""stations — M3.5: station exteriors assembled from station data.
 
 Iteration 3 redesign: the terminal bar IS the concourse. Each station's
 walkable concourse grid (m1_system.json) maps onto the bar at 3 px/tile
@@ -110,7 +110,7 @@ def station_hull(grid_w, grid_h, berth_tiles, crane, seed):
                               1.6, WIN, stroke="none", opacity=.85)
     L.append(Layer(bar_windows))
 
-    # berth pads: proud cradles on the bar's TOP edge at the berth columns
+    # berth pads: gangway mouths on the bar's TOP edge at the berth columns
     for b in berth_tiles:
         px = tile_cx(b)
         L.append(Layer(rrect(px - 9, GRID_Y0 - 2, 18, UNITS_PER_TILE + 6, 3,
@@ -119,12 +119,14 @@ def station_hull(grid_w, grid_h, berth_tiles, crane, seed):
                              2, PHE_GRAY_D, sw=1.2)))
         L.append(Layer(circle(px, GRID_Y0 + UNITS_PER_TILE * 0.5, 2.2,
                               GLOW_CORE, stroke="none"), role="glow"))
-        # moored Mockingbird sprite center: the gangway meets the ship's
-        # PORT dormer (ship col 2 of 7), so the hull center rides ONE TILE
-        # EAST of the berth column; the grid hangs 9 tiles above the berth
-        # row, sprite center 22.5 ship-px below sprite top -> 11.25 units
-        # above the concourse top edge.
-        A.append(Anchor("berth", px + UNITS_PER_TILE, GRID_Y0 - 11.25))
+        # moored Mockingbird sprite center (iteration 4): ships lie
+        # SIDE-ON (rotated 90 CCW, nose west, port flank south) at the end
+        # of a 3-tile docking tube. Relative to the berth tile center, the
+        # ship's port dormer sits 4 tiles north (1 berth-adjacency + 3
+        # tube), and the hull center is 4.5 tiles west / 1.5 north of the
+        # dormer -> (-4.5, -5.5) tiles at 7.5 u/tile.
+        A.append(Anchor("berth", px - 4.5 * UNITS_PER_TILE,
+                        GRID_Y0 + 0.5 * UNITS_PER_TILE - 5.5 * UNITS_PER_TILE))
 
     # crane gantries flanking the outer pads: vertical booms + trolley + a
     # container mid-lift — the "crane-ness" seller, reaching up alongside
@@ -134,7 +136,7 @@ def station_hull(grid_w, grid_h, berth_tiles, crane, seed):
                     if len(berth_tiles) > 1 else [berth_tiles[0]])
         for b in crane_bs:
             px = tile_cx(b)
-            ext = 46 if b <= grid_w // 2 else 38
+            ext = 58 if b <= grid_w // 2 else 48  # reach past the tube
             for side in (-13, 13):
                 L.append(Layer(rrect(px + side - 2.5, GRID_Y0 - ext, 5, ext,
                                      2, PHE_GRAY_D, sw=1.4), flat(0.52)))
@@ -172,19 +174,30 @@ def _interior(grid_w):
             "origin_units": (grid_x0(grid_w), GRID_Y0)}
 
 
-STATION_EXPORTS = [
-    # px_per_unit = 132/330 = 0.4 -> 3 px per 7.5-unit tile.
-    # Meridian Highport: 34x6 concourse, berths at cols 6/16/26, crane.
-    ExportSpec("ring_3berth_crane",
-               lambda: station_hull(34, 6, (6, 16, 26), True, 11),
-               132, 330, (), (), tuple(PHE_PALETTE), (0, 0, 0), (0, 0, 0),
-               interior=_interior(34)),
-    # Solis Ring: 12x5 concourse, one berth at col 5, no crane.
-    ExportSpec("ring_1berth",
-               lambda: station_hull(12, 5, (5,), False, 12),
-               132, 330, (), (), tuple(PHE_PALETTE), (0, 0, 0), (0, 0, 0),
-               interior=_interior(12)),
-]
+# Iteration 4 scale canon: every hull renders at 1.5 px/tile in SPACE
+# (px_per_unit 66/330 = 0.2) so relative sizes read true against the
+# 21x45 Mockingbird, plus a 2x *_interior render (0.4 -> 3 px/tile) for
+# the walk-mode backdrop. Meridian's bar grew to 68 tiles with berths at
+# 10/32/54: side-on ships are ~30 tiles long, so berths need >21 tiles of
+# clearance.
+def _specs(name, build, grid_w):
+    return [
+        ExportSpec(name, build, 66, 330, (), (), tuple(PHE_PALETTE),
+                   (0, 0, 0), (0, 0, 0), interior=_interior(grid_w)),
+        ExportSpec(name + "_interior", build, 132, 330, (), (),
+                   tuple(PHE_PALETTE), (0, 0, 0), (0, 0, 0),
+                   interior=_interior(grid_w), px_scale=2),
+    ]
+
+
+# Berth spacing: side-on ships are ~30 tiles long (sprite incl. drums), so
+# berths sit 32 tiles apart — Meridian's bar is a proper highport spine.
+STATION_EXPORTS = (
+    _specs("ring_3berth_crane",
+           lambda: station_hull(94, 6, (22, 54, 86), True, 11), 94)
+    + _specs("ring_1berth",
+             lambda: station_hull(12, 5, (5,), False, 12), 12)
+)
 
 
 def main():

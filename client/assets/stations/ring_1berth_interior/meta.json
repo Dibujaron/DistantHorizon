@@ -1,15 +1,15 @@
 {
-  "name": "ring_1berth",
-  "px_w": 28,
-  "px_h": 43,
-  "px_per_unit": 0.2,
+  "name": "ring_1berth_interior",
+  "px_w": 56,
+  "px_h": 86,
+  "px_per_unit": 0.4,
   "frame": [
     -83.0,
     -81.0,
     142.0,
     215.0
   ],
-  "classic_px": 66,
+  "classic_px": 132,
   "c1_base": [
     0,
     0,
@@ -23,15 +23,15 @@
   "anchors": [
     {
       "kind": "berth",
-      "x_px": 9.1,
-      "y_px": -3.3000000000000003
+      "x_px": 18.2,
+      "y_px": -6.6000000000000005
     }
   ],
   "interior": {
-    "px_per_tile": 1.5,
+    "px_per_tile": 3.0,
     "origin_px": [
-      7.6000000000000005,
-      4.2
+      15.200000000000001,
+      8.4
     ]
   }
 }

@@ -200,27 +200,26 @@ def test_walk_ashore_and_screenshot(server, tmp_path):
             "E to stand up from the helm",
         )
 
-        # Walk down onto the concourse: south down the ship's spine (the
-        # helm column) to the 'B' docking deck — the void under the spine
-        # pins the descent there — then sidestep WEST onto the gangway
-        # column (the Mockingbird's docking ports are SIDE dormers at the
-        # waist; the port one is the spawn/gangway) and south through the
-        # berth stub onto the concourse floor (composite rows 11..13
-        # regardless of berth; only the column shifts). Plain movement, no
-        # disembark verb.
+        # Walk down onto the concourse. The moored ship lies SIDE-ON (nose
+        # west, port flank to the station): from the cockpit, the upper
+        # corridor runs EAST along the ship to the vertical docking
+        # corridor at the waist (19 tiles east of the helm — the berth
+        # column), then SOUTH through the port dormer, the 3-tile docking
+        # tube and the berth stub onto the concourse floor (composite rows
+        # 13..15 regardless of berth; only the column shifts). Plain
+        # movement, no disembark verb.
         helm_x = state["character"]["x"]
         _walk_until(
             automation,
-            "move_down",
-            lambda c: c.get("y", 0.0) >= 9.35,
-            "south down the ship's spine to the docking deck",
+            "move_right",
+            lambda c: c.get("x", 0.0) >= helm_x + 18.9,
+            "east along the upper corridor to the docking corridor",
         )
-        _settle_x(automation, helm_x - 1.0)
         _walk_until(
             automation,
             "move_down",
-            lambda c: c.get("y", 0.0) >= 12.2,
-            "down the gangway onto the concourse floor",
+            lambda c: c.get("y", 0.0) >= 14.2,
+            "down the docking tube onto the concourse floor",
         )
 
         # We are ashore on the concourse floor, still in the one station
@@ -229,7 +228,7 @@ def test_walk_ashore_and_screenshot(server, tmp_path):
             automation,
             lambda s: (
                 s.get("space") == "station:meridian_highport"
-                and (s.get("character") or {}).get("y", 0.0) >= 11.5
+                and (s.get("character") or {}).get("y", 0.0) >= 13.5
                 and s.get("wallet") == 2000  # starting wallet, m1_system.json
             ),
             STATE_TIMEOUT_S,

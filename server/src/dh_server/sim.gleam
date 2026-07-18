@@ -374,12 +374,17 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
                 )
               let assert Ok(space) =
                 find_space(state.spaces, state.world.spawn_station)
-              let assert Ok(mooring) =
-                composite.find_mooring(space.composite, new_ship.id)
-              let assert Ok(helm) =
+              // The composite carries the moored (rotated + translated)
+              // console positions — look the helm up there by its
+              // namespaced id rather than re-deriving the transform.
+              let assert Ok(class_helm) =
                 deckplan.find_console_of_kind(state.class.plan, "helm")
-              let #(hx, hy) =
-                deckplan.tile_center(helm.x + mooring.dx, helm.y + mooring.dy)
+              let assert Ok(helm) =
+                deckplan.find_console(
+                  space.composite.plan,
+                  composite.namespace_id(new_ship.id, class_helm.id),
+                )
+              let #(hx, hy) = deckplan.tile_center(helm.x, helm.y)
               let new_character =
                 character.Character(
                   id: state.next_character_id,
@@ -389,12 +394,13 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
                   x: hx,
                   y: hy,
                   deck: deckplan.deck_of_tile(
-                    state.class.plan,
+                    space.composite.plan,
                     deckplan.Upper,
                     helm.x,
                     helm.y,
                   ),
-                  seat: Some(composite.namespace_id(new_ship.id, helm.id)),
+                  // helm.id is already the namespaced composite id.
+                  seat: Some(helm.id),
                   move_dx: 0.0,
                   move_dy: 0.0,
                 )
@@ -487,17 +493,21 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
                   list.map(state.characters, fn(c) {
                     case c.ship_id == docked.id && c.place == character.Aboard {
                       False -> c
-                      True ->
+                      True -> {
+                        // Ship frame -> moored (rotated) frame + offset.
+                        let #(rx, ry) =
+                          composite.from_ship_frame(state.class.plan, c.x, c.y)
                         character.Character(
                           ..c,
                           place: character.OnStation(station_id),
-                          x: c.x +. int.to_float(mooring.dx),
-                          y: c.y +. int.to_float(mooring.dy),
+                          x: rx +. int.to_float(mooring.dx),
+                          y: ry +. int.to_float(mooring.dy),
                           seat: option.map(c.seat, composite.namespace_id(
                             docked.id,
                             _,
                           )),
                         )
+                      }
                     }
                   })
                 let state = State(..state, characters: characters)
@@ -818,15 +828,19 @@ fn handle_undock_split(
             && composite.tile_on_mooring(mooring, state.class.plan, c.x, c.y)
           case departing {
             False -> c
-            True ->
+            True -> {
+              // Moored (rotated) composite frame -> ship frame.
+              let #(sx, sy) =
+                composite.to_ship_frame(mooring, state.class.plan, c.x, c.y)
               character.Character(
                 ..c,
                 ship_id: target.id,
                 place: character.Aboard,
-                x: c.x -. int.to_float(mooring.dx),
-                y: c.y -. int.to_float(mooring.dy),
+                x: sx,
+                y: sy,
                 seat: strip_namespace(c.seat),
               )
+            }
           }
         })
       // Crew transfer may have emptied other ships (their last crew member

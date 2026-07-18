@@ -100,6 +100,44 @@ pub fn deck_of_tile(plan: DeckPlan, current: Deck, x: Int, y: Int) -> Deck {
   }
 }
 
+/// Rotate a plan 90° counter-clockwise: a nose-up ship lies nose-WEST,
+/// port side SOUTH — the mooring orientation (ships dock side-on, the
+/// docking corridor's port END meeting the gangway). Rotated tile
+/// `(x', y')` = original `(width - 1 - y', x')`; deck semantics are
+/// unchanged (upper stays upper — decks stack out of the plane).
+pub fn rotate_ccw(plan: DeckPlan) -> DeckPlan {
+  let w = plan.grid.width
+  let h = plan.grid.height
+  let walkable =
+    list.map(range(0, w), fn(yr) {
+      list.map(range(0, h), fn(xr) { char_at(plan, w - 1 - yr, xr) })
+      |> string.concat
+    })
+  let rooms =
+    list.map(plan.rooms, fn(r) {
+      Room(..r, x: r.y, y: w - r.x - r.w, w: r.h, h: r.w)
+    })
+  let consoles =
+    list.map(plan.consoles, fn(c) { Console(..c, x: c.y, y: w - 1 - c.x) })
+  let #(sx, sy) = plan.spawn_tile
+  DeckPlan(
+    grid: Grid(width: h, height: w),
+    walkable: walkable,
+    rooms: rooms,
+    consoles: consoles,
+    spawn_tile: #(sy, w - 1 - sx),
+  )
+}
+
+/// [from, to) as a list of ints (the pinned gleam_stdlib has no
+/// `list.range`; matches the local helper idiom used elsewhere).
+fn range(from: Int, to: Int) -> List(Int) {
+  case from >= to {
+    True -> []
+    False -> [from, ..range(from + 1, to)]
+  }
+}
+
 /// Look up a console by id.
 pub fn find_console(
   plan: DeckPlan,

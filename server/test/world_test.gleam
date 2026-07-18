@@ -208,7 +208,7 @@ pub fn load_reads_trade_fields_test() {
   let assert Ok(highport) = world.get_station(w, "meridian_highport")
   assert highport.crane == True
   let assert option.Some(plan) = highport.concourse
-  assert plan.spawn_tile == #(16, 3)
+  assert plan.spawn_tile == #(47, 3)
   assert list.length(highport.market) == 4
   let assert Ok(solis) = world.get_station(w, "solis_ring")
   assert solis.crane == False
@@ -313,9 +313,9 @@ pub fn berths_decode_test() {
   let assert Ok(meridian) = world.get_station(w, "meridian_highport")
   assert meridian.berths
     == [
-      composite.Berth(x: 6, y: 1),
-      composite.Berth(x: 16, y: 1),
-      composite.Berth(x: 26, y: 1),
+      composite.Berth(x: 22, y: 1),
+      composite.Berth(x: 54, y: 1),
+      composite.Berth(x: 86, y: 1),
     ]
   let assert Ok(solis) = world.get_station(w, "solis_ring")
   assert solis.berths == [composite.Berth(x: 5, y: 1)]

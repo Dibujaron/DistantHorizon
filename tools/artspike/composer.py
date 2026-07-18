@@ -98,11 +98,13 @@ def rasterize(svg_fragment, frame, ss=SS):
 
 
 def hull_frame(hull, pad=8.0):
-    """tight frame around the flat albedo, padded, in model units"""
-    probe = rasterize(flatten(hull, sheet=False), (-200, -200, 400, 400), ss=1)
+    """tight frame around the flat albedo, padded, in model units. The
+    probe box must exceed any hull's extent — station bars run ~530 units
+    wide (a clipped probe silently truncates the frame AND every anchor)."""
+    probe = rasterize(flatten(hull, sheet=False), (-400, -400, 800, 800), ss=1)
     ys, xs = np.where(probe[..., 3] > 0.1)
-    minx, maxx = xs.min() - 200 - pad, xs.max() - 200 + pad
-    miny, maxy = ys.min() - 200 - pad, ys.max() - 200 + pad
+    minx, maxx = xs.min() - 400 - pad, xs.max() - 400 + pad
+    miny, maxy = ys.min() - 400 - pad, ys.max() - 400 + pad
     return (float(minx), float(miny), float(maxx - minx), float(maxy - miny))
 
 
@@ -222,6 +224,11 @@ class ExportSpec:
     # writes meta["interior"] = {"px_per_tile", "origin_px"}. None = hull
     # has no walkable interior fit (e.g. the stock variant sheet).
     interior: object = None
+    # Output px = (base render dims) * px_scale, where the base dims round
+    # at classic_px/px_scale — so a *_interior export at px_scale 2 is
+    # EXACTLY double its space twin (independent rounding would drift a
+    # pixel and break the tile fit).
+    px_scale: int = 1
 
 
 RIJ_C1, RIJ_C2 = (59, 141, 224), (238, 242, 246)
@@ -238,16 +245,22 @@ def _lh():
     return ship_longhorn()
 
 
-# Mockingbird interior fit: the 7x10 deckplan covers the sprite at 3 px per
-# tile from its top-left corner (21x45 px sprite = 7 tiles wide, rows 0-9;
-# the drums/engines below the docking deck are exterior-only sprite).
-# 45 px / 195 units -> 13 units per 3-px tile.
-MB_INTERIOR = {"units_per_tile": 13.0, "origin_units": None}
+# Mockingbird interior fit (iteration 4 scale canon): ONE TILE ~ 1 m.
+# The hull is 14 tiles wide x 30 long -> 6.5 model units per tile. The
+# SPACE export stays Classic 21x45 px (1.5 px/tile — every hull renders at
+# 1.5 px/tile in space so relative sizes read true); the *_interior export
+# renders the same hull at 2x (42x90 px, 3 px/tile) for the walk-mode
+# backdrop. The deckplan grid (14x20) covers sprite rows 0-19 of 30; the
+# drums/engines behind the docking corridor are exterior-only sprite.
+MB_INTERIOR = {"units_per_tile": 6.5, "origin_units": None}
 
 SHIP_EXPORTS = [
     ExportSpec("mockingbird", lambda: _mb(False), 45, 195,
                ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
                RIJ_C1, RIJ_C2, interior=MB_INTERIOR),
+    ExportSpec("mockingbird_interior", lambda: _mb(False), 90, 195,
+               ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
+               RIJ_C1, RIJ_C2, interior=MB_INTERIOR, px_scale=2),
     ExportSpec("mockingbird_stock", lambda: _mb(True), 45, 195,
                ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
                RIJ_C1, RIJ_C2, interior=MB_INTERIOR),
@@ -294,8 +307,9 @@ def export_ship(spec, out_root, z_scale=6.5):
     c = compose_ship(spec)
     frame, hull = c["frame"], c["hull"]
     px_per_unit = spec.classic_px / spec.model_units
-    pw = max(1, round(frame[2] * px_per_unit))
-    ph = max(1, round(frame[3] * px_per_unit))
+    base_ppu = px_per_unit / spec.px_scale
+    pw = max(1, round(frame[2] * base_ppu)) * spec.px_scale
+    ph = max(1, round(frame[3] * base_ppu)) * spec.px_scale
     albedo_g = _downsample(c["albedo"], (pw, ph), "rgba")
     height_g = _downsample(c["height"], (pw, ph), "f")
     solid_g = _downsample(c["solid"].astype(np.float64), (pw, ph), "f") > 0.5

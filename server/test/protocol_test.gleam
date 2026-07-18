@@ -121,7 +121,7 @@ pub fn encode_welcome_contains_character_id_and_ship_class_test() {
   assert string.contains(text, "\"character_id\":42")
   assert string.contains(text, "\"ship_class\":")
   assert string.contains(text, "\"id\":\"mockingbird\"")
-  assert string.contains(text, "\"spawn_tile\":[2,9]")
+  assert string.contains(text, "\"spawn_tile\":[5,21]")
   assert string.contains(text, "\"consoles\":")
   assert string.contains(text, "helm_main")
 }
@@ -342,7 +342,7 @@ pub fn parse_buy_and_sell_test() {
 }
 
 pub fn parse_buy_rejects_float_quantity_test() {
-  // decode.int rejects floats â€” the inverse of the move/helm rule.
+  // decode.int rejects floats — the inverse of the move/helm rule.
   let assert Error(Nil) =
     protocol.parse_client_message(
       "{\"v\":1,\"type\":\"buy\",\"commodity\":\"water\",\"quantity\":1.0}",

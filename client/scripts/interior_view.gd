@@ -62,18 +62,23 @@ const CHAR_SIZE := Vector2(27, 42)
 
 
 ## One hull exterior drawn under the tiles: `asset` names a ship kind or
-## station archetype in the AssetLibrary; `tile_origin` is where the
-## hull's deckplan tile (0,0) sits in the current space's frame.
+## station archetype in the AssetLibrary (use the *_interior 2x renders);
+## `tile_origin` is where the hull's deckplan tile (0,0) sits in the
+## current space's frame. `rotated` = moored side-on (90 CCW: nose west,
+## port flank south — the composite rotates the plan the same way).
 class Backdrop:
 	var kind: String       ## "ship" | "station"
 	var asset: String
 	var tile_origin: Vector2
+	var rotated: bool
 
-	static func make(p_kind: String, p_asset: String, p_tile_origin: Vector2) -> Backdrop:
+	static func make(p_kind: String, p_asset: String, p_tile_origin: Vector2,
+			p_rotated: bool = false) -> Backdrop:
 		var b := Backdrop.new()
 		b.kind = p_kind
 		b.asset = p_asset
 		b.tile_origin = p_tile_origin
+		b.rotated = p_rotated
 		return b
 
 
@@ -171,9 +176,21 @@ func _update_backdrops(origin: Vector2) -> void:
 			add_child(s)
 		s.visible = true
 		var px_scale := TILE_PIXELS / sset.px_per_tile()
-		var top_left := origin + spec.tile_origin * TILE_PIXELS \
-			- sset.interior_origin_px() * px_scale
-		s.position = top_left + Vector2(sset.px_size()) * px_scale * 0.5
+		if spec.rotated:
+			# Side-on mooring: the sprite rotates 90 CCW about its center.
+			# For a full-width grid anchored at the sprite's top-left (the
+			# Mockingbird contract), the rotated grid's (0,0) corner lands
+			# at the rotated bounding box's top-left, so the box just swaps
+			# its dimensions.
+			var top_left_r := origin + spec.tile_origin * TILE_PIXELS
+			s.rotation = -PI / 2
+			s.position = top_left_r + Vector2(
+				float(sset.px_size().y), float(sset.px_size().x)) * px_scale * 0.5
+		else:
+			var top_left := origin + spec.tile_origin * TILE_PIXELS \
+				- sset.interior_origin_px() * px_scale
+			s.rotation = 0.0
+			s.position = top_left + Vector2(sset.px_size()) * px_scale * 0.5
 		s.scale = Vector2.ONE * px_scale
 	for child in get_children():
 		if String(child.name).begins_with("bd_") \

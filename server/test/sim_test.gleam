@@ -4,10 +4,11 @@
 //// by tile ownership (visitors carried, crew transferred, emptied ships
 //// despawned), berth exhaustion refuses login, and the trade/cargo/despawn
 //// flows survive the rework. These drive the real actor through its public
-//// API and observe it the way clients do â€” through snapshot/space/walkers
+//// API and observe it the way clients do — through snapshot/space/walkers
 //// messages.
 
 import dh_server/composite
+import dh_server/deckplan
 import dh_server/noise
 import dh_server/protocol
 import dh_server/shipclass
@@ -248,13 +249,13 @@ fn wait_for_walkers_with(
   }
 }
 
-/// Walk a standing character from their helm seat down and ashore: the
-/// Mockingbird's spine (cockpit, quarters, mess, the 'U' stair) is its
-/// center column, but the gangway is the PORT dormer one column west —
-/// so: straight SOUTH to the 'B' docking deck, sidestep WEST onto the
-/// gangway column (the berth column), SOUTH through the berth stub onto
-/// the concourse floor. Works from any berth; the center column's void
-/// below row 9 pins the descent on the docking deck, so no settle needed.
+/// Walk a standing character from their helm seat down and ashore.
+/// Iteration 4 (side-on mooring): the moored ship lies nose-west; the
+/// upper corridor from the cockpit runs EAST along composite row 7 to the
+/// vertical docking corridor at the ship's waist (its column is the berth
+/// column, 19 east of the helm), then SOUTH through the port dormer, the
+/// 3-tile docking tube and the berth stub onto the concourse floor (rows
+/// 13-15). Works from any berth; hull void pins both runs.
 fn walk_down_the_gangway(
   s: process.Subject(sim.Msg),
   client: process.Subject(sim.ClientMsg),
@@ -264,18 +265,16 @@ fn walk_down_the_gangway(
     sim.request_stand(s, char, 1000)
   let #(x0, _y0) = wait_for_position(client, char, 60)
   let helm_x = int.to_float(float.round(float.floor(x0))) +. 0.5
-  let gangway_x = helm_x -. 1.0
+  let gangway_x = helm_x +. 19.0
+  sim.set_move(s, char, 1.0, 0.0)
+  wait_for_walker(client, char, fn(x, _y) { x >=. gangway_x -. 0.1 }, 900)
   sim.set_move(s, char, 0.0, 1.0)
-  wait_for_walker(client, char, fn(_x, y) { y >=. 9.35 }, 200)
-  sim.set_move(s, char, -1.0, 0.0)
-  wait_for_walker(client, char, fn(x, _y) { x <=. gangway_x +. 0.1 }, 120)
-  sim.set_move(s, char, 0.0, 1.0)
-  wait_for_walker(client, char, fn(_x, y) { y >=. 12.2 }, 200)
+  wait_for_walker(client, char, fn(_x, y) { y >=. 14.2 }, 300)
   helm_x
 }
 
 /// walk_down_the_gangway, then along the floor to `broker_main` at
-/// composite (10.5, 12.5) — the stitched-space replacement for M3's
+/// composite (10.5, 14.5) — the stitched-space replacement for M3's
 /// stand/walk/disembark.
 fn walk_to_broker(
   s: process.Subject(sim.Msg),
@@ -283,59 +282,54 @@ fn walk_to_broker(
   char: Int,
 ) -> Nil {
   let helm_x = walk_down_the_gangway(s, client, char)
-  case helm_x <. 10.5 {
+  case helm_x +. 19.0 <. 10.5 {
     True -> {
       sim.set_move(s, char, 1.0, 0.0)
-      wait_for_walker(client, char, fn(x, _y) { x >=. 10.4 }, 120)
+      wait_for_walker(client, char, fn(x, _y) { x >=. 10.4 }, 900)
     }
     False -> {
       sim.set_move(s, char, -1.0, 0.0)
-      wait_for_walker(client, char, fn(x, _y) { x <=. 10.6 }, 120)
+      wait_for_walker(client, char, fn(x, _y) { x <=. 10.6 }, 900)
     }
   }
   sim.set_move(s, char, 0.0, 0.0)
 }
 
-/// Reverse of `walk_to_broker`: along the floor to the ship's GANGWAY
-/// column (one west of the helm column), north up the stub onto the 'B'
-/// docking deck, sidestep east onto the spine, north to the cockpit at
-/// `(helm_x, 1.5)`. `helm_x` is whatever composite column the character's
-/// helm actually sits at (captured before walking away), so this works
-/// from any berth — never assumes berth 0.
+/// Reverse of `walk_to_broker`: along the floor to the ship's gangway
+/// column (19 east of the helm column), north up the tube into the
+/// docking corridor, then west along the upper corridor to the cockpit.
+/// `helm_x` is whatever composite column the character's helm actually
+/// sits at (captured before walking away) — never assumes berth 0.
 fn walk_broker_to_helm(
   s: process.Subject(sim.Msg),
   client: process.Subject(sim.ClientMsg),
   char: Int,
   helm_x: Float,
 ) -> Nil {
-  let gangway_x = helm_x -. 1.0
+  let gangway_x = helm_x +. 19.0
   case gangway_x <. 10.5 {
     True -> {
       sim.set_move(s, char, -1.0, 0.0)
-      wait_for_walker(client, char, fn(x, _y) { x <=. gangway_x +. 0.1 }, 120)
+      wait_for_walker(client, char, fn(x, _y) { x <=. gangway_x +. 0.1 }, 900)
     }
     False -> {
       sim.set_move(s, char, 1.0, 0.0)
-      wait_for_walker(client, char, fn(x, _y) { x >=. gangway_x -. 0.1 }, 120)
+      wait_for_walker(client, char, fn(x, _y) { x >=. gangway_x -. 0.1 }, 900)
     }
   }
   sim.set_move(s, char, 0.0, -1.0)
-  wait_for_walker(client, char, fn(_x, y) { y <=. 9.6 }, 200)
-  sim.set_move(s, char, 1.0, 0.0)
-  wait_for_walker(client, char, fn(x, _y) { x >=. helm_x -. 0.1 }, 120)
-  sim.set_move(s, char, 0.0, -1.0)
-  wait_for_walker(client, char, fn(_x, y) { y <=. 2.6 }, 200)
+  wait_for_walker(client, char, fn(_x, y) { y <=. 7.6 }, 300)
+  sim.set_move(s, char, -1.0, 0.0)
+  wait_for_walker(client, char, fn(x, _y) { x <=. helm_x +. 0.1 }, 300)
   sim.set_move(s, char, 0.0, 0.0)
 }
 
 /// A visitor walks onto another ship's deck, wherever both ships' berths
 /// landed: down their own gangway, along the floor to the target ship's
-/// gangway column (one west of its helm column), north through the berth
-/// stub onto the target's 'B' docking deck and up its port 'L' half-flight
-/// into the hold (composite y <= 8.6 is standing on target-ship tiles, on
-/// the LOWER deck — cargo comes aboard through the rear port and stairs,
-/// per the lore). `target_helm_x` is the target ship's helm column, e.g.
-/// read off a shared `walkers` message.
+/// gangway column (19 east of its helm column), north through the berth
+/// stub and the docking tube into the target's 'B' corridor (composite
+/// y <= 7.6 is standing on target-ship tiles). `target_helm_x` is the
+/// target ship's helm column, e.g. read off a shared `walkers` message.
 fn walk_visitor_onto_ship(
   s: process.Subject(sim.Msg),
   client: process.Subject(sim.ClientMsg),
@@ -343,20 +337,20 @@ fn walk_visitor_onto_ship(
   target_helm_x: Float,
 ) -> Nil {
   let _own_helm_x = walk_down_the_gangway(s, client, char)
-  let target_gangway_x = target_helm_x -. 1.0
+  let target_gangway_x = target_helm_x +. 19.0
   let #(x_now, _) = wait_for_position(client, char, 60)
   case target_gangway_x <. x_now {
     True -> {
       sim.set_move(s, char, -1.0, 0.0)
-      wait_for_walker(client, char, fn(x, _y) { x <=. target_gangway_x }, 200)
+      wait_for_walker(client, char, fn(x, _y) { x <=. target_gangway_x }, 900)
     }
     False -> {
       sim.set_move(s, char, 1.0, 0.0)
-      wait_for_walker(client, char, fn(x, _y) { x >=. target_gangway_x }, 200)
+      wait_for_walker(client, char, fn(x, _y) { x >=. target_gangway_x }, 900)
     }
   }
   sim.set_move(s, char, 0.0, -1.0)
-  wait_for_walker(client, char, fn(_x, y) { y <=. 8.6 }, 200)
+  wait_for_walker(client, char, fn(_x, y) { y <=. 7.6 }, 300)
   sim.set_move(s, char, 0.0, 0.0)
 }
 
@@ -470,13 +464,15 @@ fn composite_helm_position(
     composite.build(concourse, station.berths, [
       composite.DockedShip(ship_id: ship_id, berth: berth, plan: class.plan),
     ])
-  let assert Ok(mooring) = composite.find_mooring(built, ship_id)
+  let assert Ok(_mooring) = composite.find_mooring(built, ship_id)
+  // The composite carries the moored (rotated + translated) console — the
+  // same lookup production uses at login.
   let assert Ok(helm) =
-    list.find(class.plan.consoles, fn(c) { c.id == "helm_main" })
-  #(
-    int.to_float(helm.x + mooring.dx) +. 0.5,
-    int.to_float(helm.y + mooring.dy) +. 0.5,
-  )
+    deckplan.find_console(
+      built.plan,
+      composite.namespace_id(ship_id, "helm_main"),
+    )
+  #(int.to_float(helm.x) +. 0.5, int.to_float(helm.y) +. 0.5)
 }
 
 pub fn login_lands_in_the_station_space_seated_at_own_helm_test() {
@@ -569,8 +565,8 @@ pub fn undock_splits_bodies_by_tile_test() {
   let assert Ok(CrewMember(x: x, y: y, seat: seat, ..)) =
     list.find(crew, fn(c) { c.id == char_p })
   assert seat == Some("helm_main")
-  assert x == 3.5
-  assert y == 1.5
+  assert x == 6.5
+  assert y == 2.5
   // grace still walks the station space, which no longer moors ship_p.
   let #(space_w, _, ashore) =
     receive_walkers_for(walker, "station:meridian_highport")
@@ -599,8 +595,9 @@ pub fn undock_carries_visitors_and_transfers_crew_test() {
   assert list.any(crew, fn(c) { c.id == char_v })
   assert list.any(crew, fn(c) { c.id == char_p })
   // The pilot's snapshot buffer accumulated (undrained) through grace's long
-  // walk, so drain generously to reach the post-undock frames.
-  assert_ship_leaves_snapshots(pilot, ship_v, 400)
+  // walk — up to ~60s across the highport bar at 15 Hz — so drain very
+  // generously to reach the post-undock frames.
+  assert_ship_leaves_snapshots(pilot, ship_v, 1600)
 }
 
 pub fn body_on_a_despawning_mooring_is_refloored_test() {
@@ -620,13 +617,14 @@ pub fn body_on_a_despawning_mooring_is_refloored_test() {
   // of a non-walkable circle forever otherwise).
   process.kill(pid_a)
   assert wait_for_clients(s, 1, 100)
-  // She lands at the concourse spawn tile: (16,3) + concourse offset (0,9) =
-  // (16,12) tile -> center (16.5, 12.5). Only her own berth-1 ship is left
-  // moored, so min_y (-9) and thus the offset are unchanged by the rebuild.
-  wait_for_walker(client_b, char_b, fn(x, y) { x == 16.5 && y == 12.5 }, 120)
+  // She lands at the concourse spawn tile: (47,3) + concourse offset
+  // (0,11) = (47,14) tile -> center (47.5, 14.5). The frame is stable
+  // (berths sit >= 18 tiles from the west edge), so the rebuild does not
+  // shift it.
+  wait_for_walker(client_b, char_b, fn(x, y) { x == 47.5 && y == 14.5 }, 120)
   // ...and she is unstuck: fresh move input changes her position again.
   sim.set_move(s, char_b, 1.0, 0.0)
-  wait_for_walker(client_b, char_b, fn(x, _y) { x >. 16.5 }, 120)
+  wait_for_walker(client_b, char_b, fn(x, _y) { x >. 47.5 }, 120)
 }
 
 // FINDING 3 (remote-station rebuild on undock crew-transfer despawn) has no
@@ -635,7 +633,7 @@ pub fn body_on_a_despawning_mooring_is_refloored_test() {
 // standing on the departing ship's mooring at station S1 while their own ship
 // sits docked at S2. Constructible in principle (a shanghaied visitor can take
 // the vacated helm and fly the ship to another station), but that requires
-// scripted inter-station piloting this suite has never done â€” impractical
+// scripted inter-station piloting this suite has never done — impractical
 // here, not impossible. The fix mirrors ClientDown's despawned_station_ids computation
 // (see the ClientDown handler in sim.gleam), which the disconnect-despawn
 // tests above exercise as the shared shape; FINDING 2's re-floor (now inside
@@ -672,7 +670,7 @@ pub fn free_berth_is_seed_random_among_free_berths_test() {
   // Undocking before the next login puts every berth free again, so each
   // of these three logins hits free_berth's "all free" case: pick =
   // hash(seed, "meridian_highport:<ship_id>") mod free_count, indexed
-  // straight into [berth_0, berth_1, berth_2] â€” exactly the scenario the
+  // straight into [berth_0, berth_1, berth_2] — exactly the scenario the
   // feature targets ("I'm always assigned to Berth 1").
   let client_1 = process.new_subject()
   let assert Ok(#(ship_1, char_1)) = sim.add_player(s, "p1", client_1, 1000)
@@ -701,7 +699,7 @@ pub fn free_berth_is_seed_random_among_free_berths_test() {
   let berth_3 = expected_berth(w.seed, "meridian_highport", ship_3, free_count)
 
   // The sim's actual pick matches the hash formula, not just "somewhere
-  // walkable" â€” assert exact composite coordinates for the derived berth.
+  // walkable" — assert exact composite coordinates for the derived berth.
   let #(ex1, ey1) =
     composite_helm_position(w, class, ship_1, "meridian_highport", berth_1)
   let #(ex2, ey2) =
@@ -731,7 +729,7 @@ pub fn seat_occupancy_is_scoped_to_the_shared_space_test() {
   let result = sim.request_sit(s, char_b, helm_a, 1000)
   assert result.ok == False
   // Too far (grace is docked at a different berth than ada's helm) or
-  // occupied â€” either way the shared space resolved the console.
+  // occupied — either way the shared space resolved the console.
   assert result.reason == Some("occupied") || result.reason == Some("too_far")
 }
 
@@ -799,7 +797,7 @@ pub fn interior_fan_out_is_isolated_per_ship_test() {
 
   // Both undock (each seated at their own namespaced helm since login) and
   // fly off in their own ships. Every walkers message each client receives
-  // must carry its own ship's space â€” never the other's.
+  // must carry its own ship's space — never the other's.
   let assert Ok(Nil) = sim.request_undock(s, char_a, 1000)
   let assert Ok(Nil) = sim.request_undock(s, char_b, 1000)
   let space_a = "ship:" <> int.to_string(ship_a)
@@ -828,7 +826,7 @@ pub fn buy_delivers_over_time_then_sell_pays_out_test() {
   let s = start_sim()
   let client = process.new_subject()
   let assert Ok(#(ship_id, char)) = sim.add_player(s, "ada", client, 1000)
-  // Walk from the helm to the broker, then sit â€” one composite space, no
+  // Walk from the helm to the broker, then sit — one composite space, no
   // disembark.
   walk_to_broker(s, client, char)
   let assert protocol.SeatResult(ok: True, ..) =
