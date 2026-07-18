@@ -41,7 +41,7 @@ const PLANET_PALETTE := [
 ## Scale constants (eyeball-tuned; ships are sim points, so their visual
 ## size is a presentation choice).
 const SHIP_WORLD_UNITS_PER_PX := 1.33   # Mockingbird 45 px -> ~60 world units
-const SHIP_MIN_SCREEN_SCALE := 0.5      # readability clamp when zoomed out
+const SHIP_MIN_SCREEN_SCALE := 1.0      # never below native px: ships stay readable
 const STATION_SPAN_FACTOR := 1.6        # station sprite width ~= 1.6 * dock_radius
 const BODY_SPRITE_PX := 500.0           # Classic body sprites are 500x500
 const PLANET_KINDS := ["barren", "desert", "flowerforest", "forest",
@@ -299,12 +299,16 @@ func _spawn_plumes(ship_sprite: Sprite2D, sset: AssetLibrary.SpriteSet) -> void:
 	var half := Vector2(sset.px_size()) * 0.5
 	var mat := CanvasItemMaterial.new()
 	mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
-	for anchor in sset.anchors("nozzle"):
+	var anchors := sset.anchors("nozzle")
+	for i in anchors.size():
+		var anchor := anchors[i]
 		var p := Sprite2D.new()
-		p.name = "plume"
+		p.name = "plume_%d" % i  # unique: duplicate names get @-mangled and
+		# would fall out of _update_plumes' begins_with("plume") filter
 		p.texture = _plume_tex
 		p.material = mat
 		p.light_mask = 2  # emissive: never sun-lit
+		p.show_behind_parent = true  # exhaust pours out from UNDER the hull
 		p.position = anchor - half + Vector2(0, 1.0)
 		p.offset = Vector2(0, 3.0)  # glow center trails the nozzle; scaling
 		p.modulate.a = 0.0          # y stretches the plume aft (texture +y)
@@ -320,9 +324,9 @@ func _update_plumes(ship_sprite: Sprite2D, ship: ShipState, delta: float) -> voi
 	var flicker := 1.0 + 0.08 * sin(Time.get_ticks_msec() * 0.03 * TAU)
 	for child in ship_sprite.get_children():
 		if child is Sprite2D and String(child.name).begins_with("plume"):
-			child.modulate.a = level
-			child.scale = Vector2(0.5 + 0.4 * level,
-				(0.2 + 2.8 * level) * flicker)
+			child.modulate.a = 0.85 * level
+			child.scale = Vector2(0.4 + 0.25 * level,
+				(0.2 + 2.2 * level) * flicker)
 
 
 ## Burn detection for ships we don't control: a snapshot-to-snapshot velocity

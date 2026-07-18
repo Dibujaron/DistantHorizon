@@ -22,7 +22,7 @@ const TICKS_PER_SEC := 60.0
 const ZOOM_MIN := 0.02
 const ZOOM_MAX := 2.0
 const ZOOM_STEP := 1.15
-const DEFAULT_ZOOM := 0.2
+const DEFAULT_ZOOM := 0.5  # M3.5: sprites read at this height (ships clamp to full px)
 
 ## Event feed (trades, failures, eventual player chat) lives in the ChatLog
 ## label at the bottom-left, scrolling upward, so it never overlays the
