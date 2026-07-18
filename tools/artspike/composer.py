@@ -166,3 +166,34 @@ def height_to_normals(height, z_scale):
     gy, gx = np.gradient(height * z_scale * SS)
     n = np.dstack([-gx, -gy, np.ones_like(height)])
     return n / np.linalg.norm(n, axis=2, keepdims=True)
+
+
+# ----------------------------------------------------------------- masks ----
+# every color a ship's flat albedo may contain, per manufacturer — the
+# classification universe; nearest-match needs the full set so AA pixels
+# snap to their true parent color
+RIJAY_PALETTE = [(59, 141, 224), (42, 102, 168), (238, 242, 246),
+                 (95, 216, 232), (104, 109, 117), (52, 58, 68)]
+PHE_PALETTE = [(223, 227, 230), (217, 122, 40), (168, 90, 30),
+               (138, 143, 151), (104, 109, 117), (95, 216, 232),
+               (154, 160, 168), (52, 58, 68)]
+
+
+def classify_masks(rgb, alpha, c1_colors, c2_colors, palette):
+    """(H,W,2) float: 1.0 where the pixel's nearest palette color is a c1
+    (resp. c2) livery color. Fixed detail colors map to neither channel."""
+    keys = list(palette)
+    for c in list(c1_colors) + list(c2_colors):
+        if c not in keys:
+            keys.append(c)
+    keys_a = np.array(keys, dtype=np.float64)
+    px = (rgb * 255).reshape(-1, 3)
+    nearest = ((px[:, None, :] - keys_a[None, :, :]) ** 2).sum(axis=2)
+    nearest = nearest.argmin(axis=1).reshape(rgb.shape[:2])
+    c1_idx = [keys.index(c) for c in c1_colors]
+    c2_idx = [keys.index(c) for c in c2_colors]
+    solid = alpha > 0.5
+    m = np.zeros(rgb.shape[:2] + (2,))
+    m[..., 0] = np.isin(nearest, c1_idx) & solid
+    m[..., 1] = np.isin(nearest, c2_idx) & solid
+    return m

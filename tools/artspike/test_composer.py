@@ -94,3 +94,30 @@ def test_normals_slope_sign():
     n = height_to_normals(h, z_scale=28.0)
     assert n[15, 15, 0] < -0.1
     assert abs(n[15, 15, 1]) < 1e-6
+
+
+def test_classify_masks_strict_palette():
+    from composer import classify_masks, rasterize
+    frag = ('<rect x="-20" y="-20" width="20" height="40" fill="#3b8de0" stroke="none"/>'
+            '<rect x="0" y="-20" width="10" height="40" fill="#eef2f6" stroke="none"/>'
+            '<rect x="10" y="-20" width="10" height="40" fill="#2a66a8" stroke="none"/>')
+    rgba = rasterize(frag, (-25, -25, 50, 50), ss=2)
+    m = classify_masks(rgba[..., :3], rgba[..., 3],
+                       c1_colors=[(59, 141, 224)], c2_colors=[(238, 242, 246)],
+                       palette=[(59, 141, 224), (238, 242, 246), (42, 102, 168)])
+    assert m[50, 20, 0] == 1.0 and m[50, 20, 1] == 0.0    # blue -> c1
+    assert m[50, 55, 1] == 1.0 and m[50, 55, 0] == 0.0    # white -> c2
+    assert m[50, 75, 0] == 0.0 and m[50, 75, 1] == 0.0    # dark blue -> fixed
+    assert m[2, 2].sum() == 0.0                            # background
+
+
+def test_flat_albedo_has_no_glow_or_highlight():
+    from composer import rasterize, flatten
+    from manufacturers import ship_mockingbird
+    frag = flatten(ship_mockingbird(), sheet=False)
+    # no painted highlight, no emissive glow in the lit-pipeline albedo
+    assert "#5aa3ea" not in frag
+    assert "url(#glow)" not in frag and "#ffe3b0" not in frag
+    rgba = rasterize(frag, (-40, -115, 80, 190))
+    px = (rgba[..., :3] * 255)[rgba[..., 3] > 0.9]
+    assert not ((np.abs(px - (255, 157, 77)).max(axis=1)) < 12).any()
