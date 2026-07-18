@@ -238,43 +238,122 @@ def rijay_cockpit(cy, w):
     """forward canopy, right where the writeup says it goes"""
     return rrect(-w / 2, cy, w, 13, 5, GLASS, stroke=INK, sw=1.6)
 
-def ship_mockingbird():
-    """the original sprite, honored: one continuous birdlike form — small
-    head, thick neck flowing into a teardrop breast — ending in a fan of
-    striped tail feathers spread around the engines"""
+# --- Mockingbird, locked 2026-07-17 after spike round 4.9 (mockingbird_iter.py).
+# Canon: goose proportions (plumpness 1.0 — "a goose, not a falcon"), hybrid head,
+# head-tip canopy with struts (Firefly), one smooth flowing hull nose->stern (the
+# engine support IS the hull), three separated cylindrical drums (Republic Cruiser
+# ref; individually swappable — the repossessed starter has a Consol drum in the
+# middle), waist docking-port dormers (hull-colored, seamless inboard, door
+# outboard; same top/bottom unseen), white stripes: dorsal (meets center drum) +
+# flank centerlines (break at ports, brief reconnect on the flare). Fins are the
+# ATMO-LANDING PACKAGE (fl=0.8): dorsal+ventral ridge per drum + outboard pair,
+# 8 total, leading edges share one fore point, ends at drum aft (exhaust-safe).
+# stock=True renders the workaday finless bird. Two colors; dark blue only on
+# small practical bits. Blue/white become the c1/c2 livery channels at composer
+# time.
+
+MB_Y, MB_SP, MB_R, MB_LN, MB_FL = 40, 21, 7.5, 28, 0.8
+
+def mb_drums(stock=False):
+    y, r, ln = MB_Y, MB_R, MB_LN
     s = ""
-    # tail-feather fan (under hull): striped white/blue, radiating
-    feathers = [(-44, 82, -26, 92, RIJ_WHITE), (-26, 92, -12, 98, RIJ_BLUE),
-                (-12, 98, 12, 98, RIJ_WHITE), (12, 98, 26, 92, RIJ_BLUE),
-                (26, 92, 44, 82, RIJ_WHITE)]
-    for x1, y1, x2, y2, col in feathers:
-        s += poly([(x1 * .3, 44), (x2 * .3, 44), (x2, y2), (x1, y1)], col, sw=2)
-    for sx in (-1, 1):  # outermost feathers, swept wide
-        s += poly([(sx * 12, 42), (sx * 34, 62), (sx * 52, 74), (sx * 44, 84),
-                   (sx * 24, 76)], RIJ_BLUE, sw=2)
-    # engines glow through the fan roots
-    for gx in (-13, 0, 13):
-        s += f'<ellipse cx="{gx}" cy="62" rx="7" ry="10" fill="url(#glow)"/>'
-        s += (f'<ellipse cx="{gx}" cy="57" rx="4" ry="5.5" fill="{GLOW_CORE}" '
-              f'stroke="none"/>')
-    # hull, per the sprite: straight neck, kinked bird-shoulder, flat-sided
-    # body — segmented like pixels, not an S-curve (no bowling pins)
-    segs = [("L", 8, -103),                       # angular head
-            ("Q", 10, -98, 9, -92),
-            ("L", 8, -86),                        # back of head
-            ("L", 8, -60),                        # straight thick neck
-            ("L", 19, -26),                       # the shoulder kink
-            ("Q", 21, -16, 20, -6),               # widest, briefly
-            ("L", 17, 30),                        # flat taper
-            ("Q", 14, 44, 0, 50)]                 # stern
-    s += mirrored_path((0, -112), segs, RIJ_BLUE, sw=2.5)
-    hi = mirrored_path((0, -112), segs, "#5aa3ea", stroke="none", opacity=.5)
+    for i in (-1, 0, 1):
+        cx = i * MB_SP
+        s += rrect(cx - r, y, 2 * r, ln, r * .95, RIJ_BLUE, sw=2.2)
+        if stock:  # painted center stripe; on the atmo bird the fin ridge is it
+            s += line(cx, y + 2.5, cx, y + ln - 2.5, RIJ_WHITE, 2.6, .95)
+        s += rrect(cx - r * .72, y + ln - 2.5, r * 1.44, 5.5, 2.2, RIJ_BLUE_D,
+                   sw=1.6)
+        s += (f'<ellipse cx="{cx:.1f}" cy="{y + ln + 8:.1f}" rx="{r * .85:.1f}" '
+              f'ry="10" fill="url(#glow)"/>')
+        s += (f'<ellipse cx="{cx:.1f}" cy="{y + ln + 3.5:.1f}" rx="{r * .5:.1f}" '
+              f'ry="5.5" fill="{GLOW_CORE}" stroke="none"/>')
+    return s
+
+def mb_dorsal_fins():
+    y, ln, fl = MB_Y, MB_LN, MB_FL
+    s = ""
+    for i in (-1, 0, 1):  # thin ridges from above; ventral trio hidden beneath
+        cx = i * MB_SP
+        s += poly([(cx, y + 3), (cx + 1.9, y + 8), (cx + 1.9, y + ln - 2),
+                   (cx + 1.2, y + ln + 7 * fl), (cx, y + ln + 9 * fl),
+                   (cx - 1.2, y + ln + 7 * fl), (cx - 1.9, y + ln - 2),
+                   (cx - 1.9, y + 8)], RIJ_WHITE, stroke=INK, sw=1.0)
+    return s
+
+def mb_outboard_fins():
+    y, r, ln, fl = MB_Y, MB_R, MB_LN, MB_FL
+    s = ""
+    for sx in (-1, 1):  # under the drums; leading edge shares the fore point
+        root = sx * MB_SP
+        tips = [(root + sx * (r + 8.5 * fl), y + 16),
+                (root + sx * (r + 9.5 * fl), y + ln - 6),
+                (root + sx * (r + 5.5 * fl), y + ln)]
+        s += poly([(root, y + 3)] + tips + [(root, y + ln)], RIJ_BLUE, sw=1.8)
+        edge = " L ".join(f"{x - sx * 2.2:.1f},{yy + .8:.1f}" for x, yy in tips)
+        s += (f'<path d="M {edge}" fill="none" stroke="{RIJ_WHITE}" '
+              f'stroke-width="2" stroke-linecap="round" '
+              f'stroke-linejoin="round" opacity=".95"/>')
+    return s
+
+def mb_ports(y=27, edge=16):
+    s = ""
+    for sx in (-1, 1):  # hull-colored dormers, seamless at the inboard edge
+        x0 = edge - 2 if sx > 0 else -(edge + 5.2)
+        s += rrect(x0, y, 7.2, 10, 2.5, RIJ_BLUE, stroke=INK, sw=1.6)
+        px = edge - 4.5 if sx > 0 else -(edge + .2)
+        s += rrect(px, y + .9, 4.7, 8.2, 0, RIJ_BLUE, stroke="none")
+        s += rrect(x0 + (3.6 if sx > 0 else .8), y + 2.8, 2.8, 4.4, 1.1,
+                   RIJ_BLUE_D, stroke=INK, sw=.9)
+        for by in (y + 2.4, y + 7.6):
+            s += circle(sx * (edge + .6), by, .8, GLASS, stroke="none")
+    return s
+
+def mb_canopy(nose_y=-104):
+    """the window IS the head tip, with struts — the Firefly cockpit read"""
+    s = mirrored_path((0, nose_y + 2.5), [
+        ("L", 6, nose_y + 9),
+        ("Q", 7.5, nose_y + 14, 6.5, nose_y + 19),
+        ("L", 0, nose_y + 22)], GLASS, stroke=INK, sw=1.6)
+    s += line(0, nose_y + 3, 0, nose_y + 21, INK, 1.4)
+    s += line(-6.2, nose_y + 13, 6.2, nose_y + 13, INK, 1.3)
+    return s
+
+def ship_mockingbird(stock=False):
+    """Rijay's flagship and the game's starter ship. See canon block above."""
+    s = "" if stock else mb_outboard_fins()
+    segs = [("L", 8, -95),                    # hybrid head
+            ("Q", 10, -90, 9, -84),
+            ("L", 8.5, -78),
+            ("L", 9, -62),                    # short thick neck
+            ("L", 24, -34),                   # shoulder kink
+            ("Q", 27, -18, 27, -4),           # fat breast, widest low
+            ("L", 19.5, 22),                  # taper
+            ("Q", 15, 30, 14, 38),            # the narrows — the waist
+            ("Q", 16, 44, 24, 47),            # flare into the engine support
+            ("L", 26.5, 52),
+            ("L", 26.5, 59),                  # solid stern, drums ride on it
+            ("Q", 25, 62, 18, 62),
+            ("L", 0, 62)]
+    s += mirrored_path((0, -104), segs, RIJ_BLUE, sw=2.5)
+    hi = mirrored_path((0, -104), segs, "#5aa3ea", stroke="none", opacity=.5)
     s += group(hi, ty=-4, scale=.85)
-    # dorsal stripe, full length like the sprite
-    s += poly([(-2, -104), (2, -104), (3.5, 42), (-3.5, 42)], RIJ_WHITE, sw=1.1)
-    s += rrect(-4, -113, 8, 9, 3.5, GLASS, stroke=INK, sw=1.4)  # canopy at tip
-    for sx in (-1, 1):  # flank lights at the widest point
-        s += rrect(sx * 17 - 2.5, -12, 5, 7, 1.5, GLASS, stroke=INK, sw=1.1)
+    # dorsal stripe runs aft to meet the center drum; no outline — it's paint
+    s += poly([(-2, -90), (2, -90), (3.5, 44), (-3.5, 44)], RIJ_WHITE,
+              stroke="none")
+    # flank stripes: break at the ports, brief reconnect on the flare
+    for pts in ([(8.5, -76), (9, -62), (24, -34), (27, -18), (27, -4),
+                 (19.5, 22)], [(17, 41), (22.5, 46.5)]):
+        for sx in (-1, 1):
+            d = "M " + " L ".join(f"{sx * (x - 2.4):.1f},{y:.1f}" for x, y in pts)
+            s += (f'<path d="{d}" fill="none" stroke="{RIJ_WHITE}" '
+                  f'stroke-width="2.2" stroke-linecap="round" '
+                  f'stroke-linejoin="round" opacity=".9"/>')
+    s += mb_drums(stock=stock)
+    if not stock:
+        s += mb_dorsal_fins()
+    s += mb_ports()
+    s += mb_canopy()
     return s
 
 def ship_swallow():
@@ -355,7 +434,7 @@ SHIPS = [  # (mfr, name, sub, fn, display_scale, classic_px_height, model_units)
     ("PHE", "THUMPER 24", "container freighter · 6×4 bays", ship_thumper24, .78, 64, 235),
     ("PHE", "THUMPER 6", "container freighter · 3×2 bays", ship_thumper6, .78, 32, 150),
     ("PHE", "LONGHORN", "passenger liner · sprite name: Hammerhead", ship_longhorn, .78, 41, 195),
-    ("RIJAY", "MOCKINGBIRD", "medium fast freighter", ship_mockingbird, .85, 45, 215),
+    ("RIJAY", "MOCKINGBIRD", "medium fast freighter", ship_mockingbird, .85, 45, 195),
     ("RIJAY", "SWALLOW", "interceptor", ship_swallow, .85, 20, 115),
     ("RADI", "KX6 XR", "long-haul yacht", ship_kx6, .85, 52, 175),
     ("RADI", "Y-SERIES", "interceptor, ask no questions", ship_y_interceptor, .85, 30, 125),

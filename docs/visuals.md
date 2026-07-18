@@ -43,10 +43,13 @@ its keep against that test.
   composer** (each part emits its height profile alongside its color; heights compose in
   painter's order like albedo), and lit-pipeline albedo is authored flat, with no painted
   highlights.
+    - Addendum: Because it's a multi-sun star system, there may be cases where light comes
+      from two directions at once.
 - Palette carries over from Classic: heavy on blues, yellows, and purples for ambient
   space. This already encodes the classic warm-key/cool-ambient trick — yellows are
   sunlight, blues and purples are shadow. Keep leaning on it.
-- Planets are pixelated sprites, as in Classic.
+- Planets are pixelated sprites, as in Classic. We can grab them from Classic, we paid
+  for them already.
 
 ## Places (interiors and concourses)
 
@@ -55,7 +58,7 @@ its keep against that test.
   contrast between tight inside and vast outside is the whole trick.
 - Concourse tone follows themes.md (Loneliness): transactional, a little alienating,
   "lived-in" means traces of lives you don't share — shuttered stalls, someone else's
-  coffee cup. Never cozy.
+  coffee cup. Rarely cozy; when it is, it's surprising.
 - **Signage is cheap vibe.** Concourses get a spaceport wayfinding language: departure
   boards, dock numbers, hazard pictograms. Reference: **Ron Cobb's Semiotic Standard**,
   the icon system designed for the Nostromo's interiors — practically a blueprint for a
