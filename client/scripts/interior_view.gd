@@ -54,6 +54,33 @@ const ROOM_TINT_PALETTE := [
 ]
 
 const WALL_PX := 14.0
+
+## #20: the open deck reads as one continuous surface. A flat FLOOR_COLOR fill
+## under every tile is seamless (neighbours share the colour); the plate
+## texture is only whispered back on top at this alpha, so the old per-tile
+## grid is gone from open floor and structure lives only at the edges. Raise
+## toward 1.0 to bring the plate seams back; 0.0 is dead flat.
+const FLOOR_TEXTURE_ALPHA := 0.16
+
+## #19 door hatch styling (procedural — no door art yet): a recessed threshold,
+## two sliding leaves meeting at a lit centre seam, brass jamb posts at each end.
+const DOOR_RECESS := Color(0.05, 0.06, 0.08)
+const DOOR_LEAF := Color(0.16, 0.18, 0.22)
+const DOOR_FRAME := Color(0.55, 0.42, 0.18)
+const DOOR_SEAM := Color(0.75, 0.58, 0.25, 0.85)
+
+## #22 stair treatment for between-level ('B') tiles: a run of descending
+## treads, bright at the head and dark at the foot, each with a nosing line.
+const STAIR_TREADS := 4
+const STAIR_LIGHT := Color(0.30, 0.32, 0.40)
+const STAIR_DARK := Color(0.10, 0.11, 0.15)
+const STAIR_NOSING := Color(0.48, 0.50, 0.58, 0.8)
+
+## #21 procedural walk cycle for the single-frame character art.
+const WALK_STEP_RATE := 3.2   # step-phase advance per tile travelled
+const WALK_BOB_PX := 2.4      # peak vertical bounce
+const WALK_TILT := 0.06       # peak side-to-side waddle, radians
+
 const VIEW_CONE_DIM := Color(0.0, 0.0, 0.0, 0.55)
 const VIEW_CONE_DARK := Color(0.02, 0.025, 0.045, 0.92)
 const VIEW_RANGE_TILES := 5.5   # how far you can make out PEOPLE outside
@@ -99,6 +126,10 @@ var _lib: AssetLibrary = null
 var _floor_tex: Array[Texture2D] = []
 var _facing: Dictionary = {}        # character id -> -1.0 | 1.0
 var _last_char_x: Dictionary = {}   # character id -> last tile x
+## #21 walk-cycle state: step phase, last drawn position, eased bob height.
+var _walk_phase: Dictionary = {}    # character id -> step phase
+var _last_pos: Dictionary = {}      # character id -> last drawn tile position
+var _bob: Dictionary = {}           # character id -> eased vertical bob (px)
 ## LOS cache: Vector2i tile -> bool visible; recomputed when the own tile,
 ## the plan, or the toggle changes.
 var _los: Dictionary = {}
@@ -140,6 +171,8 @@ func _draw() -> void:
 	_refresh_los()
 	_update_backdrops(origin)
 	_draw_floor(origin)
+	_draw_stairs(origin)
+	_draw_structure(origin)
 	_draw_signage(origin)
 	_draw_room_labels(origin)
 	_draw_consoles(origin)
@@ -235,61 +268,125 @@ func _room_for_tile(tx: int, ty: int) -> ShipClassData.Room:
 	return null
 
 
+## #20: the open deck reads as one continuous surface — a flat fill under every
+## floor tile (no seam between neighbours), with only a whisper of plate texture
+## on top. Structure (walls, doors) is NOT drawn here: it lives at the edges,
+## in _draw_structure, driven by the per-edge data (#19).
 func _draw_floor(origin: Vector2) -> void:
-	var wall_tex := _lib.interior("wall_n")
 	for ty in ship_class.grid_height:
 		for tx in ship_class.grid_width:
 			if not _vis(tx, ty):
 				continue  # void/other-deck paints NOTHING — hull or window
 			var pos := _tile_to_screen(Vector2(tx, ty), origin)
 			var rect := Rect2(pos, Vector2(TILE_PIXELS, TILE_PIXELS))
-			var tex := _floor_tex[absi(hash(Vector2i(tx, ty))) % 3]
-			if tex != null:
-				draw_texture_rect(tex, rect, false)
-			else:
-				draw_rect(rect, FLOOR_COLOR, true)
+			draw_rect(rect, FLOOR_COLOR, true)
+			if FLOOR_TEXTURE_ALPHA > 0.0:
+				var tex := _floor_tex[absi(hash(Vector2i(tx, ty))) % 3]
+				if tex != null:
+					draw_texture_rect(tex, rect, false,
+						Color(1, 1, 1, FLOOR_TEXTURE_ALPHA))
 			var room := _room_for_tile(tx, ty)
 			if room != null:
 				var tint_index := ship_class.rooms.find(room) % ROOM_TINT_PALETTE.size()
 				var tint: Color = ROOM_TINT_PALETTE[tint_index]
 				tint.a = ROOM_TINT_ALPHA
 				draw_rect(rect, tint, true)
-			if wall_tex != null:
-				_draw_bulkheads(pos, tx, ty, wall_tex)
 
 
-## Bulkhead cap on each edge of a floor tile that borders void/out-of-grid,
-## plus corner blocks so junctions read as one welded frame: concave corners
-## (two walls on this tile) get a block over the strip overlap, and
-## diagonal-void notches (both orthogonal neighbors walkable but the
-## diagonal is void) get a block filling the gap between the neighbors'
-## strips — the "laid against each other" seams both live at those spots.
-func _draw_bulkheads(pos: Vector2, tx: int, ty: int, wall_tex: Texture2D) -> void:
+## Walls and doors from the per-edge tile data (#19/#20). Each visible floor
+## tile asks ShipClassData.edge_at for its four edges; a shared edge between
+## two floor tiles is stamped once (by its N/W owner) so doors don't double up.
+## Corner welds close wall junctions into one frame, exactly as the old
+## adjacency bulkheads did — now keyed off the edge kinds instead of raw
+## adjacency, so authored interior walls/doors weld correctly too.
+func _draw_structure(origin: Vector2) -> void:
+	var wall_tex := _lib.interior("wall_n")
+	if wall_tex == null:
+		return
+	for ty in ship_class.grid_height:
+		for tx in ship_class.grid_width:
+			if not _vis(tx, ty):
+				continue
+			var pos := _tile_to_screen(Vector2(tx, ty), origin)
+			for dir in 4:
+				var kind := ship_class.edge_at(view_deck, tx, ty, dir)
+				if kind == ShipClassData.Edge.NONE or not _owns_edge(tx, ty, dir):
+					continue
+				if kind == ShipClassData.Edge.DOOR:
+					_draw_edge_door(pos, dir)
+				else:
+					_draw_edge_wall(pos, dir, wall_tex)
+			_draw_wall_corners(pos, tx, ty)
+
+
+## A shared interior edge (floor on both sides) is stamped only from its N/W
+## side so the two tiles don't each draw it; a hull edge (void beyond) is
+## always owned by its floor tile.
+func _owns_edge(tx: int, ty: int, dir: int) -> bool:
+	if dir == 0 or dir == 3:  # N, W
+		return true
+	var d: Vector2i = ShipClassData.EDGE_DELTAS[dir]
+	return not _vis(tx + d.x, ty + d.y)
+
+
+## Whether tile (tx,ty)'s `dir` edge is a solid barrier (wall or edge-mounted
+## equipment) — used for the corner welds.
+func _edge_is_wall(tx: int, ty: int, dir: int) -> bool:
+	var k := ship_class.edge_at(view_deck, tx, ty, dir)
+	return k == ShipClassData.Edge.WALL or k == ShipClassData.Edge.EQUIPMENT
+
+
+## Sets the draw transform so a local (TILE_PIXELS x WALL_PX) strip at the
+## origin maps onto tile edge `dir` (0=N,1=E,2=S,3=W). Caller resets it.
+func _begin_edge(pos: Vector2, dir: int) -> void:
 	var t := TILE_PIXELS
-	var strip := Vector2(t, WALL_PX)
-	var wall_n := not _vis(tx, ty - 1)
-	var wall_s := not _vis(tx, ty + 1)
-	var wall_e := not _vis(tx + 1, ty)
-	var wall_w := not _vis(tx - 1, ty)
-	if wall_n:
-		draw_texture_rect(wall_tex, Rect2(pos, strip), false)
-	if wall_s:
-		draw_set_transform(pos + Vector2(t, t), PI, Vector2.ONE)
-		draw_texture_rect(wall_tex, Rect2(Vector2.ZERO, strip), false)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	if wall_e:
-		draw_set_transform(pos + Vector2(t, 0), PI / 2, Vector2.ONE)
-		draw_texture_rect(wall_tex, Rect2(Vector2.ZERO, strip), false)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	if wall_w:
-		draw_set_transform(pos + Vector2(0, t), -PI / 2, Vector2.ONE)
-		draw_texture_rect(wall_tex, Rect2(Vector2.ZERO, strip), false)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	match dir:
+		1:  # E
+			draw_set_transform(pos + Vector2(t, 0), PI / 2, Vector2.ONE)
+		2:  # S
+			draw_set_transform(pos + Vector2(t, t), PI, Vector2.ONE)
+		3:  # W
+			draw_set_transform(pos + Vector2(0, t), -PI / 2, Vector2.ONE)
+		_:  # N
+			draw_set_transform(pos, 0.0, Vector2.ONE)
+
+
+func _draw_edge_wall(pos: Vector2, dir: int, wall_tex: Texture2D) -> void:
+	_begin_edge(pos, dir)
+	draw_texture_rect(wall_tex, Rect2(Vector2.ZERO, Vector2(TILE_PIXELS, WALL_PX)), false)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## A hatch in the same strip footprint as a wall: recessed threshold, two
+## sliding leaves meeting at a lit centre seam, brass jamb posts at each end.
+func _draw_edge_door(pos: Vector2, dir: int) -> void:
+	var t := TILE_PIXELS
+	var w := WALL_PX
+	var jamb := w * 0.55
+	_begin_edge(pos, dir)
+	draw_rect(Rect2(Vector2.ZERO, Vector2(t, w)), DOOR_RECESS, true)
+	draw_rect(Rect2(Vector2(jamb, 1.0), Vector2(t * 0.5 - jamb, w - 2.0)), DOOR_LEAF, true)
+	draw_rect(Rect2(Vector2(t * 0.5, 1.0), Vector2(t * 0.5 - jamb, w - 2.0)), DOOR_LEAF, true)
+	draw_rect(Rect2(Vector2.ZERO, Vector2(jamb, w)), DOOR_FRAME, true)
+	draw_rect(Rect2(Vector2(t - jamb, 0.0), Vector2(jamb, w)), DOOR_FRAME, true)
+	draw_rect(Rect2(Vector2(t * 0.5 - 1.0, 2.0), Vector2(2.0, w - 4.0)), DOOR_SEAM, true)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## Corner blocks so wall junctions read as one welded frame: concave corners
+## (two walls meeting on this tile) cap the strip overlap, and diagonal-void
+## notches (both orthogonal neighbours floor but the diagonal is void) fill the
+## gap between the neighbours' strips — the "laid against each other" seams.
+func _draw_wall_corners(pos: Vector2, tx: int, ty: int) -> void:
 	var corner_tex := _lib.interior("wall_corner")
 	if corner_tex == null:
 		return
+	var t := TILE_PIXELS
 	var c := Vector2(WALL_PX, WALL_PX)
-	# concave: unify the overlap where two of this tile's strips cross
+	var wall_n := _edge_is_wall(tx, ty, 0)
+	var wall_e := _edge_is_wall(tx, ty, 1)
+	var wall_s := _edge_is_wall(tx, ty, 2)
+	var wall_w := _edge_is_wall(tx, ty, 3)
 	if wall_n and wall_w:
 		draw_texture_rect(corner_tex, Rect2(pos, c), false)
 	if wall_n and wall_e:
@@ -299,7 +396,6 @@ func _draw_bulkheads(pos: Vector2, tx: int, ty: int, wall_tex: Texture2D) -> voi
 	if wall_s and wall_e:
 		draw_texture_rect(corner_tex,
 			Rect2(pos + Vector2(t - WALL_PX, t - WALL_PX), c), false)
-	# diagonal-void notch: fill the gap between the two neighbors' strips
 	if not wall_n and not wall_w and not _vis(tx - 1, ty - 1):
 		draw_texture_rect(corner_tex, Rect2(pos - c, c), false)
 	if not wall_n and not wall_e and not _vis(tx + 1, ty - 1):
@@ -308,6 +404,28 @@ func _draw_bulkheads(pos: Vector2, tx: int, ty: int, wall_tex: Texture2D) -> voi
 		draw_texture_rect(corner_tex, Rect2(pos + Vector2(-WALL_PX, t), c), false)
 	if not wall_s and not wall_e and not _vis(tx + 1, ty + 1):
 		draw_texture_rect(corner_tex, Rect2(pos + Vector2(t, t), c), false)
+
+
+## Visible treatment for the between-level ('B') tiles — the rear half-flights
+## whose level change was previously invisible (#22). Data-driven off the deck
+## alphabet: every 'B' tile (a floor connecting both decks) is painted as a run
+## of descending treads (bright at the head, dark at the foot) with a nosing
+## highlight on each step, so the eye reads a staircase, not flat floor. Any
+## surrounding hull edges are still stamped by _draw_structure as rails.
+func _draw_stairs(origin: Vector2) -> void:
+	var t := TILE_PIXELS
+	var tread_h := t / float(STAIR_TREADS)
+	for ty in ship_class.grid_height:
+		for tx in ship_class.grid_width:
+			if ship_class.char_at(tx, ty) != "B":
+				continue
+			var pos := _tile_to_screen(Vector2(tx, ty), origin)
+			for i in STAIR_TREADS:
+				var f := float(i) / float(STAIR_TREADS - 1)
+				var band_pos := pos + Vector2(0, i * tread_h)
+				draw_rect(Rect2(band_pos, Vector2(t, tread_h)),
+					STAIR_LIGHT.lerp(STAIR_DARK, f), true)
+				draw_rect(Rect2(band_pos, Vector2(t, 2.0)), STAIR_NOSING, true)
 
 
 func _walkable(tx: int, ty: int) -> bool:
@@ -535,9 +653,13 @@ func _draw_characters(origin: Vector2) -> void:
 			_facing[character.id] = facing
 			_last_char_x[character.id] = character.x
 			# feet at the collision circle's bottom edge; art is 22x34,
-			# drawn at CHAR_SIZE (a touch bigger, user note round 9)
-			draw_set_transform(screen_pos + Vector2(0, radius_px), 0.0,
-				Vector2(facing, 1.0))
+			# drawn at CHAR_SIZE (a touch bigger, user note round 9). #21: a
+			# procedural walk cycle bobs and waddles the body while it moves.
+			var anim := _walk_anim(character.id, character.position())
+			var bob: float = anim.x
+			var tilt: float = anim.y
+			draw_set_transform(screen_pos + Vector2(0, radius_px - bob),
+				tilt * facing, Vector2(facing, 1.0))
 			draw_texture_rect(tex,
 				Rect2(Vector2(-CHAR_SIZE.x * 0.5, -CHAR_SIZE.y), CHAR_SIZE),
 				false)
@@ -550,3 +672,25 @@ func _draw_characters(origin: Vector2) -> void:
 			draw_string(
 				_font, screen_pos + Vector2(radius_px + 3.0, 4.0), label,
 				HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, CHARACTER_LABEL_COLOR)
+
+
+## Procedural walk cycle for the single-frame character art (#21). A step phase
+## advances by distance travelled since last frame (so cadence tracks real
+## speed, not wall-clock), driving a double-bounce vertical bob and a slight
+## side-to-side waddle; a stopped body eases back to a planted rest. Returns
+## (bob_px, tilt_radians). Real sprite-sheet frames could replace this later —
+## cycle them on `_walk_phase` and drop the bob/tilt.
+func _walk_anim(id: int, pos: Vector2) -> Vector2:
+	var last: Vector2 = _last_pos.get(id, pos)
+	var moved := pos.distance_to(last)
+	_last_pos[id] = pos
+	var phase: float = _walk_phase.get(id, 0.0)
+	var moving := moved > 0.0008
+	if moving:
+		phase += moved * WALK_STEP_RATE
+		_walk_phase[id] = phase
+	var target_bob := (absf(sin(phase * PI)) * WALK_BOB_PX) if moving else 0.0
+	var bob: float = lerpf(_bob.get(id, 0.0), target_bob, 0.3)
+	_bob[id] = bob
+	var tilt := (sin(phase * TAU) * WALK_TILT) if moving else 0.0
+	return Vector2(bob, tilt)
