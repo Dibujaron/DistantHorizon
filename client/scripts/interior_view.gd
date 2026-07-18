@@ -15,10 +15,11 @@ class_name InteriorView
 ## they're the wall plates at the hull edges, and you get a limited cone of
 ## outside view just by walking near them. Sight rays cross from floor out
 ## into void freely (that's the window you're standing at) but a ray that
-## has entered void never re-enters a hull: distant space stays dark until
-## you approach an edge, other interiors stay hidden across gaps, and
+## has entered void never re-enters a hull: space is visible in exactly the
+## directions your hull doesn't block (no distance cap — a planet is a
+## planet, however far), other interiors stay hidden across gaps, and
 ## interior walls still block room-to-room sight. Characters you can't see
-## aren't drawn.
+## aren't drawn, and even visible ones fade past window-spotting range.
 ##
 ## Camera: no zoom, but a clamped follow — an axis whose extent fits the
 ## viewport is centered; an axis that overflows follows the own character,
@@ -35,7 +36,7 @@ const OWN_CHARACTER_COLOR := Color(0.55, 0.85, 1.0)
 const OTHER_CHARACTER_COLOR := Color(0.85, 0.85, 0.9, 0.7)
 const CHARACTER_LABEL_COLOR := Color(0.8, 0.8, 0.85, 0.8)
 const CHARACTER_RADIUS_TILES := 0.3
-const FONT_SIZE := 13
+const FONT_SIZE := 16  # Jersey 15 diegetic slot (UiTheme)
 
 const ROOM_TINT_ALPHA := 0.10
 const ROOM_TINT_PALETTE := [
@@ -48,7 +49,7 @@ const ROOM_TINT_PALETTE := [
 const WALL_PX := 14.0
 const VIEW_CONE_DIM := Color(0.0, 0.0, 0.0, 0.55)
 const VIEW_CONE_DARK := Color(0.02, 0.025, 0.045, 0.92)
-const VIEW_RANGE_TILES := 5.5   # how far the window plates let you see out
+const VIEW_RANGE_TILES := 5.5   # how far you can make out PEOPLE outside
 const CHAR_SIZE := Vector2(22, 34)
 
 ## Set every frame by main.gd before queue_redraw().
@@ -73,27 +74,11 @@ var _los_from: Vector2i = Vector2i(-1000, -1000)
 var _los_plan: ShipClassData = null
 
 
-var _cone_mask: GradientTexture2D = null
-
-
 func _ready() -> void:
-	_font = ThemeDB.fallback_font
+	_font = UiTheme.pixel_font()  # in-world text speaks the diegetic slot
 	_lib = AssetLibrary.load_all()
 	for i in 3:
 		_floor_tex.append(_lib.interior("floor_%d" % i))
-	# radial view-range mask: transparent around the player, VIEW_CONE_DARK
-	# past the range the window plates allow
-	_cone_mask = GradientTexture2D.new()
-	_cone_mask.width = 256
-	_cone_mask.height = 256
-	_cone_mask.fill = GradientTexture2D.FILL_RADIAL
-	_cone_mask.fill_from = Vector2(0.5, 0.5)
-	_cone_mask.fill_to = Vector2(1.0, 0.5)
-	var grad := Gradient.new()
-	grad.set_color(0, Color(VIEW_CONE_DARK, 0.0))
-	grad.set_color(1, VIEW_CONE_DARK)
-	grad.add_point(0.62, Color(VIEW_CONE_DARK, 0.0))
-	_cone_mask.gradient = grad
 
 
 ## Called by main.gd once per frame. `p_focus_tile` is the own character's
@@ -168,24 +153,56 @@ func _draw_floor(origin: Vector2) -> void:
 				_draw_bulkheads(pos, tx, ty, wall_tex)
 
 
-## Bulkhead cap on each edge of a floor tile that borders void/out-of-grid.
+## Bulkhead cap on each edge of a floor tile that borders void/out-of-grid,
+## plus corner blocks so junctions read as one welded frame: concave corners
+## (two walls on this tile) get a block over the strip overlap, and
+## diagonal-void notches (both orthogonal neighbors walkable but the
+## diagonal is void) get a block filling the gap between the neighbors'
+## strips — the "laid against each other" seams both live at those spots.
 func _draw_bulkheads(pos: Vector2, tx: int, ty: int, wall_tex: Texture2D) -> void:
 	var t := TILE_PIXELS
 	var strip := Vector2(t, WALL_PX)
-	if not _walkable(tx, ty - 1):   # north
+	var wall_n := not _walkable(tx, ty - 1)
+	var wall_s := not _walkable(tx, ty + 1)
+	var wall_e := not _walkable(tx + 1, ty)
+	var wall_w := not _walkable(tx - 1, ty)
+	if wall_n:
 		draw_texture_rect(wall_tex, Rect2(pos, strip), false)
-	if not _walkable(tx, ty + 1):   # south: flip vertically
+	if wall_s:
 		draw_set_transform(pos + Vector2(t, t), PI, Vector2.ONE)
 		draw_texture_rect(wall_tex, Rect2(Vector2.ZERO, strip), false)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	if not _walkable(tx + 1, ty):   # east
+	if wall_e:
 		draw_set_transform(pos + Vector2(t, 0), PI / 2, Vector2.ONE)
 		draw_texture_rect(wall_tex, Rect2(Vector2.ZERO, strip), false)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	if not _walkable(tx - 1, ty):   # west
+	if wall_w:
 		draw_set_transform(pos + Vector2(0, t), -PI / 2, Vector2.ONE)
 		draw_texture_rect(wall_tex, Rect2(Vector2.ZERO, strip), false)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var corner_tex := _lib.interior("wall_corner")
+	if corner_tex == null:
+		return
+	var c := Vector2(WALL_PX, WALL_PX)
+	# concave: unify the overlap where two of this tile's strips cross
+	if wall_n and wall_w:
+		draw_texture_rect(corner_tex, Rect2(pos, c), false)
+	if wall_n and wall_e:
+		draw_texture_rect(corner_tex, Rect2(pos + Vector2(t - WALL_PX, 0), c), false)
+	if wall_s and wall_w:
+		draw_texture_rect(corner_tex, Rect2(pos + Vector2(0, t - WALL_PX), c), false)
+	if wall_s and wall_e:
+		draw_texture_rect(corner_tex,
+			Rect2(pos + Vector2(t - WALL_PX, t - WALL_PX), c), false)
+	# diagonal-void notch: fill the gap between the two neighbors' strips
+	if not wall_n and not wall_w and not _walkable(tx - 1, ty - 1):
+		draw_texture_rect(corner_tex, Rect2(pos - c, c), false)
+	if not wall_n and not wall_e and not _walkable(tx + 1, ty - 1):
+		draw_texture_rect(corner_tex, Rect2(pos + Vector2(t, -WALL_PX), c), false)
+	if not wall_s and not wall_w and not _walkable(tx - 1, ty + 1):
+		draw_texture_rect(corner_tex, Rect2(pos + Vector2(-WALL_PX, t), c), false)
+	if not wall_s and not wall_e and not _walkable(tx + 1, ty + 1):
+		draw_texture_rect(corner_tex, Rect2(pos + Vector2(t, t), c), false)
 
 
 func _walkable(tx: int, ty: int) -> bool:
@@ -303,44 +320,41 @@ func _refresh_los() -> void:
 		return
 	_los_from = from
 	_los_plan = ship_class
-	_los.clear()
-	for ty in ship_class.grid_height:
-		for tx in ship_class.grid_width:
-			_los[Vector2i(tx, ty)] = _line_of_sight(from, Vector2i(tx, ty))
+	_los.clear()  # lazy memo — _tile_visible fills it on demand
 
 
+## Lazy LOS memo over ANY tile coordinate (off-grid = open space). Purely
+## directional: no distance cap — light crosses space, your hull is the
+## only thing that blocks it.
 func _tile_visible(tile: Vector2i) -> bool:
-	return not view_cone_enabled or bool(_los.get(tile, true))
+	if not view_cone_enabled:
+		return true
+	if not _los.has(tile):
+		_los[tile] = _line_of_sight(_los_from, tile)
+	return _los[tile]
 
 
-## Two layers: (1) a viewport-wide radial range mask centered on you — the
-## window plates only let you see so far out, and you sweep the view by
-## walking the hull; (2) tile LOS dim for interior you can't see (with the
-## hull re-entry rule hiding other interiors across gaps).
+## Directional occlusion over the whole viewport: every screen tile (on the
+## plan OR out in space) that has no sight-line from you goes dark. Looking
+## out a north plate shows you space to the north — never the planet on the
+## far side of your own hull.
 func _draw_view_cone(origin: Vector2) -> void:
 	if not view_cone_enabled:
 		return
 	var vp := get_viewport_rect().size
-	var center := _tile_to_screen(focus_tile, origin)
-	var r := VIEW_RANGE_TILES * TILE_PIXELS
-	draw_texture_rect(_cone_mask,
-		Rect2(center - Vector2(r, r), Vector2(r, r) * 2.0), false)
-	# solid dark outside the mask texture's rect
-	draw_rect(Rect2(0, 0, vp.x, maxf(center.y - r, 0.0)), VIEW_CONE_DARK, true)
-	draw_rect(Rect2(0, center.y + r, vp.x, maxf(vp.y - center.y - r, 0.0)),
-		VIEW_CONE_DARK, true)
-	draw_rect(Rect2(0, maxf(center.y - r, 0.0), maxf(center.x - r, 0.0),
-		2.0 * r), VIEW_CONE_DARK, true)
-	draw_rect(Rect2(center.x + r, maxf(center.y - r, 0.0),
-		maxf(vp.x - center.x - r, 0.0), 2.0 * r), VIEW_CONE_DARK, true)
-	for ty in ship_class.grid_height:
-		for tx in ship_class.grid_width:
-			if _tile_visible(Vector2i(tx, ty)):
+	var t := TILE_PIXELS
+	var tx0 := int(floorf(-origin.x / t)) - 1
+	var ty0 := int(floorf(-origin.y / t)) - 1
+	var tx1 := int(ceilf((vp.x - origin.x) / t)) + 1
+	var ty1 := int(ceilf((vp.y - origin.y) / t)) + 1
+	for ty in range(ty0, ty1):
+		for tx in range(tx0, tx1):
+			var tile := Vector2i(tx, ty)
+			if _tile_visible(tile):
 				continue
-			if not ship_class.is_walkable(tx, ty):
-				continue  # beyond-window space is handled by the range mask
-			draw_rect(Rect2(_tile_to_screen(Vector2(tx, ty), origin),
-				Vector2(TILE_PIXELS, TILE_PIXELS)), VIEW_CONE_DIM, true)
+			draw_rect(
+				Rect2(_tile_to_screen(Vector2(tx, ty), origin), Vector2(t, t)),
+				VIEW_CONE_DIM if _walkable(tx, ty) else VIEW_CONE_DARK, true)
 
 
 ## Bresenham tile walk with the window rule: windows are the wall plates at

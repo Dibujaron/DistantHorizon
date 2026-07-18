@@ -66,18 +66,22 @@ def floor_2():
 
 
 def wall_n():
+    """bulkhead cap strip. SYMMETRIC on purpose: identical thin edge lines on
+    both long sides, so rotated strips meeting at corners read as one welded
+    frame instead of directional pieces laid against each other."""
     s = _bg(64, 14, WALL)
-    s += line(0, 1, 64, 1, WALL_HI, 2, 1.0, cap="butt")
-    s += line(0, 13, 64, 13, WALL_SH, 2.5, 1.0, cap="butt")
+    s += line(0, 1.5, 64, 1.5, WALL_SH, 2, 1.0, cap="butt")
+    s += line(0, 12.5, 64, 12.5, WALL_SH, 2, 1.0, cap="butt")
     for bx in (8, 32, 56):
         s += circle(bx, 7, 1.3, WALL_SH, stroke="none")
     return s
 
 
 def wall_corner():
+    """corner block: same face, thin dark edge all round — drops into strip
+    junctions (concave overlaps and diagonal-void notches) in any rotation."""
     s = _bg(14, 14, WALL)
-    s += line(0, 1, 14, 1, WALL_HI, 2, 1.0, cap="butt")
-    s += line(1, 0, 1, 14, WALL_HI, 2, 1.0, cap="butt")
+    s += rrect(0.5, 0.5, 13, 13, 0, "none", stroke=WALL_SH, sw=2)
     return s
 
 
@@ -146,10 +150,12 @@ def _picto(icon):
 
 
 def picto_airlock():
-    icon = circle(20, 20, 8, "none", stroke=DECAL, sw=2.5, opacity=.9)
-    icon += line(20, 12, 20, 28, DECAL, 2, .9)
-    icon += line(6, 20, 10, 20, DECAL, 2.5, .9)
-    icon += line(30, 20, 34, 20, DECAL, 2.5, .9)
+    """hatch wheel: outer ring + hub + four spokes — reads 'pressure door'"""
+    icon = circle(20, 20, 9.5, "none", stroke=DECAL, sw=2.5, opacity=.9)
+    icon += circle(20, 20, 3, "none", stroke=DECAL, sw=2, opacity=.9)
+    for dx, dy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+        icon += line(20 + dx * 2.4, 20 + dy * 2.4, 20 + dx * 6.8,
+                     20 + dy * 6.8, DECAL, 2.2, .9)
     return _picto(icon)
 
 

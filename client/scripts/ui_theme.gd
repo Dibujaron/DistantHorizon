@@ -5,7 +5,8 @@ extends RefCounted
 ## terminal text, amber-on-dark — and never reskins per run.
 ##
 ## Three typography slots (runtime-loaded OFL fonts, client/assets/fonts/):
-##   pixel_font()   — VT323: small/diegetic, console readouts, HUD
+##   pixel_font()   — Jersey 15: small/diegetic, console readouts, HUD
+##                    (VT323 ships too but read as flavorless — user verdict)
 ##   reading_font() — Inter: large/reading, dialogue and menus
 ##   stencil_font() — Allerta Stencil: markings, titles, hull-stencil copy
 
@@ -27,7 +28,7 @@ static func _font(file_name: String) -> FontFile:
 
 
 static func pixel_font() -> FontFile:
-	return _font("vt323.ttf")
+	return _font("jersey15.ttf")
 
 
 static func reading_font() -> FontFile:
@@ -41,7 +42,7 @@ static func stencil_font() -> FontFile:
 ## Terminal panel: near-black warm ground, thin border, tight corners.
 static func panel(border: Color) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.07, 0.055, 0.03, 0.92)
+	sb.bg_color = Color(0.055, 0.042, 0.024, 0.96)
 	sb.border_color = border
 	sb.set_border_width_all(1)
 	sb.set_corner_radius_all(3)
@@ -58,5 +59,6 @@ static func skin_label(label: Label, size: int, color: Color,
 	label.add_theme_font_override("font", pixel_font())
 	label.add_theme_font_size_override("font_size", size)
 	label.add_theme_color_override("font_color", color)
+	label.add_theme_constant_override("line_spacing", 5)
 	if panel_border != null:
 		label.add_theme_stylebox_override("normal", panel(panel_border))

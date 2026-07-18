@@ -22,7 +22,7 @@ const STATION_LABEL_COLOR := Color(0.75, 0.95, 0.8, 0.9)
 const DOCK_RING_COLOR := Color(0.6, 0.95, 0.7, 0.35)
 const OTHER_SHIP_LABEL_COLOR := Color(0.8, 0.8, 0.85, 0.7)
 
-const FONT_SIZE := 13
+const FONT_SIZE := 16  # Jersey 15 diegetic slot (UiTheme)
 
 ## Fallback vectors (assets missing / first frame) — the pre-M3.5 look.
 const STAR_COLOR := Color(1.0, 0.78, 0.35)
@@ -84,7 +84,7 @@ var _last_update_msec: int = 0
 
 
 func _ready() -> void:
-	_font = ThemeDB.fallback_font
+	_font = UiTheme.pixel_font()  # in-world text speaks the diegetic slot
 	light_mask = 2  # the vector pass (incl. starfield) is never sun-lit
 	_lib = AssetLibrary.load_all()
 	for layer_name: String in ["small", "medium", "large"]:

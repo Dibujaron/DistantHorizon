@@ -51,7 +51,7 @@ func _ready() -> void:
 	column.add_child(title)
 
 	var flavor := Label.new()
-	flavor.text = "RIJAY DRIVE YARDS // FLIGHT SHELL 2.4"
+	flavor.text = "RIJAY DRIVE YARDS // ALOFT OS 2.4"
 	flavor.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	UiTheme.skin_label(flavor, 18, UiTheme.AMBER_DIM)
 	column.add_child(flavor)

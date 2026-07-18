@@ -175,9 +175,9 @@ func _ready() -> void:
 	NetworkClient.market_received.connect(_on_market_received)
 	NetworkClient.trade_result_received.connect(_on_trade_result_received)
 	# M3.5 UI shell: the game shell speaks Rijay — amber terminal HUD.
-	UiTheme.skin_label(_status_label, 20, UiTheme.AMBER, UiTheme.AMBER_DIM)
-	UiTheme.skin_label(_chat_log, 18, UiTheme.AMBER_DIM)
-	UiTheme.skin_label(_trade_panel, 18, UiTheme.AMBER, UiTheme.CONSOLE_ORANGE)
+	UiTheme.skin_label(_status_label, 24, UiTheme.AMBER, UiTheme.AMBER_DIM)
+	UiTheme.skin_label(_chat_log, 20, UiTheme.AMBER_DIM)
+	UiTheme.skin_label(_trade_panel, 20, UiTheme.AMBER, UiTheme.CONSOLE_ORANGE)
 	if NetworkClient.manual_login:
 		_menu = MainMenu.new()
 		add_child(_menu)
