@@ -1,0 +1,30 @@
+#!/bin/sh
+#
+# Pre-commit hook: keep the Gleam server formatted so CI's
+# `gleam format --check` step never goes red on a merge again.
+#
+# Only runs when staged changes touch server/**/*.gleam. If anything is
+# unformatted, the commit is blocked with the exact fix command.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+
+# Any staged .gleam files under server/?
+staged=$(git diff --cached --name-only --diff-filter=ACM -- 'server/**/*.gleam')
+if [ -z "$staged" ]; then
+	exit 0
+fi
+
+if ! command -v gleam >/dev/null 2>&1; then
+	echo "pre-commit: gleam not on PATH; skipping format check." >&2
+	exit 0
+fi
+
+# Check formatting of the whole server tree (fast; matches CI exactly).
+if ! (cd server && gleam format --check src test) >/dev/null 2>&1; then
+	echo "pre-commit: Gleam files are not formatted." >&2
+	echo "  Run:  (cd server && gleam format src test)" >&2
+	echo "  then re-stage and commit." >&2
+	exit 1
+fi
+
+exit 0

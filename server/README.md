@@ -12,6 +12,18 @@ gleam run   # Run the server
 gleam test  # Run the tests
 ```
 
+CI runs `gleam format --check src test` and fails the build if anything is
+unformatted. Enable the repo's pre-commit hook once per clone so a stray
+unformatted file can't slip through (it lives in `.githooks/`, from the repo
+root):
+
+```sh
+git config core.hooksPath .githooks
+```
+
+The hook blocks a commit that stages unformatted `server/**/*.gleam`; run
+`gleam format src test` to fix.
+
 ## Environment variables
 
 | var | default | meaning |
