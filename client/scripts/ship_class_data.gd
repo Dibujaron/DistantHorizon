@@ -291,7 +291,53 @@ static func step_walk(cls: ShipClassData, deck: String, x: float, y: float, dx: 
 	var out_x := candidate_x if _circle_walkable(cls, gate, candidate_x, y) else x
 	var candidate_y := y + input.y * WALK_SPEED * delta
 	var out_y := candidate_y if _circle_walkable(cls, gate, out_x, candidate_y) else y
+	# Corner un-stick (#11): if a tick STARTS already overlapping a wall (a
+	# server snap into tight geometry, a plan swap, a hard reconciliation pull),
+	# per-axis rejection can never escape -- every small step still overlaps, so
+	# the body wedges into the corner permanently. Detect that stuck state and
+	# push the circle out along the shortest separation so the player always
+	# slides free. A strict no-op whenever the resolved position is already
+	# clear, so normal walking stays byte-for-byte identical to the server step.
+	if not _circle_walkable(cls, gate, out_x, out_y):
+		var freed := _unstick(cls, gate, out_x, out_y)
+		out_x = freed.x
+		out_y = freed.y
 	return Vector2(out_x, out_y)
+
+
+## Push a circle centred at `(cx, cy)` out of any non-walkable tiles it
+## overlaps, back toward open floor (#11). Sums a separation vector from each
+## penetrated tile (the minimum-translation direction * penetration depth); if
+## the centre sits dead inside a wall (no separation direction), nudges toward
+## the first walkable cardinal neighbour. Convergent: while still overlapping,
+## step_walk calls this again next tick until the body is clear.
+static func _unstick(cls: ShipClassData, deck: String, cx: float, cy: float) -> Vector2:
+	var push := Vector2.ZERO
+	var tx0 := int(floor(cx - CHARACTER_RADIUS))
+	var tx1 := int(floor(cx + CHARACTER_RADIUS))
+	var ty0 := int(floor(cy - CHARACTER_RADIUS))
+	var ty1 := int(floor(cy + CHARACTER_RADIUS))
+	for tx in range(tx0, tx1 + 1):
+		for ty in range(ty0, ty1 + 1):
+			if cls.walkable_for(deck, tx, ty):
+				continue
+			if not _tile_overlaps_circle(tx, ty, cx, cy):
+				continue
+			var closest_x := clampf(cx, float(tx), float(tx) + 1.0)
+			var closest_y := clampf(cy, float(ty), float(ty) + 1.0)
+			var away := Vector2(cx - closest_x, cy - closest_y)
+			var dist := away.length()
+			if dist > 0.0001:
+				push += away / dist * (CHARACTER_RADIUS - dist)
+	if push == Vector2.ZERO:
+		# Centre is inside a wall tile: escape toward the nearest open cardinal.
+		for dir in EDGE_DELTAS:
+			var probe := Vector2(cx, cy) + Vector2(dir) * (CHARACTER_RADIUS * 2.0)
+			if _circle_walkable(cls, deck, probe.x, probe.y):
+				return probe
+		return Vector2(cx, cy)
+	push = push.normalized() * (push.length() + 0.001)
+	return Vector2(cx + push.x, cy + push.y)
 
 
 ## Scales `(dx, dy)` down to magnitude 1 if it exceeds 1, leaving it
