@@ -16,12 +16,12 @@ fn mockingbird_plan() -> DeckPlan {
     walkable: [
       "..............",
       "..............",
-      "......UU......",
+      "..............",
+      "..............",
       "......UU......",
       "......UU......",
       "......UU......",
       ".....2222.....",
-      "....222222....",
       "....222222....",
       "...22222222...",
       "...22222222...",
@@ -39,11 +39,11 @@ fn mockingbird_plan() -> DeckPlan {
       ".....BBBB.....",
     ],
     rooms: [
-      Room(id: "cockpit", name: "Cockpit", x: 6, y: 2, w: 2, h: 4, deck: "upper"),
+      Room(id: "cockpit", name: "Cockpit", x: 6, y: 4, w: 2, h: 3, deck: "upper"),
       Room(id: "dock", name: "Docking Deck", x: 5, y: 21, w: 4, h: 2, deck: ""),
     ],
     consoles: [
-      Console(id: "helm_main", kind: "helm", x: 6, y: 2),
+      Console(id: "helm_main", kind: "helm", x: 6, y: 4),
       Console(id: "cargo_main", kind: "cargo", x: 5, y: 21),
     ],
     spawn_tile: #(5, 22),
@@ -97,15 +97,15 @@ pub fn rotate_ccw_lays_the_ship_side_on_test() {
   // Port dormer (5,22) -> (22,8): the corridor's SOUTH end, nose west.
   assert r.spawn_tile == #(22, 8)
   assert deckplan.char_at(r, 22, 8) == "B"
-  // Helm (6,2) -> (2,7), still upper.
-  assert deckplan.char_at(r, 2, 7) == "U"
+  // Helm (6,4) -> (4,7), still upper.
+  assert deckplan.char_at(r, 4, 7) == "U"
   let assert Ok(helm) = deckplan.find_console(r, "helm_main")
-  assert helm.x == 2 && helm.y == 7
+  assert helm.x == 4 && helm.y == 7
   // The port 'L' half-flight (5,21) -> (21,8).
   assert deckplan.char_at(r, 21, 8) == "L"
-  // Rooms rotate as rects: cockpit (6,2,2,4) -> (2, 14-6-2=6, 4, 2).
+  // Rooms rotate as rects: cockpit (6,4,2,3) -> (4, 14-6-2=6, 3, 2).
   let assert Ok(cockpit) = list.find(r.rooms, fn(rm) { rm.id == "cockpit" })
-  assert cockpit.x == 2 && cockpit.y == 6 && cockpit.w == 4 && cockpit.h == 2
+  assert cockpit.x == 4 && cockpit.y == 6 && cockpit.w == 3 && cockpit.h == 2
 }
 
 pub fn one_ship_moors_side_on_at_a_tube_test() {
@@ -129,8 +129,8 @@ pub fn one_ship_moors_side_on_at_a_tube_test() {
   // Beside the tube: still void — the hull floats clear of the bar.
   assert !deckplan.is_walkable(c.plan, 21, 10)
   assert !deckplan.is_walkable(c.plan, 23, 10)
-  // Moored helm at (2,7), upper; deck alphabet carries through rotation.
-  assert deckplan.char_at(c.plan, 2, 7) == "U"
+  // Moored helm at (4,7), upper; deck alphabet carries through rotation.
+  assert deckplan.char_at(c.plan, 4, 7) == "U"
   assert deckplan.char_at(c.plan, 21, 8) == "L"
   assert deckplan.char_at(c.plan, 10, 7) == "2"
   // Concourse broker tile (10,3) -> composite (10,15), still generic.
@@ -144,7 +144,7 @@ pub fn ship_console_and_room_ids_are_namespaced_test() {
     ])
   let assert Ok(helm) = deckplan.find_console(c.plan, "s3:helm_main")
   assert helm.kind == "helm"
-  assert helm.x == 2
+  assert helm.x == 4
   assert helm.y == 7
   // Concourse consoles keep their plain ids, translated.
   let assert Ok(broker) = deckplan.find_console(c.plan, "broker_main")
@@ -205,8 +205,8 @@ pub fn tile_on_mooring_test() {
       DockedShip(ship_id: 1, berth: 0, plan: mockingbird_plan()),
     ])
   let assert Ok(g) = composite.find_mooring(c, 1)
-  // Composite (2.5, 7.5) is the moored helm tile; (10.5, 15.5) concourse.
-  assert composite.tile_on_mooring(g, mockingbird_plan(), 2.5, 7.5)
+  // Composite (4.5, 7.5) is the moored helm tile; (10.5, 15.5) concourse.
+  assert composite.tile_on_mooring(g, mockingbird_plan(), 4.5, 7.5)
   assert !composite.tile_on_mooring(g, mockingbird_plan(), 10.5, 15.5)
   // The docking TUBE belongs to the station, not the ship: a body caught
   // mid-tube on undock stays ashore.

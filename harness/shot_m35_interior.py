@@ -62,7 +62,7 @@ def main() -> int:
         time.sleep(0.3)
         _shot(automation, "m35_int_upper.png")
         _walk_until(automation, "move_right",
-                    lambda c: c.get("x", 0.0) >= helm_x + 19.9,
+                    lambda c: c.get("x", 0.0) >= helm_x + 17.9,
                     "east to the docking corridor at the waist")
         _walk_until(automation, "move_down",
                     lambda c: c.get("y", 0.0) >= 8.2,
@@ -74,7 +74,7 @@ def main() -> int:
         time.sleep(0.3)
         _shot(automation, "m35_int_lower.png")
         _walk_until(automation, "move_right",
-                    lambda c: c.get("x", 0.0) >= helm_x + 19.9,
+                    lambda c: c.get("x", 0.0) >= helm_x + 17.9,
                     "back east to the docking corridor")
         _walk_until(automation, "move_down",
                     lambda c: c.get("y", 0.0) >= 15.2,

@@ -11,9 +11,9 @@ fn close(a: Float, b: Float, tolerance: Float) -> Bool {
 }
 
 /// The bundled Mockingbird: 14x23, nose up, ~1 m tiles. Upper deck:
-/// cockpit col 6-7 rows 2-4; '2' midbody rows 6-20 (mess/commons above
+/// cockpit col 6-7 rows 4-5; '2' midbody rows 7-20 (mess/commons above
 /// the hold). Row 21 stairs: L(5) U(6) U(7) L(8). Row 22: 'B' docking
-/// corridor, port dormer (5,22). Helm at (6,2), cargo console at (5,21).
+/// corridor, port dormer (5,22). Helm at (6,4), cargo console at (5,21).
 fn mockingbird() -> DeckPlan {
   let assert Ok(c) = shipclass.load("classes/mockingbird.json")
   c.plan
@@ -54,7 +54,7 @@ pub fn set_move_clamps_test() {
 pub fn seated_character_ignores_move_input_test() {
   let plan = mockingbird()
   let c =
-    Character(..standing_at(6.5, 2.5), seat: Some("helm_main"))
+    Character(..standing_at(6.5, 4.5), seat: Some("helm_main"))
     |> character.set_move(1.0, 0.0)
   let after = run_ticks(c, plan, 60)
   assert after.x == c.x
@@ -140,17 +140,17 @@ pub fn character_never_enters_non_walkable_tile_test() {
 pub fn lower_walker_cannot_enter_upper_tile_test() {
   let plan = mockingbird()
   // A lower walker in the hold must not climb into the cockpit: from
-  // (6.5, 7.5) ('2', deck lower) walking north, tile (6, 5) is 'U' —
-  // blocked at the row-5 boundary.
+  // (6.5, 7.5) ('2', deck lower) walking north, tile (6, 6) is 'U' —
+  // blocked at the row-6 boundary.
   let c = standing_lower(6.5, 7.5) |> character.set_move(0.0, -1.0)
   let settled = run_ticks(c, plan, 180)
-  assert settled.y >. 6.0
+  assert settled.y >. 7.0
   assert settled.deck == deckplan.Lower
 }
 
 pub fn upper_walker_walks_toward_the_cockpit_test() {
   let plan = mockingbird()
-  // Same route, same tiles, upper deck: passes freely into row 5.
+  // Same route, same tiles, upper deck: passes freely into row 6.
   let c = standing_at(6.5, 7.5) |> character.set_move(0.0, -1.0)
   let moved = run_ticks(c, plan, 120)
   assert moved.y <. 6.0
@@ -191,7 +191,7 @@ pub fn upper_walker_cannot_use_lower_stair_off_b_test() {
 
 pub fn is_at_helm_false_when_standing_test() {
   let plan = mockingbird()
-  let c = standing_at(6.5, 3.5)
+  let c = standing_at(6.5, 5.5)
   assert !character.is_at_helm(c, plan)
 }
 
@@ -203,16 +203,16 @@ pub fn is_at_helm_false_when_seated_at_non_helm_console_test() {
 
 pub fn try_sit_success_snaps_to_console_center_test() {
   let plan = mockingbird()
-  let c = standing_at(6.5, 3.5)
+  let c = standing_at(6.5, 5.5)
   let assert Ok(seated) = character.try_sit(c, plan, "helm_main", False)
   assert seated.seat == Some("helm_main")
   assert seated.x == 6.5
-  assert seated.y == 2.5
+  assert seated.y == 4.5
 }
 
 pub fn try_sit_too_far_test() {
   let plan = mockingbird()
-  // Helm at (6.5, 2.5); character on the stairs at the stern.
+  // Helm at (6.5, 4.5); character on the stairs at the stern.
   let c = standing_at(6.5, 21.5)
   assert character.try_sit(c, plan, "helm_main", False) == Error("too_far")
 }
@@ -233,7 +233,7 @@ pub fn try_sit_wrong_deck_is_too_far_test() {
 
 pub fn try_sit_unknown_console_test() {
   let plan = mockingbird()
-  let c = standing_at(6.5, 3.5)
+  let c = standing_at(6.5, 5.5)
   assert character.try_sit(c, plan, "nonexistent", False)
     == Error("unknown_console")
 }
@@ -241,7 +241,7 @@ pub fn try_sit_unknown_console_test() {
 pub fn try_sit_occupied_test() {
   let plan = mockingbird()
   // In range, valid console, but the caller reports it occupied.
-  let c = standing_at(6.5, 3.5)
+  let c = standing_at(6.5, 5.5)
   assert character.try_sit(c, plan, "helm_main", True) == Error("occupied")
 }
 
@@ -255,21 +255,21 @@ pub fn try_sit_occupied_beats_too_far_test() {
 
 pub fn try_sit_already_seated_test() {
   let plan = mockingbird()
-  let c = Character(..standing_at(6.5, 2.5), seat: Some("helm_main"))
+  let c = Character(..standing_at(6.5, 4.5), seat: Some("helm_main"))
   assert character.try_sit(c, plan, "cargo_main", False)
     == Error("already_seated")
 }
 
 pub fn stand_leaves_seat_in_place_test() {
-  let c = Character(..standing_at(6.5, 2.5), seat: Some("helm_main"))
+  let c = Character(..standing_at(6.5, 4.5), seat: Some("helm_main"))
   let assert Ok(standing) = character.stand(c)
   assert standing.seat == None
   assert standing.x == 6.5
-  assert standing.y == 2.5
+  assert standing.y == 4.5
 }
 
 pub fn stand_not_seated_test() {
-  let c = standing_at(6.5, 3.5)
+  let c = standing_at(6.5, 5.5)
   assert character.stand(c) == Error("not_seated")
 }
 
@@ -279,7 +279,7 @@ pub fn stand_clears_stale_move_input_test() {
   // it would still be buffered — and resume walking the character the tick
   // after standing. Standing must clear it.
   let c =
-    Character(..standing_at(6.5, 2.5), seat: Some("helm_main"))
+    Character(..standing_at(6.5, 4.5), seat: Some("helm_main"))
     |> character.set_move(1.0, 0.0)
   let assert Ok(standing) = character.stand(c)
   assert standing.move_dx == 0.0
@@ -293,7 +293,7 @@ pub fn sit_clears_stale_move_input_test() {
   let plan = mockingbird()
   // Same defence on sitting down: input held at the moment of sitting must
   // not survive the stay and fire again on the first tick after standing.
-  let c = standing_at(6.5, 3.5) |> character.set_move(0.0, 1.0)
+  let c = standing_at(6.5, 5.5) |> character.set_move(0.0, 1.0)
   let assert Ok(seated) = character.try_sit(c, plan, "helm_main", False)
   assert seated.move_dx == 0.0
   assert seated.move_dy == 0.0

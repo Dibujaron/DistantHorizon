@@ -30,7 +30,7 @@ pub fn decode_encode_round_trips_test() {
 pub fn helm_console_is_helm_main_test() {
   let assert Ok(c) = shipclass.load("classes/mockingbird.json")
   let assert Ok(console) = shipclass.helm_console(c)
-  assert console == Console(id: "helm_main", kind: "helm", x: 6, y: 2)
+  assert console == Console(id: "helm_main", kind: "helm", x: 6, y: 4)
 }
 
 pub fn find_console_unknown_is_error_test() {

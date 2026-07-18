@@ -203,7 +203,7 @@ def test_walk_ashore_and_screenshot(server, tmp_path):
         # Walk down onto the concourse. The moored ship lies SIDE-ON (nose
         # west, port flank to the station): from the cockpit, the upper
         # corridor runs EAST along the ship to the vertical docking
-        # corridor at the waist (20 tiles east of the helm — the berth
+        # corridor at the waist (18 tiles east of the helm — the berth
         # column), then SOUTH through the port dormer, the 4-tile docking
         # tube and the berth stub onto the concourse floor (composite rows
         # 14..16 regardless of berth; only the column shifts). Plain
@@ -212,7 +212,7 @@ def test_walk_ashore_and_screenshot(server, tmp_path):
         _walk_until(
             automation,
             "move_right",
-            lambda c: c.get("x", 0.0) >= helm_x + 19.9,
+            lambda c: c.get("x", 0.0) >= helm_x + 17.9,
             "east along the upper corridor to the docking corridor",
         )
         _walk_until(

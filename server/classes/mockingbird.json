@@ -4,12 +4,12 @@
   "walkable": [
     "..............",
     "..............",
-    "......UU......",
+    "..............",
+    "..............",
     "......UU......",
     "......UU......",
     "......UU......",
     ".....2222.....",
-    "....222222....",
     "....222222....",
     "...22222222...",
     "...22222222...",
@@ -27,16 +27,16 @@
     ".....BBBB....."
   ],
   "rooms": [
-    {"id": "cockpit",  "name": "Cockpit",       "x": 6, "y": 2, "w": 2, "h": 4, "deck": "upper"},
-    {"id": "quarters", "name": "Crew Quarters", "x": 4, "y": 6, "w": 6, "h": 3, "deck": "upper"},
+    {"id": "cockpit",  "name": "Cockpit",       "x": 6, "y": 4, "w": 2, "h": 3, "deck": "upper"},
+    {"id": "quarters", "name": "Crew Quarters", "x": 4, "y": 7, "w": 6, "h": 2, "deck": "upper"},
     {"id": "mess",     "name": "Mess",          "x": 3, "y": 9, "w": 8, "h": 4, "deck": "upper"},
     {"id": "commons",  "name": "Commons",       "x": 3, "y": 13, "w": 8, "h": 4, "deck": "upper"},
     {"id": "aft",      "name": "Aft Passage",   "x": 4, "y": 17, "w": 6, "h": 4, "deck": "upper"},
-    {"id": "hold",     "name": "Main Hold",     "x": 3, "y": 6, "w": 8, "h": 15, "deck": "lower"},
+    {"id": "hold",     "name": "Main Hold",     "x": 3, "y": 7, "w": 8, "h": 14, "deck": "lower"},
     {"id": "dock",     "name": "Docking Deck",  "x": 5, "y": 21, "w": 4, "h": 2}
   ],
   "consoles": [
-    {"id": "helm_main",  "kind": "helm",  "x": 6, "y": 2},
+    {"id": "helm_main",  "kind": "helm",  "x": 6, "y": 4},
     {"id": "cargo_main", "kind": "cargo", "x": 5, "y": 21}
   ],
   "spawn_tile": [5, 22],
