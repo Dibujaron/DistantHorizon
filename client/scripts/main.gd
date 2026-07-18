@@ -16,6 +16,10 @@ extends Node2D
 ## capped so a stalled connection doesn't fling anything off into the void.
 
 const BACKGROUND_COLOR := Color(0.03, 0.04, 0.08)
+
+## THE WINDOW (M3.5): while on foot, the system view stays visible under the
+## deck plan at this cool dim tint — space through hull glass.
+const WINDOW_DIM := Color(0.42, 0.47, 0.58)
 const MAX_EXTRAPOLATION_SEC := 0.5
 const TICKS_PER_SEC := 60.0
 
@@ -192,6 +196,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_toggle_dock()
 	elif event.is_action_pressed("interact"):
 		_handle_interact()
+	elif event.is_action_pressed("toggle_viewcone"):
+		_interior_view.view_cone_enabled = not _interior_view.view_cone_enabled
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_zoom = clampf(_zoom * ZOOM_STEP, ZOOM_MIN, ZOOM_MAX)
@@ -584,8 +590,12 @@ func _apply_transition_visuals(progress: float) -> void:
 	_interior_view.modulate.a = interior_alpha
 	_interior_view.visible = interior_alpha > 0.001
 	_set_view_zoom(_world_view, system_scale)
-	_world_view.modulate.a = 1.0 - interior_alpha
-	_world_view.visible = (1.0 - interior_alpha) > 0.001
+	# THE WINDOW (M3.5): the system view never fades out — while on foot it
+	# stays visible beneath the deck plan, dimmed, and shows through wherever
+	# the interior has no floor (void tiles paint nothing). Walking the hold
+	# while a station slides past outside is the payoff (docs/visuals.md).
+	_world_view.modulate = Color.WHITE.lerp(WINDOW_DIM, interior_alpha)
+	_world_view.visible = true
 
 ## Scales a view about the *screen center* rather than the node origin:
 ## both views draw in viewport pixel coordinates with (0,0) at the top-left,
@@ -606,8 +616,8 @@ func _snap_view_visuals() -> void:
 	_interior_view.modulate.a = 1.0 if interior_active else 0.0
 	_interior_view.visible = interior_active
 	_set_view_zoom(_world_view, 1.0)
-	_world_view.modulate.a = 0.0 if interior_active else 1.0
-	_world_view.visible = not interior_active
+	_world_view.modulate = WINDOW_DIM if interior_active else Color.WHITE
+	_world_view.visible = true
 
 ## Current view mode as a string for the automation hook's state dump
 ## ("interior" | "system" | "transition"). Public so automation_server.gd

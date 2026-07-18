@@ -35,6 +35,8 @@ var _ships: Dictionary = {}
 var _stations: Dictionary = {}
 var _bodies: Dictionary = {}
 var _star_layers: Dictionary = {}
+var _interior: Dictionary = {}
+var _characters: Dictionary = {}
 var _shader: Shader = null
 
 
@@ -53,6 +55,12 @@ static func load_all() -> AssetLibrary:
 	for layer_name: String in STAR_LAYER_NAMES:
 		lib._star_layers[layer_name] = _load_tex(
 			root + "/background/stars_" + layer_name + ".png")
+	for f in DirAccess.get_files_at(root + "/interior"):
+		if f.ends_with(".png"):
+			lib._interior[f.trim_suffix(".png")] = _load_tex(root + "/interior/" + f)
+	for f in DirAccess.get_files_at(root + "/characters"):
+		if f.ends_with(".png"):
+			lib._characters[f.trim_suffix(".png")] = _load_tex(root + "/characters/" + f)
 	return lib
 
 
@@ -106,3 +114,11 @@ func body(kind_id: String) -> Texture2D:
 
 func star_layer(layer_name: String) -> Texture2D:
 	return _star_layers.get(layer_name)
+
+
+func interior(name: String) -> Texture2D:
+	return _interior.get(name)
+
+
+func character(name: String) -> Texture2D:
+	return _characters.get(name)
