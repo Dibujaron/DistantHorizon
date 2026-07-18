@@ -120,7 +120,7 @@ pub fn add_player_snapshot_contains_docked_ship_test() {
   assert x != 0.0
 }
 
-pub fn set_controls_and_undock_advances_x_test() {
+pub fn set_controls_and_undock_moves_ship_test() {
   let assert Ok(started) = sim.start(test_world(), test_class())
   let sim_subject = started.data
 
@@ -138,7 +138,11 @@ pub fn set_controls_and_undock_advances_x_test() {
   let #(_last_tick, last_x) =
     receive_snapshot_at_or_after(client, ship_id, first_tick + 30)
 
-  assert last_x >. first_x
+  // The generalised mooring (issue #14) rests the hull at its side-on heading
+  // (nose west, the M3.5 default), so full thrust after undock drives it in
+  // -x. (This assertion was +x back when the docked heading pointed the other
+  // way.) The point of the test is that undock + helm control produce motion.
+  assert last_x <. first_x
 }
 
 fn message_type_decoder() -> decode.Decoder(String) {

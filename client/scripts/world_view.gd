@@ -38,12 +38,26 @@ const PLANET_PALETTE := [
 	Color(0.8, 0.4, 0.6),
 ]
 
-## Scale canon (iteration 4): EVERY hull sprite renders at 1.5 px per
-## deckplan tile in space, and one world unit is the same for all of them —
-## a ship parked on a station reads at true relative size.
-const SHIP_WORLD_UNITS_PER_PX := 1.33   # Mockingbird 45 px -> ~60 world units
-const SHIP_MIN_SCREEN_SCALE := 1.0      # never below native px: ships stay readable
+## Scale canon (iteration 4): EVERY hull sprite shares one world-units-per-
+## texture-px so a ship parked on a station reads at true relative size, while
+## bodies render at their TRUE physical radius (see _update_body_sprites).
+## SHIP_WORLD_UNITS_PER_PX is the shared base; the two *_RENDER_SCALE knobs
+## shrink free-flying ships / stations relative to planets (#15) and are the
+## values to tune. Both are folded into the matched-zoom math (matched_zoom_*)
+## so THE WINDOW's docked/aboard transition stays seamless.
+const SHIP_WORLD_UNITS_PER_PX := 1.33   # Mockingbird 45 px -> ~60 world units (base)
+## #15 tunables — apparent size of free-flying ships / stations vs planets.
+## 1.0 == the old (too-large) size; smaller reads smaller against planetary
+## bodies (Meridian's radius is 600 world units, ~1200 across, for reference).
+## Set the two equal to remove the slight size change as a ship undocks.
+const SHIP_RENDER_SCALE := 0.4          # flying Mockingbird ~24 world units
+const STATION_RENDER_SCALE := 0.6       # Solis Ring ~30 world units (kept mild)
 const BODY_SPRITE_PX := 500.0           # Classic body sprites are 500x500
+## #17 — a ship/station whose sprite would draw shorter than this many screen
+## px (zoomed far out) is hidden and marked with a fixed pip instead.
+const SHIP_PIP_SCREEN_PX := 6.0
+const STATION_PIP_SCREEN_PX := 6.0
+const SHIP_PIP_RADIUS := 2.0            # ship pip marker radius, screen px
 const PLANET_KINDS := ["barren", "desert", "flowerforest", "forest",
 	"gasgiant", "ice", "lava", "ocean", "terran", "tundra"]
 
@@ -55,6 +69,36 @@ const PARALLAX_ALPHA := 0.55
 const PLUME_RAMP_PER_SEC := 6.0
 const OTHER_SHIP_BURN_DELTA_V := 2.0    # snapshot |dv| that reads as a burn
 const OTHER_SHIP_BURN_HOLD_MSEC := 400
+
+## #10 — heading is snapped on each snapshot (ShipState carries no angular
+## velocity), so raw rotation steps at the ~15 Hz snapshot rate. We ease the
+## rendered heading toward the target with lerp_angle every frame instead.
+## Higher == snappier / less lag, lower == smoother. Tunable.
+const HEADING_SMOOTH_RATE := 14.0
+
+## #12 — engine exhaust persists in WORLD space (not parented to the hull), so
+## turning leaves a curved trailing plume. Motes are emitted from the tail,
+## carried on the ship's velocity plus an aft kick, and drawn in the vector
+## pass (_draw_plume_trails) transformed world->screen every frame. Tunables:
+const PLUME_EMIT_PER_SEC := 44.0        # motes/sec at full throttle
+const PLUME_LIFETIME := 0.85            # seconds a mote lives
+const PLUME_EXHAUST_SPEED := 60.0       # aft ejection speed, world units/sec
+const PLUME_SPREAD := 8.0               # lateral jitter, world units/sec
+const PLUME_MOTE_WORLD := 5.0           # mote radius at birth, world units
+const PLUME_MOTE_GROWTH := 1.5          # world units added over its life
+## Flame colour ramp: motes are born hot (yellow-white), cool through orange to
+## deep red as they age, so the exhaust reads as fire rather than grey smoke.
+const PLUME_HOT := Color(1.0, 0.96, 0.75)
+const PLUME_COOL := Color(0.95, 0.26, 0.08)
+
+## #18 — projected-trajectory pips: dead-reckon the player ship forward along
+## its current velocity (straight-line coast, matching the client's own
+## extrapolation) and drop evenly spaced pips. Tunables:
+const TRAJECTORY_LOOKAHEAD_SEC := 6.0   # how far ahead to predict
+const TRAJECTORY_PIP_COUNT := 8         # number of pips along the path
+const TRAJECTORY_PIP_RADIUS := 2.6      # pip half-extent (diamond), screen px
+const TRAJECTORY_PIP_COLOR := Color(0.35, 1.0, 0.72, 0.9)  # nav-green diamonds
+const TRAJECTORY_MIN_SPEED := 1.0       # below this |v|, no path to show
 
 ## Set every frame by main.gd before queue_redraw().
 var world: WorldData = null
@@ -88,6 +132,12 @@ var _plume_level: Dictionary = {}
 ## Per-ship burn estimation for OTHER ships: {id: {"v": Vector2, "until": int}}.
 var _burn_state: Dictionary = {}
 var _last_update_msec: int = 0
+## #10 smoothed per-ship world heading (radians), eased toward the snapshot.
+var _render_heading: Dictionary = {}
+## #12 per-ship world-space exhaust motes: {id: Array[{p, v, age, level}]},
+## plus a fractional emission carry so sub-frame emit counts aren't lost.
+var _plume_trails: Dictionary = {}
+var _plume_emit_carry: Dictionary = {}
 
 
 func _ready() -> void:
@@ -161,6 +211,7 @@ func _update_sprites() -> void:
 	var touched_stations := {}
 	var touched_ships := {}
 	var touched_suns := {}
+	_advance_plume_trails(delta)  # #12: age world-space exhaust before emitting
 	_update_body_sprites(screen_center, view_scale, touched_bodies)
 	_update_station_sprites(screen_center, view_scale, touched_stations)
 	_update_ship_sprites(screen_center, view_scale, delta, touched_ships)
@@ -233,8 +284,10 @@ func matched_zoom_station(station_id: String, fallback: float) -> float:
 		var sset := _lib.station(_station_archetype(station))
 		if sset == null or not sset.has_interior_fit():
 			return fallback
-		return InteriorView.TILE_PIXELS \
-			/ (sset.px_per_tile() * SHIP_WORLD_UNITS_PER_PX * PIXELS_PER_UNIT)
+		# STATION_RENDER_SCALE (#15) shrinks the exterior sprite, so the matched
+		# zoom must compensate to keep THE WINDOW's crossfade seamless.
+		return InteriorView.TILE_PIXELS / (sset.px_per_tile() \
+			* SHIP_WORLD_UNITS_PER_PX * STATION_RENDER_SCALE * PIXELS_PER_UNIT)
 	return fallback
 
 
@@ -243,12 +296,31 @@ func matched_zoom_ship(fallback: float) -> float:
 	var sset := _lib.ship("mockingbird")
 	if sset == null or not sset.has_interior_fit():
 		return fallback
-	return InteriorView.TILE_PIXELS \
-		/ (sset.px_per_tile() * SHIP_WORLD_UNITS_PER_PX * PIXELS_PER_UNIT)
+	# SHIP_RENDER_SCALE (#15) shrinks the flying hull sprite, so the matched
+	# zoom must compensate to keep THE WINDOW's crossfade seamless.
+	return InteriorView.TILE_PIXELS / (sset.px_per_tile() \
+		* SHIP_WORLD_UNITS_PER_PX * SHIP_RENDER_SCALE * PIXELS_PER_UNIT)
+
+
+## True when a hull sprite of `sset` would draw sub-pixel at `view_scale` and
+## should be replaced by a pip (#17).
+func _ship_is_pip(sset: AssetLibrary.SpriteSet, view_scale: float) -> bool:
+	var px := Vector2(sset.px_size())
+	var s := SHIP_WORLD_UNITS_PER_PX * SHIP_RENDER_SCALE * view_scale
+	return maxf(px.x, px.y) * s < SHIP_PIP_SCREEN_PX
+
+
+## True when a station sprite of `sset` would draw sub-pixel at `view_scale`.
+func _station_is_pip(sset: AssetLibrary.SpriteSet, view_scale: float) -> bool:
+	var px := Vector2(sset.px_size())
+	var s := SHIP_WORLD_UNITS_PER_PX * STATION_RENDER_SCALE * view_scale
+	return maxf(px.x, px.y) * s < STATION_PIP_SCREEN_PX
 
 
 func _update_station_sprites(screen_center: Vector2, view_scale: float, touched: Dictionary) -> void:
-	# Docked ships park at berth anchors, in docking order per station.
+	# Docked ships park at the anchor of their OWN claimed berth (snapshot
+	# `berth`), not arrival order — so a moored hull sits at, and undocks
+	# from, the same berth the server pins it to (#13).
 	var docked_by_station: Dictionary = {}
 	for ship in ships:
 		if ship.is_docked():
@@ -267,7 +339,12 @@ func _update_station_sprites(screen_center: Vector2, view_scale: float, touched:
 		var units_per_px := _station_units_per_px(station, sset)
 		s.position = _world_to_screen(world.station_position(station.id, t),
 			screen_center, view_scale)
-		s.scale = Vector2.ONE * (units_per_px * view_scale)
+		if _station_is_pip(sset, view_scale):
+			s.visible = false  # #17: _draw_stations marks it with a diamond pip
+			continue           # (hides parked-ship children with it)
+		# #15: STATION_RENDER_SCALE shrinks the station (and its parked ships,
+		# which are children) relative to planets.
+		s.scale = Vector2.ONE * (units_per_px * STATION_RENDER_SCALE * view_scale)
 		_update_parked_ships(s, station, sset,
 			docked_by_station.get(station.id, []))
 
@@ -280,23 +357,37 @@ func _update_parked_ships(station_sprite: Sprite2D, station: WorldData.Station,
 	var units_per_px := _station_units_per_px(station, sset)
 	var half := Vector2(sset.px_size()) * 0.5
 	var used := {}
-	for i in range(mini(docked.size(), berth_anchors.size())):
-		var ship: ShipState = docked[i]
+	var occupied := {}
+	for ship_variant: Variant in docked:
+		var ship: ShipState = ship_variant
+		var idx := ship.berth
+		if idx < 0 or idx >= berth_anchors.size():
+			continue  # unknown/out-of-range berth: no exterior slot to park in
+		occupied[idx] = true
 		used["parked_%d" % ship.id] = true
+		# Orientation-driven rotation (#14): the moored hull draws at the same
+		# heading the server sends in the snapshot (the port-orientation-derived
+		# moored heading), via the same screen-angle formula flying ships use
+		# (_update_ship_sprites). No longer hardcoded side-on — and because it
+		# matches the flying formula, the hull's rotation is continuous through
+		# undock (#13). The side-on default heading (west) still yields -PI/2.
 		_park_sprite(station_sprite, "parked_%d" % ship.id, "mockingbird",
-			berth_anchors[i] - half, units_per_px)
+			berth_anchors[idx] - half, units_per_px, -ship.heading + PI / 2)
 	# Flavor: on the crane station, a workaday Longhorn holds the last berth
-	# when no real ship does (DESIGN.md M3.5: Longhorn as parked traffic).
-	if station.crane and docked.size() < berth_anchors.size():
-		used["parked_longhorn"] = true
-		_park_sprite(station_sprite, "parked_longhorn", "longhorn",
-			berth_anchors[berth_anchors.size() - 1] - half, units_per_px)
+	# when no real ship does (DESIGN.md M3.5: Longhorn as parked traffic). It
+	# carries no snapshot, so it keeps the side-on default pose.
+	if station.crane and berth_anchors.size() > 0:
+		var last := berth_anchors.size() - 1
+		if not occupied.has(last):
+			used["parked_longhorn"] = true
+			_park_sprite(station_sprite, "parked_longhorn", "longhorn",
+				berth_anchors[last] - half, units_per_px, -PI / 2)
 	for child in station_sprite.get_children():
 		child.visible = used.has(String(child.name))
 
 
 func _park_sprite(parent: Sprite2D, key: String, kind: String,
-		local_px: Vector2, station_units_per_px: float) -> void:
+		local_px: Vector2, station_units_per_px: float, rotation: float) -> void:
 	var sset := _lib.ship(kind)
 	if sset == null:
 		return
@@ -311,8 +402,10 @@ func _park_sprite(parent: Sprite2D, key: String, kind: String,
 		parent.add_child(s)
 	s.visible = true
 	s.position = local_px
-	# Moored ships lie side-on: 90 CCW, nose west, port flank to the bar.
-	s.rotation = -PI / 2
+	# Rotation is orientation-derived (passed in): the default moored heading
+	# (west) still gives the classic side-on -PI/2, nose west, port flank to
+	# the bar.
+	s.rotation = rotation
 	s.scale = Vector2.ONE * (SHIP_WORLD_UNITS_PER_PX / station_units_per_px)
 
 
@@ -321,57 +414,82 @@ func _update_ship_sprites(screen_center: Vector2, view_scale: float,
 	var sset := _lib.ship("mockingbird")  # every hull is a Mockingbird until M4
 	if sset == null:
 		return
+	var is_pip := _ship_is_pip(sset, view_scale)
 	for ship in ships:
 		if ship.is_docked():
 			continue  # parked at a berth by the station pass
 		if interior_mode and ship.id == suppress_ship_id:
 			continue  # InteriorView draws this hull as the tile backdrop
+		# #10: ease the rendered heading toward the snapshot's target — the
+		# wire carries no angular velocity, so a raw assign steps at ~15 Hz.
+		var target: float = ship.heading
+		var cur: float = _render_heading.get(ship.id, target)
+		cur = lerp_angle(cur, target, clampf(HEADING_SMOOTH_RATE * delta, 0.0, 1.0))
+		_render_heading[ship.id] = cur
+		# #12: exhaust is emitted into world space from the tail this frame.
+		_emit_plume_trail(ship, cur, delta)
 		var key := "ship_%d" % ship.id
 		var s := _pool_sprite(_ship_sprites, key, touched)
 		if s.texture == null:
 			s.texture = sset.texture
 			s.material = sset.material
 			s.light_mask = 1
-			_spawn_plumes(s, sset)
+		if is_pip:
+			s.visible = false  # #17: _draw_ships marks it with a pip instead
+			continue
 		s.position = _world_to_screen(ship.position(), screen_center, view_scale)
-		s.rotation = -ship.heading + PI / 2
-		s.scale = Vector2.ONE * maxf(SHIP_WORLD_UNITS_PER_PX * view_scale,
-			SHIP_MIN_SCREEN_SCALE)
-		_update_plumes(s, ship, delta)
+		s.rotation = -cur + PI / 2
+		# #15/#17: SHIP_RENDER_SCALE shrinks the hull vs planets; the scale now
+		# follows the zoom all the way down (no floor) into the pip regime.
+		s.scale = Vector2.ONE * (SHIP_WORLD_UNITS_PER_PX * SHIP_RENDER_SCALE * view_scale)
 
 
-func _spawn_plumes(ship_sprite: Sprite2D, sset: AssetLibrary.SpriteSet) -> void:
-	var half := Vector2(sset.px_size()) * 0.5
-	var mat := CanvasItemMaterial.new()
-	mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
-	var anchors := sset.anchors("nozzle")
-	for i in anchors.size():
-		var anchor := anchors[i]
-		var p := Sprite2D.new()
-		p.name = "plume_%d" % i  # unique: duplicate names get @-mangled and
-		# would fall out of _update_plumes' begins_with("plume") filter
-		p.texture = _plume_tex
-		p.material = mat
-		p.light_mask = 2  # emissive: never sun-lit
-		p.show_behind_parent = true  # exhaust pours out from UNDER the hull
-		p.position = anchor - half + Vector2(0, 1.0)
-		p.offset = Vector2(0, 3.0)  # glow center trails the nozzle; scaling
-		p.modulate.a = 0.0          # y stretches the plume aft (texture +y)
-		ship_sprite.add_child(p)
+## #12 — advance and expire every ship's world-space exhaust motes. Runs each
+## frame before emission (including for ships that just despawned, so their
+## trails still age out) — keys() is a copy, so erasing mid-loop is safe.
+func _advance_plume_trails(delta: float) -> void:
+	for id: int in _plume_trails.keys():
+		var motes: Array = _plume_trails[id]
+		var kept: Array = []
+		for m: Dictionary in motes:
+			m["age"] = float(m["age"]) + delta
+			if m["age"] < PLUME_LIFETIME:
+				m["p"] = m["p"] + m["v"] * delta
+				kept.append(m)
+		if kept.is_empty():
+			_plume_trails.erase(id)
+		else:
+			_plume_trails[id] = kept
 
 
-func _update_plumes(ship_sprite: Sprite2D, ship: ShipState, delta: float) -> void:
+## #12 — spit new exhaust motes from `ship`'s tail into world space, scaled by
+## the ramped throttle level. `heading` is the smoothed world heading so the
+## plume points where the hull visually points.
+func _emit_plume_trail(ship: ShipState, heading: float, delta: float) -> void:
 	var throttle := own_throttle if ship.id == own_ship_id \
 		else _estimate_throttle(ship)
 	var level: float = move_toward(_plume_level.get(ship.id, 0.0),
 		clampf(throttle, 0.0, 1.0), PLUME_RAMP_PER_SEC * delta)
 	_plume_level[ship.id] = level
-	var flicker := 1.0 + 0.08 * sin(Time.get_ticks_msec() * 0.03 * TAU)
-	for child in ship_sprite.get_children():
-		if child is Sprite2D and String(child.name).begins_with("plume"):
-			child.modulate.a = 0.85 * level
-			child.scale = Vector2(0.4 + 0.25 * level,
-				(0.2 + 2.2 * level) * flicker)
+	if level <= 0.02:
+		return
+	# Fractional accumulator so low throttle still trickles whole motes.
+	var carry: float = float(_plume_emit_carry.get(ship.id, 0.0)) \
+		+ level * PLUME_EMIT_PER_SEC * delta
+	var n := int(carry)
+	_plume_emit_carry[ship.id] = carry - n
+	if n <= 0:
+		return
+	# Aft is opposite the nose; nose points along `heading` (world y-up).
+	var aft := -Vector2(cos(heading), sin(heading))
+	var lateral := Vector2(-aft.y, aft.x)
+	var tail := ship.position() + aft * (PLUME_MOTE_WORLD * 1.5)
+	var motes: Array = _plume_trails.get_or_add(ship.id, [])
+	for _i in n:
+		var kick := aft * PLUME_EXHAUST_SPEED \
+			+ lateral * randf_range(-PLUME_SPREAD, PLUME_SPREAD)
+		motes.append({"p": tail, "v": ship.velocity() + kick,
+			"age": 0.0, "level": level})
 
 
 ## Burn detection for ships we don't control: a snapshot-to-snapshot velocity
@@ -418,9 +536,61 @@ func _draw() -> void:
 	var screen_center := get_viewport_rect().size * 0.5
 
 	_draw_starfield(view_scale)
+	_draw_plume_trails(screen_center, view_scale)  # #12: world-space exhaust
 	_draw_bodies(screen_center, view_scale)
 	_draw_stations(screen_center, view_scale)
 	_draw_ships(screen_center, view_scale)
+	_draw_trajectory(screen_center, view_scale)    # #18: predicted path pips
+
+
+## #12 — draw each world-space exhaust mote transformed to screen this frame,
+## so already-emitted gas stays put in the world and a turn leaves a curved
+## trailing plume. The motes sit under the ship sprites (children draw above
+## the parent's _draw), so the plume pours out from behind the hull.
+func _draw_plume_trails(screen_center: Vector2, view_scale: float) -> void:
+	if _plume_tex == null:
+		return
+	for id: int in _plume_trails:
+		for m: Dictionary in _plume_trails[id]:
+			var life_frac: float = clampf(float(m["age"]) / PLUME_LIFETIME, 0.0, 1.0)
+			var r: float = (PLUME_MOTE_WORLD + PLUME_MOTE_GROWTH * life_frac) * view_scale
+			if r < 0.5:
+				continue
+			var center := _world_to_screen(m["p"], screen_center, view_scale)
+			var flame := PLUME_HOT.lerp(PLUME_COOL, life_frac)
+			flame.a = (1.0 - life_frac) * 0.85 * float(m.get("level", 1.0))
+			draw_texture_rect(_plume_tex,
+				Rect2(center - Vector2(r, r), Vector2(r, r) * 2.0),
+				false, flame)
+
+
+## #18 — evenly spaced pips along the player ship's dead-reckoned path
+## (straight-line coast on current velocity, matching the client's own
+## extrapolation). Chart furniture — suppressed through THE WINDOW.
+func _draw_trajectory(screen_center: Vector2, view_scale: float) -> void:
+	if interior_mode or own_ship_id < 0:
+		return
+	var own: ShipState = null
+	for ship in ships:
+		if ship.id == own_ship_id:
+			own = ship
+			break
+	if own == null or own.is_docked():
+		return
+	var vel := own.velocity()
+	if vel.length() < TRAJECTORY_MIN_SPEED:
+		return
+	var origin := own.position()
+	for i in range(1, TRAJECTORY_PIP_COUNT + 1):
+		var t_ahead := TRAJECTORY_LOOKAHEAD_SEC * float(i) / float(TRAJECTORY_PIP_COUNT)
+		var screen_pt := _world_to_screen(origin + vel * t_ahead, screen_center, view_scale)
+		var c := TRAJECTORY_PIP_COLOR
+		c.a *= 1.0 - 0.6 * float(i - 1) / float(TRAJECTORY_PIP_COUNT)
+		# Diamond, not a dot — reads as a nav marker, not a background star.
+		var rr := TRAJECTORY_PIP_RADIUS
+		draw_colored_polygon(PackedVector2Array([
+			screen_pt + Vector2(0.0, -rr), screen_pt + Vector2(rr, 0.0),
+			screen_pt + Vector2(0.0, rr), screen_pt + Vector2(-rr, 0.0)]), c)
 
 
 ## Three tiled Classic star layers, drifting against flight direction at
@@ -486,7 +656,10 @@ func _draw_stations(screen_center: Vector2, view_scale: float) -> void:
 			if dock_radius_px > 1.0:
 				draw_arc(screen_pos, dock_radius_px, 0.0, TAU, 64, DOCK_RING_COLOR, 1.0, true)
 
-		if _lib.station(_station_archetype(station)) == null:
+		# Diamond marker when there is no sprite, OR (#17) when zoomed so far
+		# out that the station sprite went sub-pixel and the sprite pass hid it.
+		var sset := _lib.station(_station_archetype(station))
+		if sset == null or _station_is_pip(sset, view_scale):
 			var half := STATION_MARKER_SIZE
 			var diamond := PackedVector2Array([
 				screen_pos + Vector2(0, -half),
@@ -503,7 +676,11 @@ func _draw_stations(screen_center: Vector2, view_scale: float) -> void:
 
 
 func _draw_ships(screen_center: Vector2, view_scale: float) -> void:
-	var have_sprites := _lib.ship("mockingbird") != null
+	var sset := _lib.ship("mockingbird")
+	var have_sprites := sset != null
+	# #17: past a zoom-out threshold the hull sprite went sub-pixel and the
+	# sprite pass hid it; render every flying ship as a fixed pip instead.
+	var pip := have_sprites and _ship_is_pip(sset, view_scale)
 	for ship in ships:
 		if ship.is_docked() and have_sprites:
 			continue  # parked at a berth by the station sprite pass
@@ -515,6 +692,9 @@ func _draw_ships(screen_center: Vector2, view_scale: float) -> void:
 			var screen_angle := -ship.heading
 			var color := OWN_SHIP_COLOR if is_own else OTHER_SHIP_COLOR
 			_draw_ship_triangle(screen_pos, screen_angle, SHIP_SIZE, color)
+		elif pip:
+			draw_circle(screen_pos, SHIP_PIP_RADIUS,
+				OWN_SHIP_COLOR if is_own else OTHER_SHIP_COLOR)
 		if not is_own and _font != null and not interior_mode:
 			draw_string(
 				_font, screen_pos + Vector2(SHIP_SIZE + 3.0, 4.0), str(ship.id),

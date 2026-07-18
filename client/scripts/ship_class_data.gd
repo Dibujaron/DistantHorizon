@@ -67,6 +67,25 @@ const WALK_SPEED := 3.0
 ## Character collision radius, tiles -- mirrors `radius` in character.gleam.
 const CHARACTER_RADIUS := 0.3
 
+## Per-edge structure on a floor tile (#19). Every tile edge (N/E/S/W)
+## declares what sits on it: NONE (open -- the floor runs straight through),
+## WALL (a bulkhead), DOOR (a hatch, drawn distinctly), or EQUIPMENT
+## (reserved: consoles/lockers/machinery mounted on an edge, styled later).
+## Interior walls and doors are thus DATA, not implied by adjacency -- but a
+## tile with no authored edge DERIVES the classic behaviour (a wall wherever
+## floor meets void/other-deck) so existing deckplans render unchanged.
+## #20 (grid softening), #22 (stairs) and #11 (collision) all build on this.
+enum Edge { NONE, WALL, DOOR, EQUIPMENT }
+
+## Edge directions, indexed to match EDGE_KEYS: 0=N, 1=E, 2=S, 3=W.
+const EDGE_DELTAS: Array[Vector2i] = [
+	Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]
+const EDGE_KEYS := ["n", "e", "s", "w"]
+## Wire/author spelling -> Edge, for the optional `edges` block in a class doc.
+const EDGE_NAMES := {
+	"none": Edge.NONE, "wall": Edge.WALL,
+	"door": Edge.DOOR, "equipment": Edge.EQUIPMENT}
+
 var schema: int = 1
 var id: String = ""
 var name: String = ""
@@ -80,6 +99,18 @@ var spawn_tile: Vector2i = Vector2i.ZERO
 ## this class leave them at 0/"" — a concourse has no hold.
 var cargo_capacity: int = 0
 var handling: String = ""
+## This hull's docking-port outward normal, ship-local radians (0 = nose/+x);
+## PI/2 = port flank (side-on mooring, the default). With the station berth's
+## orientation this fixes the moored heading (#14). Concourse plans, which
+## carry no such field, keep the default.
+var dock_port_orientation: float = PI / 2.0
+
+## Authored per-edge structure: "x,y" -> { "n"/"e"/"s"/"w": Edge }. Empty
+## means "derive every edge from adjacency" (fully backward compatible). Filled
+## from the class doc's optional `edges` block, or -- until the server carries
+## edges on the wire -- from a built-in client table for known hulls (see
+## _apply_default_edges).
+var edges: Dictionary = {}
 
 
 static func from_dict(data: Dictionary) -> ShipClassData:
@@ -106,7 +137,45 @@ static func from_dict(data: Dictionary) -> ShipClassData:
 	if cargo is Dictionary:
 		doc.cargo_capacity = int(cargo.get("capacity", 0))
 		doc.handling = str(cargo.get("handling", ""))
+	doc.dock_port_orientation = float(
+		data.get("dock_port_orientation", PI / 2.0))
+	var edges_data: Variant = data.get("edges")
+	if edges_data is Dictionary:
+		for cell_key: Variant in edges_data:
+			var cell: Variant = edges_data[cell_key]
+			if not cell is Dictionary:
+				continue
+			var parsed := {}
+			for side: Variant in cell:
+				var edge_name := str(cell[side]).to_lower()
+				var side_key := str(side).to_lower()
+				if EDGE_NAMES.has(edge_name) and side_key in EDGE_KEYS:
+					parsed[side_key] = int(EDGE_NAMES[edge_name])
+			if not parsed.is_empty():
+				doc.edges[str(cell_key)] = parsed
+	if doc.edges.is_empty():
+		doc._apply_default_edges()
 	return doc
+
+
+## Interim client-side edge authoring (#19): until the server ships an `edges`
+## block on the wire, seed doors/walls for known hulls here so the interior
+## renders them today. Kept collision-neutral: these only mark HULL-edge
+## boundaries (already non-walkable void beyond) as hatches, so the client's
+## walkable prediction still matches the server's tile rule exactly. Authoring
+## a BLOCKING interior partition would need the server's collision to agree --
+## see the report's coordinator follow-up.
+func _apply_default_edges() -> void:
+	match id:
+		"mockingbird":
+			# Boarding hatch off the docking-deck between-level, plus a
+			# port/starboard airlock on the widest hold ring.
+			edges = {
+				"6,22": {"s": Edge.DOOR},
+				"7,22": {"s": Edge.DOOR},
+				"3,14": {"w": Edge.DOOR},
+				"10,14": {"e": Edge.DOOR},
+			}
 
 
 ## The walkable character at tile (tx,ty), "." out of bounds. Alphabet
@@ -165,6 +234,33 @@ func visible_floor(view_deck: String, tx: int, ty: int) -> bool:
 	if ch == "U":
 		return view_deck == "upper"
 	return true
+
+
+## The structure on tile (tx,ty)'s `dir` edge (0=N,1=E,2=S,3=W) as seen from
+## `view_deck` (#19). Non-floor tiles have no edges. An authored edge wins --
+## this tile's, or the neighbour's matching edge, so a door authored from
+## either side shows once. Otherwise DERIVE: WALL where this floor meets
+## void/off-grid/the other deck, else NONE. Rendering-only: collision still
+## runs on walkable_for (the server's tile rule) until edges reach the wire.
+func edge_at(view_deck: String, tx: int, ty: int, dir: int) -> int:
+	if not visible_floor(view_deck, tx, ty):
+		return Edge.NONE
+	var authored := _authored_edge(tx, ty, dir)
+	if authored == -1:
+		var d: Vector2i = EDGE_DELTAS[dir]
+		authored = _authored_edge(tx + d.x, ty + d.y, (dir + 2) % 4)
+	if authored != -1:
+		return authored
+	var nd: Vector2i = EDGE_DELTAS[dir]
+	return Edge.WALL if not visible_floor(view_deck, tx + nd.x, ty + nd.y) else Edge.NONE
+
+
+## The authored Edge on tile (tx,ty)'s `dir` edge, or -1 if none is authored.
+func _authored_edge(tx: int, ty: int, dir: int) -> int:
+	var cell: Variant = edges.get("%d,%d" % [tx, ty])
+	if cell is Dictionary and cell.has(EDGE_KEYS[dir]):
+		return int(cell[EDGE_KEYS[dir]])
+	return -1
 
 
 ## The room whose rect contains tile (tx,ty), or null (corridors and

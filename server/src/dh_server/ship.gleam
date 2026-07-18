@@ -86,15 +86,17 @@ fn sin(x: Float) -> Float
 /// position and velocity at sim time `t`, holding the given berth index.
 pub fn spawn_docked(id: Int, world: World, t: Float, berth: Int) -> Ship {
   let station_id = world.spawn_station
-  let #(x, y) = world.station_position(world, station_id, t)
-  let #(vx, vy) = world.station_velocity(world, station_id, t)
+  // Moored at the berth's pose (station centre + its world anchor), holding
+  // the orientation-derived moored heading — not pinned at the bare centre,
+  // so the exterior hull sits at its berth and undocks in place (#13/#14).
+  let #(x, y, vx, vy) = world.moored_position(world, station_id, berth, t)
   Ship(
     id: id,
     x: x,
     y: y,
     vx: vx,
     vy: vy,
-    heading: 0.0,
+    heading: world.moored_heading(world, station_id, berth),
     controls: Controls(rotate: 0.0, thrust: 0.0),
     dock: Docked(station_id, berth),
     wallet: starting_wallet,
@@ -120,9 +122,12 @@ pub fn set_controls(ship: Ship, rotate: Float, thrust: Float) -> Ship {
 /// controls; a flying ship integrates thrust + gravity.
 pub fn step(ship: Ship, world: World, t: Float) -> Ship {
   case ship.dock {
-    Docked(station_id, _) -> {
-      let #(x, y) = world.station_position(world, station_id, t)
-      let #(vx, vy) = world.station_velocity(world, station_id, t)
+    Docked(station_id, berth) -> {
+      // Pinned to the berth's moored pose (station centre + world anchor,
+      // riding the station's rail velocity). Heading is left untouched: it
+      // was set to the moored heading at dock/spawn and a docked hull never
+      // rotates, so it persists across every pinned tick.
+      let #(x, y, vx, vy) = world.moored_position(world, station_id, berth, t)
       Ship(..ship, x: x, y: y, vx: vx, vy: vy)
     }
     Flying -> {
@@ -167,15 +172,25 @@ pub fn try_dock(
                 // Zero the helm on dock: helm input is ignored while
                 // docked, so any controls left set here would silently
                 // survive the stay and fire again on the first step after
-                // undock.
-                Ok(berth) ->
+                // undock. Snap to the berth's moored pose immediately (the
+                // next `step` re-pins it anyway) so the exterior hull and its
+                // heading read correctly the moment the dock lands.
+                Ok(berth) -> {
+                  let #(mx, my, mvx, mvy) =
+                    world.moored_position(world, station_id, berth, t)
                   Ok(
                     Ship(
                       ..ship,
+                      x: mx,
+                      y: my,
+                      vx: mvx,
+                      vy: mvy,
+                      heading: world.moored_heading(world, station_id, berth),
                       controls: Controls(rotate: 0.0, thrust: 0.0),
                       dock: Docked(station_id, berth),
                     ),
                   )
+                }
               }
           }
         }
@@ -184,17 +199,17 @@ pub fn try_dock(
 }
 
 /// Undock: `Error("not_docked")` if already flying, otherwise the ship is
-/// released in place — at the station's position with the station's rail
-/// velocity, heading unchanged — and set flying. No teleport: the ship
-/// starts inside the dock ring and drifts out on the station's velocity.
+/// released exactly where it was moored — at the berth's pose (station centre
+/// + the berth's world anchor) on the station's rail velocity, heading
+/// unchanged — and set flying. No teleport toward the station centre (#13):
+/// the hull leaves from its berth and drifts out on the station's velocity.
 pub fn undock(ship: Ship, world: World, t: Float) -> Result(Ship, String) {
   case ship.dock {
     Flying -> Error("not_docked")
     Docked(_, _) if ship.transfers != [] -> Error("transfer_in_progress")
-    Docked(station_id, _) -> {
-      let #(sx, sy) = world.station_position(world, station_id, t)
-      let #(svx, svy) = world.station_velocity(world, station_id, t)
-      Ok(Ship(..ship, x: sx, y: sy, vx: svx, vy: svy, dock: Flying))
+    Docked(station_id, berth) -> {
+      let #(x, y, vx, vy) = world.moored_position(world, station_id, berth, t)
+      Ok(Ship(..ship, x: x, y: y, vx: vx, vy: vy, dock: Flying))
     }
   }
 }
