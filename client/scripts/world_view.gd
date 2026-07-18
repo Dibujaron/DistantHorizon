@@ -80,20 +80,24 @@ const HEADING_SMOOTH_RATE := 14.0
 ## turning leaves a curved trailing plume. Motes are emitted from the tail,
 ## carried on the ship's velocity plus an aft kick, and drawn in the vector
 ## pass (_draw_plume_trails) transformed world->screen every frame. Tunables:
-const PLUME_EMIT_PER_SEC := 32.0        # motes/sec at full throttle
-const PLUME_LIFETIME := 1.1             # seconds a mote lives
+const PLUME_EMIT_PER_SEC := 44.0        # motes/sec at full throttle
+const PLUME_LIFETIME := 0.85            # seconds a mote lives
 const PLUME_EXHAUST_SPEED := 60.0       # aft ejection speed, world units/sec
-const PLUME_SPREAD := 10.0              # lateral jitter, world units/sec
-const PLUME_MOTE_WORLD := 6.0           # mote radius at birth, world units
-const PLUME_MOTE_GROWTH := 3.0          # world units added over its life
+const PLUME_SPREAD := 8.0               # lateral jitter, world units/sec
+const PLUME_MOTE_WORLD := 5.0           # mote radius at birth, world units
+const PLUME_MOTE_GROWTH := 1.5          # world units added over its life
+## Flame colour ramp: motes are born hot (yellow-white), cool through orange to
+## deep red as they age, so the exhaust reads as fire rather than grey smoke.
+const PLUME_HOT := Color(1.0, 0.96, 0.75)
+const PLUME_COOL := Color(0.95, 0.26, 0.08)
 
 ## #18 — projected-trajectory pips: dead-reckon the player ship forward along
 ## its current velocity (straight-line coast, matching the client's own
 ## extrapolation) and drop evenly spaced pips. Tunables:
 const TRAJECTORY_LOOKAHEAD_SEC := 6.0   # how far ahead to predict
 const TRAJECTORY_PIP_COUNT := 8         # number of pips along the path
-const TRAJECTORY_PIP_RADIUS := 1.6      # pip radius, screen px
-const TRAJECTORY_PIP_COLOR := Color(0.55, 0.85, 1.0, 0.5)
+const TRAJECTORY_PIP_RADIUS := 2.6      # pip half-extent (diamond), screen px
+const TRAJECTORY_PIP_COLOR := Color(0.35, 1.0, 0.72, 0.9)  # nav-green diamonds
 const TRAJECTORY_MIN_SPEED := 1.0       # below this |v|, no path to show
 
 ## Set every frame by main.gd before queue_redraw().
@@ -553,10 +557,11 @@ func _draw_plume_trails(screen_center: Vector2, view_scale: float) -> void:
 			if r < 0.5:
 				continue
 			var center := _world_to_screen(m["p"], screen_center, view_scale)
-			var a: float = (1.0 - life_frac) * 0.7 * float(m.get("level", 1.0))
+			var flame := PLUME_HOT.lerp(PLUME_COOL, life_frac)
+			flame.a = (1.0 - life_frac) * 0.85 * float(m.get("level", 1.0))
 			draw_texture_rect(_plume_tex,
 				Rect2(center - Vector2(r, r), Vector2(r, r) * 2.0),
-				false, Color(1.0, 0.85, 0.6, a))
+				false, flame)
 
 
 ## #18 — evenly spaced pips along the player ship's dead-reckoned path
@@ -581,7 +586,11 @@ func _draw_trajectory(screen_center: Vector2, view_scale: float) -> void:
 		var screen_pt := _world_to_screen(origin + vel * t_ahead, screen_center, view_scale)
 		var c := TRAJECTORY_PIP_COLOR
 		c.a *= 1.0 - 0.6 * float(i - 1) / float(TRAJECTORY_PIP_COUNT)
-		draw_circle(screen_pt, TRAJECTORY_PIP_RADIUS, c)
+		# Diamond, not a dot — reads as a nav marker, not a background star.
+		var rr := TRAJECTORY_PIP_RADIUS
+		draw_colored_polygon(PackedVector2Array([
+			screen_pt + Vector2(0.0, -rr), screen_pt + Vector2(rr, 0.0),
+			screen_pt + Vector2(0.0, rr), screen_pt + Vector2(-rr, 0.0)]), c)
 
 
 ## Three tiled Classic star layers, drifting against flight direction at
