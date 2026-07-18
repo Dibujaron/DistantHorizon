@@ -146,6 +146,14 @@ var _pending_trade_verb: String = ""
 ## rebuild, since there's no continuity to build on then.
 var _predicted_pos: Vector2 = Vector2.ZERO
 var _predicting: bool = false
+## Predicted deck of the own character (split-level plans): advances with
+## step_walk's center-tile rule, seeded from the server on every space
+## message, adopted from the server on a hard prediction snap.
+var _predicted_deck: String = "upper"
+
+## 0 = fully system view, 1 = fully interior; eased across the transition.
+## Drives THE WINDOW's matched zoom blend and WorldView's interior mode.
+var _interior_weight: float = 0.0
 
 ## Highlighted row in the trade panel while at a broker (clamped to
 ## _market.stores' bounds each render; meaningless at the read-only cargo
@@ -285,9 +293,13 @@ func _update_own_prediction(move_input: Vector2, delta: float) -> void:
 		return
 	if not _predicting:
 		_predicted_pos = own_char.position()
+		_predicted_deck = own_char.deck
 		_predicting = true
 	_predicted_pos = ShipClassData.step_walk(
-		plan, _predicted_pos.x, _predicted_pos.y, move_input.x, move_input.y, delta)
+		plan, _predicted_deck, _predicted_pos.x, _predicted_pos.y,
+		move_input.x, move_input.y, delta)
+	_predicted_deck = plan.deck_after(
+		_predicted_deck, _predicted_pos.x, _predicted_pos.y)
 
 func _toggle_dock() -> void:
 	if not NetworkClient.logged_in:
@@ -468,9 +480,34 @@ func _update_world_view() -> void:
 		# No snapshot with our ship yet: center on the spawn station so the
 		# view isn't empty while we wait.
 		own_pos = _world.station_position(_world.spawn_station, t)
+	# THE WINDOW's matched zoom: while on foot the space outside renders at
+	# the interior's scale (interior tiles fit the hull sprite), blended
+	# geometrically across the view transition so the crossfade reads as
+	# one continuous camera move.
+	var w := _interior_weight
+	var zoom_now := _zoom
+	if w > 0.001:
+		var matched := _matched_interior_zoom()
+		zoom_now = exp(lerpf(log(_zoom), log(matched), w))
+	var interior_mode := w > 0.5
+	var suppress_station := ""
+	var suppress_ship := -1
+	if _space != null and _space.is_station():
+		suppress_station = _space.station_id()
+	elif _space != null and _space.is_ship():
+		suppress_ship = _ship_id
 	_world_view.set_frame_data(
-		_world, t, extrapolated, _ship_id, _zoom, own_pos, own_undocked,
-		_last_sent_thrust)
+		_world, t, extrapolated, _ship_id, zoom_now, own_pos, own_undocked,
+		_last_sent_thrust, interior_mode, suppress_station, suppress_ship)
+
+
+## The world-view zoom at which hull sprites render at the interior's tile
+## scale (64 px tiles over 3 px/tile sprites). Station scale while docked,
+## ship scale aboard; falls back to the user zoom before data arrives.
+func _matched_interior_zoom() -> float:
+	if _space != null and _space.is_station():
+		return _world_view.matched_zoom_station(_space.station_id(), _zoom)
+	return _world_view.matched_zoom_ship(_zoom)
 
 ## Own character (while _predicting, i.e. standing) draws at the locally-
 ## predicted position; while seated (or before prediction has (re)started)
@@ -488,7 +525,48 @@ func _update_interior_view() -> void:
 			rendered.append(_predicted_character_state(character))
 		else:
 			rendered.append(_interpolated_character_state(character, render_msec))
-	_interior_view.set_frame_data(_current_plan(), rendered, _character_id, _own_render_position())
+	_interior_view.set_frame_data(
+		_current_plan(), rendered, _character_id, _own_render_position(),
+		_own_view_deck(), _interior_backdrops())
+
+
+## The deck the interior renders from: predicted while walking, server
+## truth otherwise.
+func _own_view_deck() -> String:
+	if _predicting:
+		return _predicted_deck
+	var own_char := _own_character()
+	if own_char != null:
+		return own_char.deck
+	return _space.you_deck if _space != null else "upper"
+
+
+## Exterior-sprite backdrops for every hull in the current space: the
+## station concourse bar (anchored by the space message's concourse
+## offset), each moored ship, or the flying ship itself. Every hull is a
+## Mockingbird until M4.
+func _interior_backdrops() -> Array[InteriorView.Backdrop]:
+	var out: Array[InteriorView.Backdrop] = []
+	if _space == null:
+		if _ship_class != null:
+			out.append(InteriorView.Backdrop.make(
+				"ship", "mockingbird", Vector2.ZERO))
+		return out
+	if _space.is_station():
+		if _space.has_concourse and _world != null:
+			for station in _world.stations:
+				if station.id == _space.station_id():
+					var archetype := "ring_3berth_crane" if station.crane \
+						else "ring_1berth"
+					out.append(InteriorView.Backdrop.make("station", archetype,
+						Vector2(_space.concourse_dx, _space.concourse_dy)))
+		for mooring in _space.moorings:
+			out.append(InteriorView.Backdrop.make(
+				"ship", "mockingbird", Vector2(mooring.dx, mooring.dy)))
+	elif _space.is_ship():
+		out.append(InteriorView.Backdrop.make(
+			"ship", "mockingbird", Vector2.ZERO))
+	return out
 
 ## Where our own character renders this frame (predicted while walking,
 ## server truth otherwise) - also the interior camera's focus.
@@ -504,6 +582,7 @@ func _predicted_character_state(server_char: CharacterState) -> CharacterState:
 	out.id = server_char.id
 	out.name = server_char.name
 	out.seat = server_char.seat
+	out.deck = _predicted_deck if _predicting else server_char.deck
 	var pos := _own_render_position()
 	out.x = pos.x
 	out.y = pos.y
@@ -517,6 +596,7 @@ func _interpolated_character_state(server_char: CharacterState, render_msec: int
 	out.id = server_char.id
 	out.name = server_char.name
 	out.seat = server_char.seat
+	out.deck = server_char.deck
 	var pos := _interpolated_other_position(server_char.id, render_msec)
 	out.x = pos.x
 	out.y = pos.y
@@ -598,6 +678,7 @@ func _apply_transition_visuals(progress: float) -> void:
 	var eased := smoothstep(0.0, 1.0, progress)
 	var to_interior := _transition_to == ViewMode.INTERIOR
 	var interior_alpha := eased if to_interior else 1.0 - eased
+	_interior_weight = interior_alpha
 	var interior_scale := lerpf(0.85, 1.0, eased) if to_interior else lerpf(1.0, 0.85, eased)
 	var system_scale := lerpf(1.0, 1.15, eased) if to_interior else lerpf(1.15, 1.0, eased)
 	_set_view_zoom(_interior_view, interior_scale)
@@ -626,6 +707,7 @@ func _set_view_zoom(view: Node2D, view_scale: float) -> void:
 ## hidden.
 func _snap_view_visuals() -> void:
 	var interior_active := _view_mode == ViewMode.INTERIOR
+	_interior_weight = 1.0 if interior_active else 0.0
 	_set_view_zoom(_interior_view, 1.0)
 	_interior_view.modulate.a = 1.0 if interior_active else 0.0
 	_interior_view.visible = interior_active
@@ -668,11 +750,13 @@ func _on_space_received(space: SpaceData) -> void:
 	me.name = "you"
 	me.x = space.you_x
 	me.y = space.you_y
+	me.deck = space.you_deck
 	me.seat = "" if space.you_seat == null else str(space.you_seat)
 	_characters = [me]
 	_interior_history = []
 	_predicting = false
 	_predicted_pos = Vector2(space.you_x, space.you_y)
+	_predicted_deck = space.you_deck
 	# Stale panels from the previous space must not linger.
 	_market = null
 
@@ -707,6 +791,10 @@ func _reconcile_own_prediction() -> void:
 	var diff := server_pos - _predicted_pos
 	if diff.length() > OWN_PREDICTION_SNAP_TILES:
 		_predicted_pos = server_pos
+		# A hard snap means prediction diverged — adopt the server's deck
+		# too (soft corrections keep the predicted deck: the server just
+		# lags a stair crossing by a message interval).
+		_predicted_deck = own_char.deck
 	else:
 		_predicted_pos += diff * OWN_PREDICTION_CORRECTION
 

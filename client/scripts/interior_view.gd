@@ -11,15 +11,22 @@ class_name InteriorView
 ## the system view visible (dimmed) beneath this node, so space shows
 ## through everywhere the plan isn't — THE WINDOW.
 ##
-## The view-cone (toggle V, ON by default): windows are not a console —
-## they're the wall plates at the hull edges, and you get a limited cone of
-## outside view just by walking near them. Sight rays cross from floor out
-## into void freely (that's the window you're standing at) but a ray that
-## has entered void never re-enters a hull: space is visible in exactly the
-## directions your hull doesn't block (no distance cap — a planet is a
-## planet, however far), other interiors stay hidden across gaps, and
-## interior walls still block room-to-room sight. Characters you can't see
-## aren't drawn, and even visible ones fade past window-spotting range.
+## M3.5 iteration 3 — the interior FITS ITS HULL: every hull in the current
+## space (station concourse, moored ships, or the flying ship) gets its
+## exterior sprite drawn as a to-scale backdrop under the tiles (pooled
+## child sprites, show_behind_parent), scaled TILE_PIXELS / px_per_tile
+## from the export's interior-fit meta. Hull skin shows wherever the plan
+## has no floor inside the silhouette; space shows outside it.
+##
+## Split-level decks: the walkable alphabet (see ShipClassData.char_at)
+## stacks two floors on one grid. Only the deck the own character is on
+## renders ('2' tiles show their current-deck floor, 'B' between-levels
+## and '#' generic tiles always show); characters on the other deck of a
+## stacked region are hidden.
+##
+## The view-cone prototype (V toggles, OFF by default — parked for a
+## revisit now that hull fit landed): full-viewport directional tile
+## occlusion, rays never re-enter a hull.
 ##
 ## Camera: no zoom, but a clamped follow — an axis whose extent fits the
 ## viewport is centered; an axis that overflows follows the own character,
@@ -50,21 +57,42 @@ const WALL_PX := 14.0
 const VIEW_CONE_DIM := Color(0.0, 0.0, 0.0, 0.55)
 const VIEW_CONE_DARK := Color(0.02, 0.025, 0.045, 0.92)
 const VIEW_RANGE_TILES := 5.5   # how far you can make out PEOPLE outside
-const CHAR_SIZE := Vector2(22, 34)
+## Draw size for the 22x34 character art ("a touch too small" at native).
+const CHAR_SIZE := Vector2(27, 42)
+
+
+## One hull exterior drawn under the tiles: `asset` names a ship kind or
+## station archetype in the AssetLibrary; `tile_origin` is where the
+## hull's deckplan tile (0,0) sits in the current space's frame.
+class Backdrop:
+	var kind: String       ## "ship" | "station"
+	var asset: String
+	var tile_origin: Vector2
+
+	static func make(p_kind: String, p_asset: String, p_tile_origin: Vector2) -> Backdrop:
+		var b := Backdrop.new()
+		b.kind = p_kind
+		b.asset = p_asset
+		b.tile_origin = p_tile_origin
+		return b
+
 
 ## Set every frame by main.gd before queue_redraw().
 var ship_class: ShipClassData = null
 var characters: Array[CharacterState] = []
 var own_character_id: int = -1
 var focus_tile: Vector2 = Vector2.ZERO
+var view_deck: String = "upper"
+var backdrops: Array[Backdrop] = []
 
-## Toggled by main.gd on the V action. ON is the intended walking
-## experience; OFF is the debug/eyeball view.
-var view_cone_enabled: bool = true
+## Toggled by main.gd on the V action. OFF is the walking experience for
+## now; ON is the parked view-cone prototype (revisit post hull-fit).
+var view_cone_enabled: bool = false
 
 var _font: Font
 var _lib: AssetLibrary = null
 var _floor_tex: Array[Texture2D] = []
+var _backdrop_holder: Node2D = null
 var _facing: Dictionary = {}        # character id -> -1.0 | 1.0
 var _last_char_x: Dictionary = {}   # character id -> last tile x
 ## LOS cache: Vector2i tile -> bool visible; recomputed when the own tile,
@@ -79,6 +107,9 @@ func _ready() -> void:
 	_lib = AssetLibrary.load_all()
 	for i in 3:
 		_floor_tex.append(_lib.interior("floor_%d" % i))
+	_backdrop_holder = Node2D.new()
+	_backdrop_holder.name = "backdrops"
+	add_child(_backdrop_holder)
 
 
 ## Called by main.gd once per frame. `p_focus_tile` is the own character's
@@ -88,12 +119,16 @@ func set_frame_data(
 	p_ship_class: ShipClassData,
 	p_characters: Array[CharacterState],
 	p_own_character_id: int,
-	p_focus_tile: Vector2
+	p_focus_tile: Vector2,
+	p_view_deck: String = "upper",
+	p_backdrops: Array[Backdrop] = []
 ) -> void:
 	ship_class = p_ship_class
 	characters = p_characters
 	own_character_id = p_own_character_id
 	focus_tile = p_focus_tile
+	view_deck = p_view_deck
+	backdrops = p_backdrops
 	queue_redraw()
 
 
@@ -102,12 +137,48 @@ func _draw() -> void:
 		return
 	var origin := _grid_origin()
 	_refresh_los()
+	_update_backdrops(origin)
 	_draw_floor(origin)
 	_draw_signage(origin)
 	_draw_room_labels(origin)
 	_draw_consoles(origin)
 	_draw_view_cone(origin)
 	_draw_characters(origin)
+
+
+## Pooled exterior-sprite children under the tiles (show_behind_parent
+## renders them beneath this node's own drawing). Scaled so the hull's
+## deckplan grid px map 1:1 onto TILE_PIXELS tiles, positioned via each
+## hull's interior-fit meta + its tile offset in the current space.
+func _update_backdrops(origin: Vector2) -> void:
+	var touched := {}
+	for i in backdrops.size():
+		var spec := backdrops[i]
+		var sset := _lib.ship(spec.asset) if spec.kind == "ship" \
+			else _lib.station(spec.asset)
+		if sset == null or not sset.has_interior_fit():
+			continue
+		var key := "bd_%d_%s" % [i, spec.asset]
+		touched[key] = true
+		var s: Sprite2D = _backdrop_holder.get_node_or_null(NodePath(key))
+		if s == null:
+			s = Sprite2D.new()
+			s.name = key
+			s.texture = sset.texture
+			s.material = sset.material
+			s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			s.light_mask = 2       # never sun-lit through the window
+			s.show_behind_parent = true
+			_backdrop_holder.add_child(s)
+		s.visible = true
+		var px_scale := TILE_PIXELS / sset.px_per_tile()
+		var top_left := origin + spec.tile_origin * TILE_PIXELS \
+			- sset.interior_origin_px() * px_scale
+		s.position = top_left + Vector2(sset.px_size()) * px_scale * 0.5
+		s.scale = Vector2.ONE * px_scale
+	for child in _backdrop_holder.get_children():
+		if not touched.has(String(child.name)):
+			child.visible = false
 
 
 func _grid_origin() -> Vector2:
@@ -130,12 +201,29 @@ func _tile_to_screen(tile: Vector2, origin: Vector2) -> Vector2:
 
 
 # ---------------------------------------------------------------- floors --
+## A floor tile is drawn iff it exists on the CURRENT view deck. Tiles of
+## the other deck paint nothing: the hull backdrop shows there (you're
+## looking at hull skin over the other floor, not through it).
+func _vis(tx: int, ty: int) -> bool:
+	return ship_class.visible_floor(view_deck, tx, ty)
+
+
+## The first room containing the tile that belongs to the view deck (or to
+## both). Stacked regions author one room per deck (hold under mess).
+func _room_for_tile(tx: int, ty: int) -> ShipClassData.Room:
+	for room in ship_class.rooms:
+		if room.contains_tile(tx, ty) \
+				and (room.deck == "" or room.deck == view_deck):
+			return room
+	return null
+
+
 func _draw_floor(origin: Vector2) -> void:
 	var wall_tex := _lib.interior("wall_n")
 	for ty in ship_class.grid_height:
 		for tx in ship_class.grid_width:
-			if not ship_class.is_walkable(tx, ty):
-				continue  # void paints NOTHING — the window shows through
+			if not _vis(tx, ty):
+				continue  # void/other-deck paints NOTHING — hull or window
 			var pos := _tile_to_screen(Vector2(tx, ty), origin)
 			var rect := Rect2(pos, Vector2(TILE_PIXELS, TILE_PIXELS))
 			var tex := _floor_tex[absi(hash(Vector2i(tx, ty))) % 3]
@@ -143,7 +231,7 @@ func _draw_floor(origin: Vector2) -> void:
 				draw_texture_rect(tex, rect, false)
 			else:
 				draw_rect(rect, FLOOR_COLOR, true)
-			var room := ship_class.room_at(tx, ty)
+			var room := _room_for_tile(tx, ty)
 			if room != null:
 				var tint_index := ship_class.rooms.find(room) % ROOM_TINT_PALETTE.size()
 				var tint: Color = ROOM_TINT_PALETTE[tint_index]
@@ -162,10 +250,10 @@ func _draw_floor(origin: Vector2) -> void:
 func _draw_bulkheads(pos: Vector2, tx: int, ty: int, wall_tex: Texture2D) -> void:
 	var t := TILE_PIXELS
 	var strip := Vector2(t, WALL_PX)
-	var wall_n := not _walkable(tx, ty - 1)
-	var wall_s := not _walkable(tx, ty + 1)
-	var wall_e := not _walkable(tx + 1, ty)
-	var wall_w := not _walkable(tx - 1, ty)
+	var wall_n := not _vis(tx, ty - 1)
+	var wall_s := not _vis(tx, ty + 1)
+	var wall_e := not _vis(tx + 1, ty)
+	var wall_w := not _vis(tx - 1, ty)
 	if wall_n:
 		draw_texture_rect(wall_tex, Rect2(pos, strip), false)
 	if wall_s:
@@ -195,13 +283,13 @@ func _draw_bulkheads(pos: Vector2, tx: int, ty: int, wall_tex: Texture2D) -> voi
 		draw_texture_rect(corner_tex,
 			Rect2(pos + Vector2(t - WALL_PX, t - WALL_PX), c), false)
 	# diagonal-void notch: fill the gap between the two neighbors' strips
-	if not wall_n and not wall_w and not _walkable(tx - 1, ty - 1):
+	if not wall_n and not wall_w and not _vis(tx - 1, ty - 1):
 		draw_texture_rect(corner_tex, Rect2(pos - c, c), false)
-	if not wall_n and not wall_e and not _walkable(tx + 1, ty - 1):
+	if not wall_n and not wall_e and not _vis(tx + 1, ty - 1):
 		draw_texture_rect(corner_tex, Rect2(pos + Vector2(t, -WALL_PX), c), false)
-	if not wall_s and not wall_w and not _walkable(tx - 1, ty + 1):
+	if not wall_s and not wall_w and not _vis(tx - 1, ty + 1):
 		draw_texture_rect(corner_tex, Rect2(pos + Vector2(-WALL_PX, t), c), false)
-	if not wall_s and not wall_e and not _walkable(tx + 1, ty + 1):
+	if not wall_s and not wall_e and not _vis(tx + 1, ty + 1):
 		draw_texture_rect(corner_tex, Rect2(pos + Vector2(t, t), c), false)
 
 
@@ -226,9 +314,10 @@ func _draw_signage(origin: Vector2) -> void:
 			draw_texture(digit, center - Vector2(13, 20),
 				Color(1, 1, 1, 0.8))
 		if airlock != null:
-			draw_texture(airlock,
-				_tile_to_screen(Vector2(room.x, room.y), origin) + Vector2(3, 3),
-				Color(1, 1, 1, 0.45))
+			# hatch-wheel picto centered on the berth stub tile, under the
+			# digit — not jammed into the corner against the hazard strips
+			draw_texture(airlock, center - Vector2(20, 20),
+				Color(1, 1, 1, 0.3))
 		if hazard != null:
 			_draw_berth_hazards(room, hazard, origin)
 	# faded trade pictogram on the floor beside each broker console
@@ -238,7 +327,7 @@ func _draw_signage(origin: Vector2) -> void:
 			if console.kind != "broker":
 				continue
 			var tile := Vector2i(int(console.tile_center().x), int(console.tile_center().y))
-			var spot := tile + Vector2i(-1, 0) if _walkable(tile.x - 1, tile.y) else tile
+			var spot := tile + Vector2i(-1, 0) if _vis(tile.x - 1, tile.y) else tile
 			draw_texture(trade,
 				_tile_to_screen(Vector2(spot) + Vector2(0.19, 0.19), origin),
 				Color(1, 1, 1, 0.35))
@@ -251,13 +340,13 @@ func _draw_berth_hazards(room, hazard: Texture2D, origin: Vector2) -> void:
 	var strip := Vector2(t, WALL_PX)
 	for ty in range(room.y, room.y + room.h):
 		for tx in range(room.x, room.x + room.w):
-			if not _walkable(tx, ty):
+			if not _vis(tx, ty):
 				continue
 			var pos := _tile_to_screen(Vector2(tx, ty), origin)
 			for dir: Vector2i in [Vector2i(0, -1), Vector2i(0, 1), Vector2i(1, 0), Vector2i(-1, 0)]:
 				var nx := tx + dir.x
 				var ny := ty + dir.y
-				if not _walkable(nx, ny):
+				if not _vis(nx, ny):
 					continue
 				if _room_contains(room, nx, ny):
 					continue
@@ -287,6 +376,8 @@ func _draw_room_labels(origin: Vector2) -> void:
 	for room in ship_class.rooms:
 		if room.id.begins_with("berth_"):
 			continue  # berths carry stencil digits instead
+		if room.deck != "" and room.deck != view_deck:
+			continue  # the other floor's room — not visible from this deck
 		var center := _tile_to_screen(Vector2(room.x + room.w * 0.5, room.y + room.h * 0.5), origin)
 		var text_size := _font.get_string_size(room.name, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE)
 		draw_string(
@@ -297,6 +388,8 @@ func _draw_room_labels(origin: Vector2) -> void:
 # -------------------------------------------------------------- consoles --
 func _draw_consoles(origin: Vector2) -> void:
 	for console in ship_class.consoles:
+		if not _vis(console.x, console.y):
+			continue  # a console on the other deck is under/over this floor
 		var center := _tile_to_screen(console.tile_center(), origin)
 		var tex := _lib.interior("console_" + console.kind)
 		if tex != null:
@@ -399,6 +492,14 @@ func _draw_characters(origin: Vector2) -> void:
 	for character in characters:
 		var is_own: bool = character.id == own_character_id
 		var tile := Vector2i(int(character.x), int(character.y))
+		if not is_own:
+			# Split-level: a body on the other deck of this footprint is
+			# behind a floor/ceiling — not drawn.
+			if not _vis(tile.x, tile.y):
+				continue
+			if ship_class.char_at(tile.x, tile.y) == "2" \
+					and character.deck != view_deck:
+				continue
 		if not is_own and not _tile_visible(tile):
 			continue  # the view-cone hides who you can't see
 		if not is_own and view_cone_enabled \
@@ -416,10 +517,13 @@ func _draw_characters(origin: Vector2) -> void:
 				facing = -1.0
 			_facing[character.id] = facing
 			_last_char_x[character.id] = character.x
-			# feet at the collision circle's bottom edge
+			# feet at the collision circle's bottom edge; art is 22x34,
+			# drawn at CHAR_SIZE (a touch bigger, user note round 9)
 			draw_set_transform(screen_pos + Vector2(0, radius_px), 0.0,
 				Vector2(facing, 1.0))
-			draw_texture(tex, Vector2(-CHAR_SIZE.x * 0.5, -CHAR_SIZE.y))
+			draw_texture_rect(tex,
+				Rect2(Vector2(-CHAR_SIZE.x * 0.5, -CHAR_SIZE.y), CHAR_SIZE),
+				false)
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		else:
 			var color := OWN_CHARACTER_COLOR if is_own else OTHER_CHARACTER_COLOR

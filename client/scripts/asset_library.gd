@@ -30,6 +30,22 @@ class SpriteSet:
 				out.append(Vector2(float(a["x_px"]), float(a["y_px"])))
 		return out
 
+	## Whether this hull carries interior-fit metadata (deckplan tile grid
+	## position inside the sprite) — see composer.py ExportSpec.interior.
+	func has_interior_fit() -> bool:
+		return meta.get("interior") is Dictionary
+
+	## Sprite px per deckplan tile (interior-fit hulls only).
+	func px_per_tile() -> float:
+		var fit: Dictionary = meta.get("interior", {})
+		return float(fit.get("px_per_tile", 3.0))
+
+	## Texture-px position of deckplan tile (0,0)'s top-left corner.
+	func interior_origin_px() -> Vector2:
+		var fit: Dictionary = meta.get("interior", {})
+		var origin: Array = fit.get("origin_px", [0.0, 0.0])
+		return Vector2(float(origin[0]), float(origin[1]))
+
 
 var _ships: Dictionary = {}
 var _stations: Dictionary = {}

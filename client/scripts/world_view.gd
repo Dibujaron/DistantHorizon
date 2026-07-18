@@ -65,6 +65,13 @@ var zoom: float = 1.0
 var focus_pos: Vector2 = Vector2.ZERO
 var own_undocked: bool = true
 var own_throttle: float = 0.0
+## THE WINDOW (M3.5 it. 3): while the interior is up, this view is the
+## dimmed space outside at the interior's matched zoom. The hull you're
+## inside is drawn by InteriorView as a to-scale backdrop instead, so its
+## world sprite (and all labels/rings/orbits — wrong scale) is suppressed.
+var interior_mode: bool = false
+var suppress_station_id: String = ""
+var suppress_ship_id: int = -1
 
 var _font: Font
 var _lib: AssetLibrary = null
@@ -115,7 +122,10 @@ func set_frame_data(
 	p_zoom: float,
 	p_focus_pos: Vector2,
 	p_own_undocked: bool,
-	p_own_throttle: float = 0.0
+	p_own_throttle: float = 0.0,
+	p_interior_mode: bool = false,
+	p_suppress_station_id: String = "",
+	p_suppress_ship_id: int = -1
 ) -> void:
 	world = p_world
 	t = p_t
@@ -125,6 +135,9 @@ func set_frame_data(
 	focus_pos = p_focus_pos
 	own_undocked = p_own_undocked
 	own_throttle = p_own_throttle
+	interior_mode = p_interior_mode
+	suppress_station_id = p_suppress_station_id
+	suppress_ship_id = p_suppress_ship_id
 	_update_sprites()
 	queue_redraw()
 
@@ -208,6 +221,33 @@ func _station_units_per_px(station: WorldData.Station, sset: AssetLibrary.Sprite
 	return STATION_SPAN_FACTOR * station.dock_radius / maxf(float(sset.px_size().x), 1.0)
 
 
+## The zoom at which this station's sprite renders at the interior's tile
+## scale (its 3-px tiles under 64-px interior tiles) — THE WINDOW's matched
+## zoom while docked. `fallback` when the station/asset is unknown.
+func matched_zoom_station(station_id: String, fallback: float) -> float:
+	if world == null:
+		return fallback
+	for station in world.stations:
+		if station.id != station_id:
+			continue
+		var sset := _lib.station(_station_archetype(station))
+		if sset == null or not sset.has_interior_fit():
+			return fallback
+		var units_per_px := _station_units_per_px(station, sset)
+		return InteriorView.TILE_PIXELS \
+			/ (sset.px_per_tile() * units_per_px * PIXELS_PER_UNIT)
+	return fallback
+
+
+## Ship-scale matched zoom (aboard a flying hull).
+func matched_zoom_ship(fallback: float) -> float:
+	var sset := _lib.ship("mockingbird")
+	if sset == null or not sset.has_interior_fit():
+		return fallback
+	return InteriorView.TILE_PIXELS \
+		/ (sset.px_per_tile() * SHIP_WORLD_UNITS_PER_PX * PIXELS_PER_UNIT)
+
+
 func _update_station_sprites(screen_center: Vector2, view_scale: float, touched: Dictionary) -> void:
 	# Docked ships park at berth anchors, in docking order per station.
 	var docked_by_station: Dictionary = {}
@@ -216,6 +256,8 @@ func _update_station_sprites(screen_center: Vector2, view_scale: float, touched:
 			var list: Array = docked_by_station.get_or_add(ship.docked_at, [])
 			list.append(ship)
 	for station in world.stations:
+		if interior_mode and station.id == suppress_station_id:
+			continue  # InteriorView draws this hull as the tile backdrop
 		var sset := _lib.station(_station_archetype(station))
 		if sset == null:
 			continue
@@ -281,6 +323,8 @@ func _update_ship_sprites(screen_center: Vector2, view_scale: float,
 	for ship in ships:
 		if ship.is_docked():
 			continue  # parked at a berth by the station pass
+		if interior_mode and ship.id == suppress_ship_id:
+			continue  # InteriorView draws this hull as the tile backdrop
 		var key := "ship_%d" % ship.id
 		var s := _pool_sprite(_ship_sprites, key, touched)
 		if s.texture == null:
@@ -405,7 +449,8 @@ func _draw_bodies(screen_center: Vector2, view_scale: float) -> void:
 	for body in world.bodies:
 		# Only planets have an orbit (the star sits fixed at the origin with
 		# orbit == null): draw the planet's orbit path around its parent.
-		if body.orbit != null:
+		# Orbit paths are chart furniture — hidden through THE WINDOW.
+		if body.orbit != null and not interior_mode:
 			var parent_world_pos := Vector2.ZERO
 			if body.parent_id != "":
 				parent_world_pos = world.body_position(body.parent_id, t)
@@ -429,6 +474,8 @@ func _draw_bodies(screen_center: Vector2, view_scale: float) -> void:
 
 
 func _draw_stations(screen_center: Vector2, view_scale: float) -> void:
+	if interior_mode:
+		return  # rings/labels are chart furniture, wrong scale in THE WINDOW
 	for station in world.stations:
 		var pos := world.station_position(station.id, t)
 		var screen_pos := _world_to_screen(pos, screen_center, view_scale)
@@ -467,7 +514,7 @@ func _draw_ships(screen_center: Vector2, view_scale: float) -> void:
 			var screen_angle := -ship.heading
 			var color := OWN_SHIP_COLOR if is_own else OTHER_SHIP_COLOR
 			_draw_ship_triangle(screen_pos, screen_angle, SHIP_SIZE, color)
-		if not is_own and _font != null:
+		if not is_own and _font != null and not interior_mode:
 			draw_string(
 				_font, screen_pos + Vector2(SHIP_SIZE + 3.0, 4.0), str(ship.id),
 				HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, OTHER_SHIP_LABEL_COLOR)

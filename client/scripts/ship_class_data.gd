@@ -9,7 +9,8 @@ extends RefCounted
 
 
 ## A labeled rectangular area of the deck plan (rendering/labels only; no
-## door graph in M2).
+## door graph in M2). `deck` is split-level metadata: "lower"/"upper" shows
+## the label only on that deck's view, "" (default) on both.
 class Room:
 	var id: String
 	var name: String
@@ -17,6 +18,7 @@ class Room:
 	var y: int
 	var w: int
 	var h: int
+	var deck: String
 
 	static func from_dict(data: Dictionary) -> Room:
 		var room := Room.new()
@@ -26,6 +28,7 @@ class Room:
 		room.y = int(data.get("y", 0))
 		room.w = int(data.get("w", 0))
 		room.h = int(data.get("h", 0))
+		room.deck = str(data.get("deck", ""))
 		return room
 
 	func contains_tile(tx: int, ty: int) -> bool:
@@ -106,15 +109,62 @@ static func from_dict(data: Dictionary) -> ShipClassData:
 	return doc
 
 
-## True if tile (tx,ty) is in bounds and marked walkable ('#') in the
-## `walkable` row strings.
-func is_walkable(tx: int, ty: int) -> bool:
+## The walkable character at tile (tx,ty), "." out of bounds. Alphabet
+## (mirrors deckplan.gleam): '.' void, '#' generic single floor, 'L' lower
+## deck only, 'U' upper deck only, '2' two stacked floors, 'B'
+## between-level (one floor connecting both decks).
+func char_at(tx: int, ty: int) -> String:
 	if ty < 0 or ty >= walkable.size():
-		return false
+		return "."
 	var row := walkable[ty]
 	if tx < 0 or tx >= row.length():
+		return "."
+	return row[tx]
+
+
+## True if tile (tx,ty) is in bounds and walkable on ANY deck.
+func is_walkable(tx: int, ty: int) -> bool:
+	return char_at(tx, ty) != "."
+
+
+## Whether a walker on `deck` ("lower"/"upper") may stand on (tx,ty).
+## `deck` "" is the between-level's deck-agnostic access (standing on 'B').
+## Mirrors deckplan.walkable_for + character.step's 'B' rule exactly.
+func walkable_for(deck: String, tx: int, ty: int) -> bool:
+	var ch := char_at(tx, ty)
+	if ch == ".":
 		return false
-	return row[tx] == "#"
+	if ch == "L":
+		return deck == "" or deck == "lower"
+	if ch == "U":
+		return deck == "" or deck == "upper"
+	return true
+
+
+## The deck a walker is on after arriving at position (x,y): exclusive
+## tiles force it, everything else keeps `deck`. Mirrors
+## deckplan.deck_of_tile via the center tile, like character.step.
+func deck_after(deck: String, x: float, y: float) -> String:
+	var ch := char_at(int(floor(x)), int(floor(y)))
+	if ch == "L":
+		return "lower"
+	if ch == "U":
+		return "upper"
+	return deck
+
+
+## Whether a floor exists at (tx,ty) as seen from `view_deck`: generic,
+## between-level and stacked tiles always show; exclusive tiles only on
+## their own deck. (Rendering helper — NOT the movement rule.)
+func visible_floor(view_deck: String, tx: int, ty: int) -> bool:
+	var ch := char_at(tx, ty)
+	if ch == "." :
+		return false
+	if ch == "L":
+		return view_deck == "lower"
+	if ch == "U":
+		return view_deck == "upper"
+	return true
 
 
 ## The room whose rect contains tile (tx,ty), or null (corridors and
@@ -143,12 +193,15 @@ func find_console(console_id: String) -> Console:
 ## along it instead of stopping dead. Used only to predict the OWN
 ## character locally between server `interior` messages; other characters
 ## stay server-driven.
-static func step_walk(cls: ShipClassData, x: float, y: float, dx: float, dy: float, delta: float) -> Vector2:
+static func step_walk(cls: ShipClassData, deck: String, x: float, y: float, dx: float, dy: float, delta: float) -> Vector2:
 	var input := _normalize_input(dx, dy)
+	# Standing on a between-level ('B') tile grants deck-agnostic access —
+	# that is how a walker changes decks. Mirrors character.step exactly.
+	var gate := "" if cls.char_at(int(floor(x)), int(floor(y))) == "B" else deck
 	var candidate_x := x + input.x * WALK_SPEED * delta
-	var out_x := candidate_x if _circle_walkable(cls, candidate_x, y) else x
+	var out_x := candidate_x if _circle_walkable(cls, gate, candidate_x, y) else x
 	var candidate_y := y + input.y * WALK_SPEED * delta
-	var out_y := candidate_y if _circle_walkable(cls, out_x, candidate_y) else y
+	var out_y := candidate_y if _circle_walkable(cls, gate, out_x, candidate_y) else y
 	return Vector2(out_x, out_y)
 
 
@@ -163,17 +216,17 @@ static func _normalize_input(dx: float, dy: float) -> Vector2:
 
 
 ## Whether every tile overlapped by the character collision circle centered
-## at `(cx, cy)` is walkable in `cls` -- mirrors `circle_walkable` in
-## character.gleam (out-of-bounds tiles are non-walkable, via
-## ShipClassData.is_walkable).
-static func _circle_walkable(cls: ShipClassData, cx: float, cy: float) -> bool:
+## at `(cx, cy)` is walkable for a body on `deck` ("" = deck-agnostic, the
+## between-level rule) -- mirrors `circle_walkable` in character.gleam
+## (out-of-bounds tiles are non-walkable, via walkable_for).
+static func _circle_walkable(cls: ShipClassData, deck: String, cx: float, cy: float) -> bool:
 	var tx0 := int(floor(cx - CHARACTER_RADIUS))
 	var tx1 := int(floor(cx + CHARACTER_RADIUS))
 	var ty0 := int(floor(cy - CHARACTER_RADIUS))
 	var ty1 := int(floor(cy + CHARACTER_RADIUS))
 	for tx in range(tx0, tx1 + 1):
 		for ty in range(ty0, ty1 + 1):
-			if _tile_overlaps_circle(tx, ty, cx, cy) and not cls.is_walkable(tx, ty):
+			if _tile_overlaps_circle(tx, ty, cx, cy) and not cls.walkable_for(deck, tx, ty):
 				return false
 	return true
 
