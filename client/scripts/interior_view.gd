@@ -11,9 +11,14 @@ class_name InteriorView
 ## the system view visible (dimmed) beneath this node, so space shows
 ## through everywhere the plan isn't — THE WINDOW.
 ##
-## The view-cone prototype (toggle V) dims walkable tiles without tile
-## line-of-sight from the own character and hides characters standing on
-## them. It's a layer — default off, may be cut.
+## The view-cone (toggle V, ON by default): windows are not a console —
+## they're the wall plates at the hull edges, and you get a limited cone of
+## outside view just by walking near them. Sight rays cross from floor out
+## into void freely (that's the window you're standing at) but a ray that
+## has entered void never re-enters a hull: distant space stays dark until
+## you approach an edge, other interiors stay hidden across gaps, and
+## interior walls still block room-to-room sight. Characters you can't see
+## aren't drawn.
 ##
 ## Camera: no zoom, but a clamped follow — an axis whose extent fits the
 ## viewport is centered; an axis that overflows follows the own character,
@@ -42,6 +47,8 @@ const ROOM_TINT_PALETTE := [
 
 const WALL_PX := 14.0
 const VIEW_CONE_DIM := Color(0.0, 0.0, 0.0, 0.55)
+const VIEW_CONE_DARK := Color(0.02, 0.025, 0.045, 0.92)
+const VIEW_RANGE_TILES := 5.5   # how far the window plates let you see out
 const CHAR_SIZE := Vector2(22, 34)
 
 ## Set every frame by main.gd before queue_redraw().
@@ -50,8 +57,9 @@ var characters: Array[CharacterState] = []
 var own_character_id: int = -1
 var focus_tile: Vector2 = Vector2.ZERO
 
-## Toggled by main.gd on the V action.
-var view_cone_enabled: bool = false
+## Toggled by main.gd on the V action. ON is the intended walking
+## experience; OFF is the debug/eyeball view.
+var view_cone_enabled: bool = true
 
 var _font: Font
 var _lib: AssetLibrary = null
@@ -65,11 +73,27 @@ var _los_from: Vector2i = Vector2i(-1000, -1000)
 var _los_plan: ShipClassData = null
 
 
+var _cone_mask: GradientTexture2D = null
+
+
 func _ready() -> void:
 	_font = ThemeDB.fallback_font
 	_lib = AssetLibrary.load_all()
 	for i in 3:
 		_floor_tex.append(_lib.interior("floor_%d" % i))
+	# radial view-range mask: transparent around the player, VIEW_CONE_DARK
+	# past the range the window plates allow
+	_cone_mask = GradientTexture2D.new()
+	_cone_mask.width = 256
+	_cone_mask.height = 256
+	_cone_mask.fill = GradientTexture2D.FILL_RADIAL
+	_cone_mask.fill_from = Vector2(0.5, 0.5)
+	_cone_mask.fill_to = Vector2(1.0, 0.5)
+	var grad := Gradient.new()
+	grad.set_color(0, Color(VIEW_CONE_DARK, 0.0))
+	grad.set_color(1, VIEW_CONE_DARK)
+	grad.add_point(0.62, Color(VIEW_CONE_DARK, 0.0))
+	_cone_mask.gradient = grad
 
 
 ## Called by main.gd once per frame. `p_focus_tile` is the own character's
@@ -96,8 +120,8 @@ func _draw() -> void:
 	_draw_floor(origin)
 	_draw_signage(origin)
 	_draw_room_labels(origin)
-	_draw_view_cone(origin)
 	_draw_consoles(origin)
+	_draw_view_cone(origin)
 	_draw_characters(origin)
 
 
@@ -282,27 +306,48 @@ func _refresh_los() -> void:
 	_los.clear()
 	for ty in ship_class.grid_height:
 		for tx in ship_class.grid_width:
-			if ship_class.is_walkable(tx, ty):
-				_los[Vector2i(tx, ty)] = _line_of_sight(from, Vector2i(tx, ty))
+			_los[Vector2i(tx, ty)] = _line_of_sight(from, Vector2i(tx, ty))
 
 
 func _tile_visible(tile: Vector2i) -> bool:
 	return not view_cone_enabled or bool(_los.get(tile, true))
 
 
+## Two layers: (1) a viewport-wide radial range mask centered on you — the
+## window plates only let you see so far out, and you sweep the view by
+## walking the hull; (2) tile LOS dim for interior you can't see (with the
+## hull re-entry rule hiding other interiors across gaps).
 func _draw_view_cone(origin: Vector2) -> void:
 	if not view_cone_enabled:
 		return
+	var vp := get_viewport_rect().size
+	var center := _tile_to_screen(focus_tile, origin)
+	var r := VIEW_RANGE_TILES * TILE_PIXELS
+	draw_texture_rect(_cone_mask,
+		Rect2(center - Vector2(r, r), Vector2(r, r) * 2.0), false)
+	# solid dark outside the mask texture's rect
+	draw_rect(Rect2(0, 0, vp.x, maxf(center.y - r, 0.0)), VIEW_CONE_DARK, true)
+	draw_rect(Rect2(0, center.y + r, vp.x, maxf(vp.y - center.y - r, 0.0)),
+		VIEW_CONE_DARK, true)
+	draw_rect(Rect2(0, maxf(center.y - r, 0.0), maxf(center.x - r, 0.0),
+		2.0 * r), VIEW_CONE_DARK, true)
+	draw_rect(Rect2(center.x + r, maxf(center.y - r, 0.0),
+		maxf(vp.x - center.x - r, 0.0), 2.0 * r), VIEW_CONE_DARK, true)
 	for ty in ship_class.grid_height:
 		for tx in ship_class.grid_width:
-			if not ship_class.is_walkable(tx, ty):
+			if _tile_visible(Vector2i(tx, ty)):
 				continue
-			if not _tile_visible(Vector2i(tx, ty)):
-				draw_rect(Rect2(_tile_to_screen(Vector2(tx, ty), origin),
-					Vector2(TILE_PIXELS, TILE_PIXELS)), VIEW_CONE_DIM, true)
+			if not ship_class.is_walkable(tx, ty):
+				continue  # beyond-window space is handled by the range mask
+			draw_rect(Rect2(_tile_to_screen(Vector2(tx, ty), origin),
+				Vector2(TILE_PIXELS, TILE_PIXELS)), VIEW_CONE_DIM, true)
 
 
-## Bresenham tile walk; blocked by non-walkable tiles between the endpoints.
+## Bresenham tile walk with the window rule: windows are the wall plates at
+## the hull edge, so a ray may pass from floor OUT into void and keep going
+## (that's looking out the plate next to you) — but once it has been in
+## void it can never re-enter a hull (you don't see into other interiors
+## across a gap, and interior wall gaps block room-to-room sight).
 func _line_of_sight(from_tile: Vector2i, to_tile: Vector2i) -> bool:
 	var x0 := from_tile.x
 	var y0 := from_tile.y
@@ -313,10 +358,15 @@ func _line_of_sight(from_tile: Vector2i, to_tile: Vector2i) -> bool:
 	var sx := 1 if x0 < x1 else -1
 	var sy := 1 if y0 < y1 else -1
 	var err := dx + dy
+	var seen_void := false
 	while true:
-		if Vector2i(x0, y0) != from_tile and Vector2i(x0, y0) != to_tile \
-				and not ship_class.is_walkable(x0, y0):
-			return false
+		var here := Vector2i(x0, y0)
+		if here != from_tile:
+			var walkable := ship_class.is_walkable(x0, y0)
+			if walkable and seen_void:
+				return false  # hull re-entry blocks — no seeing into other interiors
+			if not walkable:
+				seen_void = true
 		if x0 == x1 and y0 == y1:
 			return true
 		var e2 := 2 * err
@@ -337,6 +387,9 @@ func _draw_characters(origin: Vector2) -> void:
 		var tile := Vector2i(int(character.x), int(character.y))
 		if not is_own and not _tile_visible(tile):
 			continue  # the view-cone hides who you can't see
+		if not is_own and view_cone_enabled \
+				and character.position().distance_to(focus_tile) > VIEW_RANGE_TILES:
+			continue  # beyond the window range
 		var screen_pos := _tile_to_screen(character.position(), origin)
 		var tex := _lib.character("player" if is_own
 			else "crew_%d" % (absi(hash(character.id)) % 3))
