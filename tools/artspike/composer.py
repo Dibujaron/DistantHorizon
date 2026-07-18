@@ -14,7 +14,19 @@ authored FLAT); "glow" is engine glow, excluded from exports entirely —
 plumes become throttle-driven dynamic art, and the composer emits nozzle
 anchors instead.
 """
+import io
 from dataclasses import dataclass, field
+
+import numpy as np
+import resvg_py
+from PIL import Image
+
+SS = 4  # supersample: px per model unit at compose time
+
+_DEFS = ('<defs><radialGradient id="glow">'
+         '<stop offset="0%" stop-color="#ff9d4d" stop-opacity="0.95"/>'
+         '<stop offset="100%" stop-color="#ff9d4d" stop-opacity="0"/>'
+         '</radialGradient></defs>')
 
 
 @dataclass(frozen=True)
@@ -69,3 +81,88 @@ def flatten(hull_or_str, sheet=True):
         return hull_or_str
     keep = ("albedo", "sheet_only", "glow") if sheet else ("albedo",)
     return "".join(l.svg for l in hull_or_str.layers if l.role in keep)
+
+
+# ---------------------------------------------------------------- raster ----
+def rasterize(svg_fragment, frame, ss=SS):
+    """render a fragment in a (minx, miny, w, h) model-unit frame -> RGBA float"""
+    minx, miny, w, h = frame
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{int(w * ss)}" '
+           f'height="{int(h * ss)}" viewBox="{minx} {miny} {w} {h}">'
+           f'{_DEFS}{svg_fragment}</svg>')
+    png = resvg_py.svg_to_bytes(svg_string=svg, width=int(w * ss))
+    img = Image.open(io.BytesIO(bytes(png))).convert("RGBA")
+    return np.asarray(img).astype(np.float64) / 255.0
+
+
+def hull_frame(hull, pad=8.0):
+    """tight frame around the flat albedo, padded, in model units"""
+    probe = rasterize(flatten(hull, sheet=False), (-200, -200, 400, 400), ss=1)
+    ys, xs = np.where(probe[..., 3] > 0.1)
+    minx, maxx = xs.min() - 200 - pad, xs.max() - 200 + pad
+    miny, maxy = ys.min() - 200 - pad, ys.max() - 200 + pad
+    return (float(minx), float(miny), float(maxx - minx), float(maxy - miny))
+
+
+def gaussian_blur(a, sigma):
+    """separable gaussian via np.convolve, edge-padded (lightspike's)"""
+    if sigma <= 0:
+        return a
+    r = max(1, int(sigma * 3))
+    x = np.arange(-r, r + 1)
+    k = np.exp(-0.5 * (x / sigma) ** 2)
+    k /= k.sum()
+    out = np.apply_along_axis(
+        lambda m: np.convolve(np.pad(m, r, mode="edge"), k, "valid"), 0, a)
+    return np.apply_along_axis(
+        lambda m: np.convolve(np.pad(m, r, mode="edge"), k, "valid"), 1, out)
+
+
+# --------------------------------------------------------------- heights ----
+def profile(spec, alpha, ss=SS):
+    """authored height field over one part's own footprint"""
+    h = np.zeros(alpha.shape, dtype=np.float64)
+    if spec.kind == "flat":
+        h[alpha] = spec.lo
+    elif spec.kind == "cyl_x":
+        for y in np.where(alpha.any(axis=1))[0]:
+            xs = np.where(alpha[y])[0]
+            x0, x1 = xs[0], xs[-1]
+            span = max(x1 - x0, 1)
+            t = (xs - x0) / span
+            h[y, xs] = spec.lo + (spec.hi - spec.lo) * np.sqrt(
+                np.clip(1 - (2 * t - 1) ** 2, 0, 1))
+    elif spec.kind == "dome":
+        from scipy.ndimage import distance_transform_edt
+        d = distance_transform_edt(alpha)
+        d = np.sqrt(d / max(d.max(), 1e-6))
+        d = gaussian_blur(d, spec.blur * ss)
+        d /= max(d[alpha].max(), 1e-6)
+        h[alpha] = spec.lo + (spec.hi - spec.lo) * d[alpha]
+    else:
+        raise ValueError(spec.kind)
+    return h
+
+
+def compose_height(hull, frame, ss=SS):
+    """painter's-order composition of authored per-part heights"""
+    shape = (int(frame[3] * ss), int(frame[2] * ss))
+    height = np.zeros(shape)
+    covered = np.zeros(shape, dtype=bool)
+    for layer in hull.layers:
+        if layer.height is None or layer.role != "albedo":
+            continue
+        a = rasterize(layer.svg, frame, ss)[..., 3] > 0.5
+        if not a.any():
+            continue
+        p = profile(layer.height, a, ss)
+        height[a] = p[a]
+        covered |= a
+    return height, covered
+
+
+def height_to_normals(height, z_scale):
+    """+x right, +y down (image space), +z out of screen — same as lightspike"""
+    gy, gx = np.gradient(height * z_scale * SS)
+    n = np.dstack([-gx, -gy, np.ones_like(height)])
+    return n / np.linalg.norm(n, axis=2, keepdims=True)
