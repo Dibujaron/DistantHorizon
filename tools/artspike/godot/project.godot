@@ -12,8 +12,10 @@ run/main_scene="res://main.tscn"
 [display]
 
 window/size/viewport_width=1200
-window/size/viewport_height=430
+window/size/viewport_height=660
 
 [rendering]
 
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
 environment/defaults/default_clear_color=Color(0.039, 0.051, 0.075, 1)
