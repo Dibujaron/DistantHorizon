@@ -61,9 +61,7 @@ pub type Entry {
 /// data tests; this decoder is the typed boundary).
 pub fn parse_names_file(text: String) -> Result(List(Entry), String) {
   json.parse(text, entries_decoder())
-  |> result.map_error(fn(err) {
-    "invalid names file: " <> string.inspect(err)
-  })
+  |> result.map_error(fn(err) { "invalid names file: " <> string.inspect(err) })
 }
 
 /// Load and merge every *.json in dir. Filenames carry no meaning.
@@ -227,12 +225,12 @@ fn leaf(
     decode.run(value, decode.string)
     |> result.map_error(fn(_) { axis <> "_is value must be a string" }),
   )
-  use resolved <- result.try(case
-    string.starts_with(raw, "${") && string.ends_with(raw, "}")
-  {
-    True -> resolve(string.slice(raw, 2, string.length(raw) - 3))
-    False -> Ok(raw)
-  })
+  use resolved <- result.try(
+    case string.starts_with(raw, "${") && string.ends_with(raw, "}") {
+      True -> resolve(string.slice(raw, 2, string.length(raw) - 3))
+      False -> Ok(raw)
+    },
+  )
   Ok(AttrIs(axis, resolved))
 }
 
@@ -254,7 +252,9 @@ pub fn satisfying_character_attrs(
   })
 }
 
-pub fn satisfying_ship_attrs(constraint: Option(Constraint)) -> List(ShipAttrs) {
+pub fn satisfying_ship_attrs(
+  constraint: Option(Constraint),
+) -> List(ShipAttrs) {
   list.flat_map(ship_roles, fn(role) {
     list.flat_map(factions, fn(faction) {
       list.filter_map(manufacturers, fn(manufacturer) {

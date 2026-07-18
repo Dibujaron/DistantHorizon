@@ -289,8 +289,7 @@ fn carve_tubes(
     list.fold(range(1, tube_length + 1), acc, fn(acc2, k) {
       case acc2 {
         Error(e) -> Error(e)
-        Ok(rows) ->
-          carve_tile(rows, berth.x + shift_x, berth.y - k + shift_y)
+        Ok(rows) -> carve_tile(rows, berth.x + shift_x, berth.y - k + shift_y)
       }
     })
   })

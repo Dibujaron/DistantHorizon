@@ -1291,7 +1291,12 @@ fn rebuild_space(state: State, station_id: String) -> State {
                       y: c.y +. shift_y,
                     )
                   case
-                    character.can_stand_at(built.plan, moved.deck, moved.x, moved.y)
+                    character.can_stand_at(
+                      built.plan,
+                      moved.deck,
+                      moved.x,
+                      moved.y,
+                    )
                   {
                     True -> moved
                     False ->

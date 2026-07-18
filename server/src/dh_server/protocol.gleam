@@ -334,14 +334,11 @@ pub fn encode_space(
     #("epoch", json.int(epoch)),
     #("plan", deckplan.encode(plan)),
     #("moorings", json.array(moorings, encode_mooring)),
-    #(
-      "concourse",
-      case concourse {
-        option.None -> json.null()
-        option.Some(#(dx, dy)) ->
-          json.object([#("dx", json.int(dx)), #("dy", json.int(dy))])
-      },
-    ),
+    #("concourse", case concourse {
+      option.None -> json.null()
+      option.Some(#(dx, dy)) ->
+        json.object([#("dx", json.int(dx)), #("dy", json.int(dy))])
+    }),
     #(
       "you",
       json.object([

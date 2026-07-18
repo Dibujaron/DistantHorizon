@@ -1,4 +1,4 @@
-﻿import dh_server/character
+import dh_server/character
 import dh_server/composite
 import dh_server/deckplan
 import dh_server/market

@@ -1,4 +1,4 @@
-﻿//// Sim-actor-level tests for M3.1 stitched interiors: login lands seated at
+//// Sim-actor-level tests for M3.1 stitched interiors: login lands seated at
 //// a namespaced helm in the station composite, docked crews share one
 //// space, ship<->concourse crossing is plain walking, undock splits bodies
 //// by tile ownership (visitors carried, crew transferred, emptied ships

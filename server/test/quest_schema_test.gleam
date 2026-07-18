@@ -16,8 +16,8 @@ const quests_dir = "quests"
 
 /// Dotted interpolation forms legal on character slots (${x.<form>}).
 const character_forms = [
-  "given", "family", "short", "title", "ey", "em", "eir", "eirs", "emself",
-  "Ey", "Em", "Eir", "Eirs", "Emself",
+  "given", "family", "short", "title", "ey", "em", "eir", "eirs", "emself", "Ey",
+  "Em", "Eir", "Eirs", "Emself",
 ]
 
 const ship_forms = ["role"]
@@ -108,9 +108,17 @@ fn refs_decoder() -> decode.Decoder(QuestRefs) {
     decode.dict(decode.string, slot),
   )
   use items <- decode.optional_field("items", [], decode.list(item))
-  use on_complete <- decode.optional_field("on_complete", [], decode.list(trigger))
+  use on_complete <- decode.optional_field(
+    "on_complete",
+    [],
+    decode.list(trigger),
+  )
   use on_failed <- decode.optional_field("on_failed", [], decode.list(trigger))
-  use on_expired <- decode.optional_field("on_expired", [], decode.list(trigger))
+  use on_expired <- decode.optional_field(
+    "on_expired",
+    [],
+    decode.list(trigger),
+  )
   decode.success(QuestRefs(
     id:,
     acquisition:,
@@ -144,7 +152,9 @@ pub fn quest_triggers_are_coherent_test() {
   let ids = list.map(quests, fn(refs) { refs.id })
   let targets = list.flat_map(quests, fn(refs) { refs.trigger_targets })
   // Every trigger target must exist in the folder.
-  list.each(targets, fn(target) { assert list.contains(ids, target) })
+  list.each(targets, fn(target) {
+    assert list.contains(ids, target)
+  })
   list.each(quests, fn(refs) {
     // acquisition "triggered" if and only if some quest triggers it.
     let referenced = list.contains(targets, refs.id)
@@ -193,7 +203,11 @@ pub fn parent_bindings_exist_in_all_triggering_parents_test() {
               True -> Nil
               False ->
                 panic as {
-                  child.id <> ": " <> ref <> " is not an item of parent " <> parent.id
+                  child.id
+                  <> ": "
+                  <> ref
+                  <> " is not an item of parent "
+                  <> parent.id
                 }
             }
           _ ->
@@ -201,7 +215,11 @@ pub fn parent_bindings_exist_in_all_triggering_parents_test() {
               True -> Nil
               False ->
                 panic as {
-                  child.id <> ": " <> ref <> " is not a slot of parent " <> parent.id
+                  child.id
+                  <> ": "
+                  <> ref
+                  <> " is not a slot of parent "
+                  <> parent.id
                 }
             }
         }
@@ -253,7 +271,10 @@ pub fn quest_interpolations_resolve_test() {
               }
             _, _ ->
               panic as {
-                file <> ": dotted form ${" <> token <> "} on a non-generated slot"
+                file
+                <> ": dotted form ${"
+                <> token
+                <> "} on a non-generated slot"
               }
           }
         }

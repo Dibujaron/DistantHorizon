@@ -1,4 +1,4 @@
-﻿import dh_server/auth
+import dh_server/auth
 import dh_server/protocol
 import dh_server/shipclass
 import dh_server/sim

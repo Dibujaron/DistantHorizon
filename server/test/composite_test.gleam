@@ -1,4 +1,4 @@
-﻿//// The composite (stitched) plan: concourse + docked-ship moorings.
+//// The composite (stitched) plan: concourse + docked-ship moorings.
 //// Iteration 4: ships moor SIDE-ON (plans rotated 90 CCW, nose west,
 //// port flank south) at the end of a 4-tile generated docking tube.
 
@@ -39,7 +39,15 @@ fn mockingbird_plan() -> DeckPlan {
       ".....BBBB.....",
     ],
     rooms: [
-      Room(id: "cockpit", name: "Cockpit", x: 6, y: 4, w: 2, h: 3, deck: "upper"),
+      Room(
+        id: "cockpit",
+        name: "Cockpit",
+        x: 6,
+        y: 4,
+        w: 2,
+        h: 3,
+        deck: "upper",
+      ),
       Room(id: "dock", name: "Docking Deck", x: 5, y: 21, w: 4, h: 2, deck: ""),
     ],
     consoles: [
@@ -68,7 +76,15 @@ fn meridian_concourse() -> DeckPlan {
       "..............................................................................................",
     ],
     rooms: [
-      Room(id: "concourse", name: "Concourse", x: 1, y: 2, w: 92, h: 3, deck: ""),
+      Room(
+        id: "concourse",
+        name: "Concourse",
+        x: 1,
+        y: 2,
+        w: 92,
+        h: 3,
+        deck: "",
+      ),
     ],
     consoles: [
       Console(id: "broker_main", kind: "broker", x: 10, y: 3),

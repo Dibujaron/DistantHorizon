@@ -184,7 +184,10 @@ fn check_ship_coverage(
 ) {
   let patterns = names.matching_patterns_for_ship(entries, attrs)
   case patterns {
-    [] -> panic as { context <> "no ship pattern matches " <> string.inspect(attrs) }
+    [] ->
+      panic as {
+        context <> "no ship pattern matches " <> string.inspect(attrs)
+      }
     _ -> Nil
   }
   list.each(patterns, fn(pattern) {

@@ -84,11 +84,7 @@ pub fn step(character: Character, plan: DeckPlan) -> Character {
       // grants access to EITHER deck's tiles: that is how a walker changes
       // decks. Everywhere else the current deck gates exclusive tiles.
       let deck = case
-        deckplan.char_at(
-          plan,
-          tile_index(character.x),
-          tile_index(character.y),
-        )
+        deckplan.char_at(plan, tile_index(character.x), tile_index(character.y))
       {
         "B" -> option.None
         _ -> option.Some(character.deck)

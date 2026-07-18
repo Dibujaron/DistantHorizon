@@ -1,4 +1,4 @@
-﻿import dh_server/deckplan.{Console, Grid}
+import dh_server/deckplan.{Console, Grid}
 import dh_server/shipclass
 import gleam/json
 import gleam/list

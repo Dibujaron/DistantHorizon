@@ -54,7 +54,9 @@ pub fn constraint_satisfaction_test() {
   let not_high = names.Not(names.AttrIs("wealth", "high"))
   let modest = names.satisfying_character_attrs(Some(not_high))
   assert modest != []
-  list.each(modest, fn(a) { assert a.wealth != "high" })
+  list.each(modest, fn(a) {
+    assert a.wealth != "high"
+  })
 
   // Contradictions produce the empty list, not a crash.
   let impossible =
@@ -70,7 +72,9 @@ pub fn ship_constraint_satisfaction_test() {
   let attrs = names.satisfying_ship_attrs(Some(packet))
   // 1 role x 5 factions x 10 manufacturers.
   assert list.length(attrs) == 50
-  list.each(attrs, fn(a) { assert a.role == "packet" })
+  list.each(attrs, fn(a) {
+    assert a.role == "packet"
+  })
 }
 
 pub fn parse_constraint_test() {
