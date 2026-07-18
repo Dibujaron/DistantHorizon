@@ -155,12 +155,14 @@ def test_station_hull_berth_anchors(tmp_path):
     assert len(berths) == 3
     for a in berths:
         assert 0 <= a["x_px"] < meta["px_w"] and 0 <= a["y_px"] < meta["px_h"]
-    # interior fit contract: pad/anchor columns align to the authored berth
-    # tiles (6, 16, 26) of the 34-wide concourse at exactly 3 px/tile.
+    # interior fit contract: anchors ride ONE TILE EAST of the authored
+    # berth tiles (6, 16, 26) of the 34-wide concourse at exactly 3
+    # px/tile — the gangway meets the moored ship's port dormer, so the
+    # hull center is offset from the berth column.
     fit = meta["interior"]
     assert abs(fit["px_per_tile"] - 3.0) < 1e-9
     for a, b in zip(sorted(berths, key=lambda a: a["x_px"]), (6, 16, 26)):
-        assert abs(a["x_px"] - (fit["origin_px"][0] + (b + 0.5) * 3.0)) < 0.5
+        assert abs(a["x_px"] - (fit["origin_px"][0] + (b + 1.5) * 3.0)) < 0.5
     # anchors park ships ABOVE the concourse top edge
     for a in berths:
         assert a["y_px"] < fit["origin_px"][1]

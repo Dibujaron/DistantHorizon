@@ -248,27 +248,41 @@ fn wait_for_walkers_with(
   }
 }
 
-/// Walk a standing character from their helm seat to `broker_main` at
-/// composite (10.5, 12.5), entirely by move input. The Mockingbird's helm,
-/// stairs and docking deck all share the ship's center column (ship-local
-/// col 3 — the same column its berth lands on), so the route is: stand,
-/// straight SOUTH down that column (cockpit, quarters, mess, the 'U'
-/// stair, the 'B' docking deck, the berth stub) onto the concourse floor,
-/// then along the floor to the broker. Works from any berth. Plain walking
-/// end to end — the stitched-space replacement for M3's
+/// Walk a standing character from their helm seat down and ashore: the
+/// Mockingbird's spine (cockpit, quarters, mess, the 'U' stair) is its
+/// center column, but the gangway is the PORT dormer one column west —
+/// so: straight SOUTH to the 'B' docking deck, sidestep WEST onto the
+/// gangway column (the berth column), SOUTH through the berth stub onto
+/// the concourse floor. Works from any berth; the center column's void
+/// below row 9 pins the descent on the docking deck, so no settle needed.
+fn walk_down_the_gangway(
+  s: process.Subject(sim.Msg),
+  client: process.Subject(sim.ClientMsg),
+  char: Int,
+) -> Float {
+  let assert protocol.SeatResult(ok: True, ..) =
+    sim.request_stand(s, char, 1000)
+  let #(x0, _y0) = wait_for_position(client, char, 60)
+  let helm_x = int.to_float(float.round(float.floor(x0))) +. 0.5
+  let gangway_x = helm_x -. 1.0
+  sim.set_move(s, char, 0.0, 1.0)
+  wait_for_walker(client, char, fn(_x, y) { y >=. 9.35 }, 200)
+  sim.set_move(s, char, -1.0, 0.0)
+  wait_for_walker(client, char, fn(x, _y) { x <=. gangway_x +. 0.1 }, 120)
+  sim.set_move(s, char, 0.0, 1.0)
+  wait_for_walker(client, char, fn(_x, y) { y >=. 12.2 }, 200)
+  helm_x
+}
+
+/// walk_down_the_gangway, then along the floor to `broker_main` at
+/// composite (10.5, 12.5) — the stitched-space replacement for M3's
 /// stand/walk/disembark.
 fn walk_to_broker(
   s: process.Subject(sim.Msg),
   client: process.Subject(sim.ClientMsg),
   char: Int,
 ) -> Nil {
-  let assert protocol.SeatResult(ok: True, ..) =
-    sim.request_stand(s, char, 1000)
-  let #(x0, _y0) = wait_for_position(client, char, 60)
-  let helm_x = int.to_float(float.round(float.floor(x0))) +. 0.5
-  sim.set_move(s, char, 0.0, 1.0)
-  wait_for_walker(client, char, fn(_x, y) { y >=. 12.2 }, 200)
-  // Along the floor to the broker column (10), from either side.
+  let helm_x = walk_down_the_gangway(s, client, char)
   case helm_x <. 10.5 {
     True -> {
       sim.set_move(s, char, 1.0, 0.0)
@@ -282,60 +296,63 @@ fn walk_to_broker(
   sim.set_move(s, char, 0.0, 0.0)
 }
 
-/// Reverse of `walk_to_broker`: from the concourse floor near the broker
-/// back along the floor to the ship's column and straight NORTH up to the
-/// cockpit at `(helm_x, 1.5)`. `helm_x` is whatever composite column the
-/// character's helm actually sits at (captured before walking away), so
-/// this works from any berth — never assumes berth 0.
+/// Reverse of `walk_to_broker`: along the floor to the ship's GANGWAY
+/// column (one west of the helm column), north up the stub onto the 'B'
+/// docking deck, sidestep east onto the spine, north to the cockpit at
+/// `(helm_x, 1.5)`. `helm_x` is whatever composite column the character's
+/// helm actually sits at (captured before walking away), so this works
+/// from any berth — never assumes berth 0.
 fn walk_broker_to_helm(
   s: process.Subject(sim.Msg),
   client: process.Subject(sim.ClientMsg),
   char: Int,
   helm_x: Float,
 ) -> Nil {
-  case helm_x <. 10.5 {
+  let gangway_x = helm_x -. 1.0
+  case gangway_x <. 10.5 {
     True -> {
       sim.set_move(s, char, -1.0, 0.0)
-      wait_for_walker(client, char, fn(x, _y) { x <=. helm_x +. 0.1 }, 120)
+      wait_for_walker(client, char, fn(x, _y) { x <=. gangway_x +. 0.1 }, 120)
     }
     False -> {
       sim.set_move(s, char, 1.0, 0.0)
-      wait_for_walker(client, char, fn(x, _y) { x >=. helm_x -. 0.1 }, 120)
+      wait_for_walker(client, char, fn(x, _y) { x >=. gangway_x -. 0.1 }, 120)
     }
   }
+  sim.set_move(s, char, 0.0, -1.0)
+  wait_for_walker(client, char, fn(_x, y) { y <=. 9.6 }, 200)
+  sim.set_move(s, char, 1.0, 0.0)
+  wait_for_walker(client, char, fn(x, _y) { x >=. helm_x -. 0.1 }, 120)
   sim.set_move(s, char, 0.0, -1.0)
   wait_for_walker(client, char, fn(_x, y) { y <=. 2.6 }, 200)
   sim.set_move(s, char, 0.0, 0.0)
 }
 
 /// A visitor walks onto another ship's deck, wherever both ships' berths
-/// landed: stand, south down their own ship's center column to the floor,
-/// along the floor to the target ship's column (from either side), north
-/// through the berth stub onto the target's docking deck and up its 'U'
-/// stair (composite y <= 8.6 is standing on target-ship tiles).
-/// `target_helm_x` is the target ship's helm column, e.g. read off a
-/// shared `walkers` message — on the Mockingbird the helm column IS the
-/// docking column.
+/// landed: down their own gangway, along the floor to the target ship's
+/// gangway column (one west of its helm column), north through the berth
+/// stub onto the target's 'B' docking deck and up its port 'L' half-flight
+/// into the hold (composite y <= 8.6 is standing on target-ship tiles, on
+/// the LOWER deck — cargo comes aboard through the rear port and stairs,
+/// per the lore). `target_helm_x` is the target ship's helm column, e.g.
+/// read off a shared `walkers` message.
 fn walk_visitor_onto_ship(
   s: process.Subject(sim.Msg),
   client: process.Subject(sim.ClientMsg),
   char: Int,
   target_helm_x: Float,
 ) -> Nil {
-  let assert protocol.SeatResult(ok: True, ..) =
-    sim.request_stand(s, char, 1000)
-  let #(x0, _y0) = wait_for_position(client, char, 60)
-  let own_x = int.to_float(float.round(float.floor(x0))) +. 0.5
-  sim.set_move(s, char, 0.0, 1.0)
-  wait_for_walker(client, char, fn(_x, y) { y >=. 12.2 }, 200)
-  case target_helm_x <. own_x {
+  let _own_helm_x = walk_down_the_gangway(s, client, char)
+  let target_gangway_x = target_helm_x -. 1.0
+  let #(x_now, _) = wait_for_position(client, char, 60)
+  case target_gangway_x <. x_now {
     True -> {
       sim.set_move(s, char, -1.0, 0.0)
-      wait_for_walker(client, char, fn(x, _y) { x <=. target_helm_x }, 200)
+      wait_for_walker(client, char, fn(x, _y) { x <=. target_gangway_x }, 200)
     }
     False -> {
       sim.set_move(s, char, 1.0, 0.0)
-      wait_for_walker(client, char, fn(x, _y) { x >=. target_helm_x }, 200)
+      wait_for_walker(client, char, fn(x, _y) { x >=. target_gangway_x }, 200)
     }
   }
   sim.set_move(s, char, 0.0, -1.0)

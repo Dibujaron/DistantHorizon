@@ -119,10 +119,12 @@ def station_hull(grid_w, grid_h, berth_tiles, crane, seed):
                              2, PHE_GRAY_D, sw=1.2)))
         L.append(Layer(circle(px, GRID_Y0 + UNITS_PER_TILE * 0.5, 2.2,
                               GLOW_CORE, stroke="none"), role="glow"))
-        # moored Mockingbird sprite center: ship grid hangs 9 tiles above
-        # the berth row, sprite center 22.5 ship-px below sprite top ->
-        # 11.25 units above the concourse top edge.
-        A.append(Anchor("berth", px, GRID_Y0 - 11.25))
+        # moored Mockingbird sprite center: the gangway meets the ship's
+        # PORT dormer (ship col 2 of 7), so the hull center rides ONE TILE
+        # EAST of the berth column; the grid hangs 9 tiles above the berth
+        # row, sprite center 22.5 ship-px below sprite top -> 11.25 units
+        # above the concourse top edge.
+        A.append(Anchor("berth", px + UNITS_PER_TILE, GRID_Y0 - 11.25))
 
     # crane gantries flanking the outer pads: vertical booms + trolley + a
     # container mid-lift — the "crane-ness" seller, reaching up alongside
@@ -158,9 +160,10 @@ def station_hull(grid_w, grid_h, berth_tiles, crane, seed):
         L.append(Layer(container(x0 + fx * bar_w, deck_y, 11, 8,
                                  rng.choice(BOXES)), flat(0.48)))
 
-    # PHE orange accent along the bar's south edge (paint)
-    L.append(Layer(line(x0 + 14, bar_bot - 1.5, x0 + bar_w * 0.36,
-                        bar_bot - 1.5, PHE_POD, 3)))
+    # PHE orange accent along the bar's south edge (paint) — thin: at the
+    # interior's 21x backdrop scale every unit is ~8.5 screen px
+    L.append(Layer(line(x0 + 14, bar_bot - 1.0, x0 + bar_w * 0.36,
+                        bar_bot - 1.0, PHE_POD, 1.4, .8)))
     return Hull(layers=L, anchors=A)
 
 

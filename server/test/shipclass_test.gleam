@@ -11,9 +11,9 @@ pub fn load_bundled_mockingbird_test() {
   assert list.length(c.plan.walkable) == 10
   assert list.length(c.plan.rooms) == 5
   assert list.length(c.plan.consoles) == 2
-  // The spawn tile doubles as the docking port: the between-level ('B')
-  // Docking Deck at the stern waist.
-  assert c.plan.spawn_tile == #(3, 9)
+  // The spawn tile is the PORT docking dormer on the between-level ('B')
+  // Docking Deck at the waist — side ports, never the stern.
+  assert c.plan.spawn_tile == #(2, 9)
   assert list.any(c.plan.rooms, fn(r) { r.id == "dock" })
   // Split-level metadata: the hold is a lower-deck room.
   let assert Ok(hold) = list.find(c.plan.rooms, fn(r) { r.id == "hold" })

@@ -24,6 +24,6 @@
     {"id": "helm_main",  "kind": "helm",  "x": 3, "y": 1},
     {"id": "cargo_main", "kind": "cargo", "x": 2, "y": 8}
   ],
-  "spawn_tile": [3, 9],
+  "spawn_tile": [2, 9],
   "cargo": {"capacity": 40, "handling": "breakbulk"}
 }

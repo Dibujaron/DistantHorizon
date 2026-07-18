@@ -188,12 +188,6 @@ def test_walk_ashore_and_screenshot(server, tmp_path):
             "client to log in and land in the station composite, seated",
         )
         assert state["character"]["seat"] is not None, "login seats you at the helm"
-        # Berth assignment is seed-random among free berths (free_berth in
-        # sim.gleam), so derive this client's airlock column from its own
-        # seated helm position rather than assuming berth 0. The sparrow's
-        # airlock is a fixed 4 tiles east of the helm regardless of berth.
-        helm_x = state["character"]["x"]
-        airlock_x = helm_x + 4.0
 
         # Stand (E is bound to "interact", physical keycode 69, see
         # project.godot -- toggles stand/sit at whatever console you're at).
@@ -206,20 +200,28 @@ def test_walk_ashore_and_screenshot(server, tmp_path):
             "E to stand up from the helm",
         )
 
-        # Walk down onto the concourse: the concourse floor is composite
-        # rows 6..8 regardless of berth (only the column shifts). The
-        # descent threads a single-tile berth pinch at composite
-        # (airlock_x, 5), so center precisely on the airlock column while
-        # still on the wide ship-deck row, THEN drop straight down onto the
-        # floor (y >= 6.5). Plain movement, no disembark verb.
+        # Walk down onto the concourse: south down the ship's spine (the
+        # helm column) to the 'B' docking deck — the void under the spine
+        # pins the descent there — then sidestep WEST onto the gangway
+        # column (the Mockingbird's docking ports are SIDE dormers at the
+        # waist; the port one is the spawn/gangway) and south through the
+        # berth stub onto the concourse floor (composite rows 11..13
+        # regardless of berth; only the column shifts). Plain movement, no
+        # disembark verb.
+        helm_x = state["character"]["x"]
         _walk_until(
             automation,
-            "move_right",
-            lambda c: c.get("x", 0.0) >= helm_x + 3.0,
-            "east along the ship deck",
+            "move_down",
+            lambda c: c.get("y", 0.0) >= 9.35,
+            "south down the ship's spine to the docking deck",
         )
-        _settle_x(automation, airlock_x)
-        _walk_until(automation, "move_down", lambda c: c.get("y", 0.0) >= 6.5, "south onto the concourse floor")
+        _settle_x(automation, helm_x - 1.0)
+        _walk_until(
+            automation,
+            "move_down",
+            lambda c: c.get("y", 0.0) >= 12.2,
+            "down the gangway onto the concourse floor",
+        )
 
         # We are ashore on the concourse floor, still in the one station
         # space, and the crew wallet is visible from the cargo feed.
@@ -227,7 +229,7 @@ def test_walk_ashore_and_screenshot(server, tmp_path):
             automation,
             lambda s: (
                 s.get("space") == "station:meridian_highport"
-                and (s.get("character") or {}).get("y", 0.0) >= 6.5
+                and (s.get("character") or {}).get("y", 0.0) >= 11.5
                 and s.get("wallet") == 2000  # starting wallet, m1_system.json
             ),
             STATE_TIMEOUT_S,

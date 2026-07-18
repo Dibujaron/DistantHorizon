@@ -6,7 +6,9 @@ import gleam/list
 
 /// The Mockingbird deck plan, matching server/classes/mockingbird.json:
 /// 7x10, nose up, split-level (U upper / L lower / 2 stacked / B
-/// between-level docking deck), spawn on the docking deck at (3,9).
+/// between-level docking deck). Docking ports are SIDE dormers at the
+/// waist — the spawn/gangway tile is the PORT one at (2,9), so a moored
+/// ship sits one tile east of its berth column, flank to the gangway.
 fn mockingbird_plan() -> DeckPlan {
   DeckPlan(
     grid: Grid(width: 7, height: 10),
@@ -30,7 +32,7 @@ fn mockingbird_plan() -> DeckPlan {
       Console(id: "helm_main", kind: "helm", x: 3, y: 1),
       Console(id: "cargo_main", kind: "cargo", x: 2, y: 8),
     ],
-    spawn_tile: #(3, 9),
+    spawn_tile: #(2, 9),
   )
 }
 
@@ -78,14 +80,14 @@ pub fn one_ship_moors_above_its_berth_test() {
   // Ship rows extend 9 above the concourse: everything shifts down by 9.
   assert c.concourse_dx == 0
   assert c.concourse_dy == 9
-  assert c.moorings == [Mooring(ship_id: 1, dx: 3, dy: 0)]
+  assert c.moorings == [Mooring(ship_id: 1, dx: 4, dy: 0)]
   assert c.plan.grid == Grid(width: 34, height: 15)
-  // Ship spawn/docking tile (3,9) -> composite (6,9); berth stub (6,1) ->
-  // (6,10): adjacent, dock to berth, both walkable.
+  // Ship spawn/port-dormer tile (2,9) -> composite (6,9); berth stub (6,1)
+  // -> (6,10): adjacent, gangway to flank, both walkable.
   assert deckplan.is_walkable(c.plan, 6, 9)
   assert deckplan.is_walkable(c.plan, 6, 10)
-  // Ship helm tile (3,1) -> composite (6,1).
-  assert deckplan.is_walkable(c.plan, 6, 1)
+  // Ship helm tile (3,1) -> composite (7,1).
+  assert deckplan.is_walkable(c.plan, 7, 1)
   // Concourse broker tile (10,3) -> composite (10,12).
   assert deckplan.is_walkable(c.plan, 10, 12)
   // Void stays void: composite (0,0) is above the concourse, beside the ship.
@@ -98,9 +100,10 @@ pub fn composite_preserves_deck_alphabet_test() {
       DockedShip(ship_id: 1, berth: 0, plan: mockingbird_plan()),
     ])
   // Split-level chars carry through the stitch unchanged...
-  assert deckplan.char_at(c.plan, 6, 1) == "U"
-  assert deckplan.char_at(c.plan, 6, 5) == "2"
-  assert deckplan.char_at(c.plan, 5, 8) == "L"
+  assert deckplan.char_at(c.plan, 7, 1) == "U"
+  assert deckplan.char_at(c.plan, 7, 5) == "2"
+  assert deckplan.char_at(c.plan, 6, 8) == "L"
+  assert deckplan.char_at(c.plan, 7, 8) == "U"
   assert deckplan.char_at(c.plan, 6, 9) == "B"
   // ...and the concourse stays generic.
   assert deckplan.char_at(c.plan, 10, 12) == "#"
@@ -113,7 +116,7 @@ pub fn ship_console_and_room_ids_are_namespaced_test() {
     ])
   let assert Ok(helm) = deckplan.find_console(c.plan, "s3:helm_main")
   assert helm.kind == "helm"
-  assert helm.x == 6
+  assert helm.x == 7
   assert helm.y == 1
   // Concourse consoles keep their plain ids, translated.
   let assert Ok(broker) = deckplan.find_console(c.plan, "broker_main")
@@ -136,9 +139,9 @@ pub fn three_ships_moor_side_by_side_test() {
   let assert Ok(g1) = composite.find_mooring(c, 1)
   let assert Ok(g2) = composite.find_mooring(c, 2)
   let assert Ok(g3) = composite.find_mooring(c, 3)
-  assert g1 == Mooring(ship_id: 1, dx: 3, dy: 0)
-  assert g2 == Mooring(ship_id: 2, dx: 13, dy: 0)
-  assert g3 == Mooring(ship_id: 3, dx: 23, dy: 0)
+  assert g1 == Mooring(ship_id: 1, dx: 4, dy: 0)
+  assert g2 == Mooring(ship_id: 2, dx: 14, dy: 0)
+  assert g3 == Mooring(ship_id: 3, dx: 24, dy: 0)
   // Each ship's helm console exists under its own namespace.
   let assert Ok(_) = deckplan.find_console(c.plan, "s1:helm_main")
   let assert Ok(_) = deckplan.find_console(c.plan, "s2:helm_main")
@@ -174,8 +177,8 @@ pub fn tile_on_mooring_test() {
       DockedShip(ship_id: 1, berth: 0, plan: mockingbird_plan()),
     ])
   let assert Ok(g) = composite.find_mooring(c, 1)
-  // Composite (6.5, 1.5) is the moored helm tile; (10.5, 12.5) is concourse.
-  assert composite.tile_on_mooring(g, mockingbird_plan(), 6.5, 1.5)
+  // Composite (7.5, 1.5) is the moored helm tile; (10.5, 12.5) is concourse.
+  assert composite.tile_on_mooring(g, mockingbird_plan(), 7.5, 1.5)
   assert !composite.tile_on_mooring(g, mockingbird_plan(), 10.5, 12.5)
   // The berth stub belongs to the concourse, not the ship.
   assert !composite.tile_on_mooring(g, mockingbird_plan(), 6.5, 10.5)

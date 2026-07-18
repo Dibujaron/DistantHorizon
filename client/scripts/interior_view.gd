@@ -92,7 +92,6 @@ var view_cone_enabled: bool = false
 var _font: Font
 var _lib: AssetLibrary = null
 var _floor_tex: Array[Texture2D] = []
-var _backdrop_holder: Node2D = null
 var _facing: Dictionary = {}        # character id -> -1.0 | 1.0
 var _last_char_x: Dictionary = {}   # character id -> last tile x
 ## LOS cache: Vector2i tile -> bool visible; recomputed when the own tile,
@@ -107,9 +106,6 @@ func _ready() -> void:
 	_lib = AssetLibrary.load_all()
 	for i in 3:
 		_floor_tex.append(_lib.interior("floor_%d" % i))
-	_backdrop_holder = Node2D.new()
-	_backdrop_holder.name = "backdrops"
-	add_child(_backdrop_holder)
 
 
 ## Called by main.gd once per frame. `p_focus_tile` is the own character's
@@ -146,10 +142,13 @@ func _draw() -> void:
 	_draw_characters(origin)
 
 
-## Pooled exterior-sprite children under the tiles (show_behind_parent
-## renders them beneath this node's own drawing). Scaled so the hull's
-## deckplan grid px map 1:1 onto TILE_PIXELS tiles, positioned via each
-## hull's interior-fit meta + its tile offset in the current space.
+## Pooled exterior-sprite children under the tiles. Each sprite is a
+## DIRECT child of this node with show_behind_parent, so it renders
+## beneath this node's own floor/character drawing (the same trick the
+## plumes use under ship sprites — behind-parent only counts against the
+## sprite's immediate parent). Scaled so the hull's deckplan grid px map
+## 1:1 onto TILE_PIXELS tiles, positioned via each hull's interior-fit
+## meta + its tile offset in the current space.
 func _update_backdrops(origin: Vector2) -> void:
 	var touched := {}
 	for i in backdrops.size():
@@ -160,7 +159,7 @@ func _update_backdrops(origin: Vector2) -> void:
 			continue
 		var key := "bd_%d_%s" % [i, spec.asset]
 		touched[key] = true
-		var s: Sprite2D = _backdrop_holder.get_node_or_null(NodePath(key))
+		var s: Sprite2D = get_node_or_null(NodePath(key))
 		if s == null:
 			s = Sprite2D.new()
 			s.name = key
@@ -169,15 +168,16 @@ func _update_backdrops(origin: Vector2) -> void:
 			s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 			s.light_mask = 2       # never sun-lit through the window
 			s.show_behind_parent = true
-			_backdrop_holder.add_child(s)
+			add_child(s)
 		s.visible = true
 		var px_scale := TILE_PIXELS / sset.px_per_tile()
 		var top_left := origin + spec.tile_origin * TILE_PIXELS \
 			- sset.interior_origin_px() * px_scale
 		s.position = top_left + Vector2(sset.px_size()) * px_scale * 0.5
 		s.scale = Vector2.ONE * px_scale
-	for child in _backdrop_holder.get_children():
-		if not touched.has(String(child.name)):
+	for child in get_children():
+		if String(child.name).begins_with("bd_") \
+				and not touched.has(String(child.name)):
 			child.visible = false
 
 

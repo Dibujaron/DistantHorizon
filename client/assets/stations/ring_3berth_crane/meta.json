@@ -23,17 +23,17 @@
   "anchors": [
     {
       "kind": "berth",
-      "x_px": 34.9,
+      "x_px": 37.9,
       "y_px": 17.5
     },
     {
       "kind": "berth",
-      "x_px": 64.9,
+      "x_px": 67.9,
       "y_px": 17.5
     },
     {
       "kind": "berth",
-      "x_px": 94.9,
+      "x_px": 97.9,
       "y_px": 17.5
     }
   ],

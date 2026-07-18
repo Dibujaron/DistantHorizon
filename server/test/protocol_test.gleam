@@ -121,7 +121,7 @@ pub fn encode_welcome_contains_character_id_and_ship_class_test() {
   assert string.contains(text, "\"character_id\":42")
   assert string.contains(text, "\"ship_class\":")
   assert string.contains(text, "\"id\":\"mockingbird\"")
-  assert string.contains(text, "\"spawn_tile\":[3,9]")
+  assert string.contains(text, "\"spawn_tile\":[2,9]")
   assert string.contains(text, "\"consoles\":")
   assert string.contains(text, "helm_main")
 }
