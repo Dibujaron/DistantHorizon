@@ -165,6 +165,37 @@ def test_station_ring_is_not_a_dome():
     assert h[covered].max() < 0.75
 
 
+def test_tiles_export(tmp_path):
+    from tiles import TILE_SPRITES, export_tiles
+    import json
+    export_tiles(tmp_path)
+    meta = json.loads((tmp_path / "meta.json").read_text())
+    assert meta["tile_px"] == 64
+    names = {n for n, _, _, _ in TILE_SPRITES}
+    assert {"floor_0", "floor_1", "floor_2", "wall_n", "wall_corner", "hazard",
+            "console_helm", "console_cargo", "console_broker",
+            "picto_airlock", "picto_trade", "picto_cargo",
+            "picto_helm"} <= names
+    assert all((tmp_path / f"digit_{d}.png").exists() for d in range(10))
+    from PIL import Image
+    f = Image.open(tmp_path / "floor_0.png")
+    assert f.size == (64, 64)
+    assert f.getpixel((0, 0))[3] == 255          # floors are opaque
+    d = Image.open(tmp_path / "digit_7.png")
+    assert d.getpixel((0, 0))[3] == 0            # decals are transparent
+
+
+def test_characters_export(tmp_path):
+    from characters import CHARACTERS, export_characters
+    export_characters(tmp_path)
+    from PIL import Image
+    for name, _ in CHARACTERS:
+        img = Image.open(tmp_path / f"{name}.png")
+        assert img.size == (22, 34)
+        assert img.getpixel((0, 0))[3] == 0      # transparent background
+    assert {n for n, _ in CHARACTERS} == {"player", "crew_0", "crew_1", "crew_2"}
+
+
 def test_export_longhorn_foil_shades_flat(tmp_path):
     """anti-overfit proof at export level: foil interior normals face camera"""
     from composer import SHIP_EXPORTS, export_ship
