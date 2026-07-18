@@ -140,6 +140,31 @@ def test_export_mockingbird(tmp_path):
     assert tuple(n[0, 0][:3]) == (128, 128, 255)           # background flat, GL
 
 
+def test_station_hull_berth_anchors(tmp_path):
+    from stations import STATION_EXPORTS
+    from composer import export_ship
+    spec = next(s for s in STATION_EXPORTS if s.name == "ring_3berth_crane")
+    meta = export_ship(spec, tmp_path)
+    berths = [a for a in meta["anchors"] if a["kind"] == "berth"]
+    assert len(berths) == 3
+    for a in berths:
+        assert 0 <= a["x_px"] < meta["px_w"] and 0 <= a["y_px"] < meta["px_h"]
+    # no livery on stations: masks are all zero
+    from PIL import Image
+    m = np.asarray(Image.open(tmp_path / "ring_3berth_crane" / "mask.png"))
+    assert m[..., 0].max() == 0 and m[..., 1].max() == 0
+
+
+def test_station_ring_is_not_a_dome():
+    """the structure authors flat plates/annuli — no whole-station doming"""
+    from stations import station_hull
+    from composer import hull_frame, compose_height
+    hull = station_hull(berths=1, crane=False, seed=7)
+    frame = hull_frame(hull)
+    h, covered = compose_height(hull, frame)
+    assert h[covered].max() < 0.75
+
+
 def test_export_longhorn_foil_shades_flat(tmp_path):
     """anti-overfit proof at export level: foil interior normals face camera"""
     from composer import SHIP_EXPORTS, export_ship

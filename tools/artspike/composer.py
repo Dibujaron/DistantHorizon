@@ -339,11 +339,12 @@ def _cell(img_arr, box):
     return img
 
 
-def build_debug_sheet(out_path):
+def build_debug_sheet(out_path, exports=None):
     from lightspike import font, BG, LABEL
     from PIL import ImageDraw
+    exports = SHIP_EXPORTS if exports is None else exports
     W, row_h, top = 1540, 320, 70
-    H = top + row_h * len(SHIP_EXPORTS) + 20
+    H = top + row_h * len(exports) + 20
     bg = tuple(int(BG[i:i + 2], 16) for i in (1, 3, 5)) + (255,)
     lab = tuple(int(LABEL[i:i + 2], 16) for i in (1, 3, 5))
     sheet = Image.new("RGBA", (W, H), bg)
@@ -357,7 +358,7 @@ def build_debug_sheet(out_path):
             "LIT -45", "LIT 200", "LIT 90", "GAME 1x/3x"]
     for i, name in enumerate(cols):
         draw.text((30 + i * 180, top - 4), name, font=font(11), fill=lab)
-    for r, spec in enumerate(SHIP_EXPORTS):
+    for r, spec in enumerate(exports):
         c = compose_ship(spec)
         y0 = top + 18 + r * row_h
         # z=28 at SS res is slope-equivalent to the export's z=6.5 at game res
@@ -393,8 +394,10 @@ def build_debug_sheet(out_path):
         one = Image.fromarray((np.clip(lit_g, 0, 1) * 255).astype(np.uint8),
                               "RGBA")
         sheet.alpha_composite(one, (30 + 1260, y0))
-        three = one.resize((pw * 3, ph * 3), Image.NEAREST)
-        sheet.alpha_composite(three, (30 + 1260 + pw + 12, y0))
+        # 3x nearest blowup only when it fits the sheet (ships yes, stations no)
+        if 1260 + pw + 12 + pw * 3 < W - 40:
+            three = one.resize((pw * 3, ph * 3), Image.NEAREST)
+            sheet.alpha_composite(three, (30 + 1260 + pw + 12, y0))
         draw.text((30, y0 + row_h - 28), spec.name.upper(), font=font(13),
                   fill=lab)
     sheet.convert("RGB").save(out_path)
