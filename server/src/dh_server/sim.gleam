@@ -388,6 +388,12 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
                   place: character.OnStation(state.world.spawn_station),
                   x: hx,
                   y: hy,
+                  deck: deckplan.deck_of_tile(
+                    state.class.plan,
+                    deckplan.Upper,
+                    helm.x,
+                    helm.y,
+                  ),
                   seat: Some(composite.namespace_id(new_ship.id, helm.id)),
                   move_dx: 0.0,
                   move_dy: 0.0,
@@ -1270,7 +1276,9 @@ fn rebuild_space(state: State, station_id: String) -> State {
                       x: c.x +. shift_x,
                       y: c.y +. shift_y,
                     )
-                  case character.can_stand_at(built.plan, moved.x, moved.y) {
+                  case
+                    character.can_stand_at(built.plan, moved.deck, moved.x, moved.y)
+                  {
                     True -> moved
                     False ->
                       character.Character(
@@ -1337,6 +1345,7 @@ fn space_message_for(state: State, char: Character) -> Result(String, Nil) {
         0,
         state.class.plan,
         [],
+        None,
         char,
       ))
     character.OnStation(station_id) ->
@@ -1348,6 +1357,7 @@ fn space_message_for(state: State, char: Character) -> Result(String, Nil) {
             space.epoch,
             space.composite.plan,
             space.composite.moorings,
+            Some(#(space.composite.concourse_dx, space.composite.concourse_dy)),
             char,
           ))
       }

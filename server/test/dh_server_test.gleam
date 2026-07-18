@@ -1,4 +1,4 @@
-import dh_server/auth
+﻿import dh_server/auth
 import dh_server/protocol
 import dh_server/shipclass
 import dh_server/sim
@@ -45,7 +45,7 @@ fn test_world() -> world.World {
 }
 
 fn test_class() -> shipclass.ShipClass {
-  let assert Ok(c) = shipclass.load("classes/sparrow.json")
+  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
   c
 }
 

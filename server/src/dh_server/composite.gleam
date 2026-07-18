@@ -154,14 +154,7 @@ pub fn build(
                 list.map(ship.plan.rooms, fn(room) {
                   let translated =
                     translate_room(room, dx + shift_x, dy + shift_y)
-                  Room(
-                    id: namespace_id(ship.ship_id, room.id),
-                    name: translated.name,
-                    x: translated.x,
-                    y: translated.y,
-                    w: translated.w,
-                    h: translated.h,
-                  )
+                  Room(..translated, id: namespace_id(ship.ship_id, room.id))
                 })
               }),
             )
@@ -208,7 +201,9 @@ pub fn build(
 }
 
 /// Row strings for the composite: each tile is walkable in exactly zero or
-/// one source plan. Two sources claiming one tile is "berth_blocked".
+/// one source plan. Two sources claiming one tile is "berth_blocked". The
+/// claiming source's walkable char is carried through unchanged so
+/// split-level ship plans keep their deck alphabet in the composite.
 fn compose_walkable(
   concourse: DeckPlan,
   placed: List(#(DockedShip, Int, Int)),
@@ -219,22 +214,21 @@ fn compose_walkable(
 ) -> Result(List(String), String) {
   list.try_map(range(0, height), fn(y) {
     list.try_map(range(0, width), fn(x) {
-      let from_concourse =
-        deckplan.is_walkable(concourse, x - shift_x, y - shift_y)
-      let ship_claims =
-        list.count(placed, fn(entry) {
+      let ship_chars =
+        list.filter_map(placed, fn(entry) {
           let #(ship, dx, dy) = entry
-          deckplan.is_walkable(ship.plan, x - dx - shift_x, y - dy - shift_y)
+          case deckplan.char_at(ship.plan, x - dx - shift_x, y - dy - shift_y) {
+            "." -> Error(Nil)
+            ch -> Ok(ch)
+          }
         })
-      let claims =
-        ship_claims
-        + case from_concourse {
-          True -> 1
-          False -> 0
-        }
+      let claims = case deckplan.char_at(concourse, x - shift_x, y - shift_y) {
+        "." -> ship_chars
+        ch -> [ch, ..ship_chars]
+      }
       case claims {
-        0 -> Ok(".")
-        1 -> Ok("#")
+        [] -> Ok(".")
+        [ch] -> Ok(ch)
         _ -> Error("berth_blocked")
       }
     })

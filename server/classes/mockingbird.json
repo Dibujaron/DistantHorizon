@@ -1,0 +1,29 @@
+{
+  "schema": 2, "id": "mockingbird", "name": "Mockingbird",
+  "grid": {"width": 7, "height": 10},
+  "walkable": [
+    ".......",
+    "...U...",
+    "...U...",
+    "..UUU..",
+    "..UUU..",
+    "..222..",
+    "..222..",
+    "..222..",
+    "..LUL..",
+    "..BBB.."
+  ],
+  "rooms": [
+    {"id": "cockpit",  "name": "Cockpit",       "x": 3, "y": 1, "w": 1, "h": 2, "deck": "upper"},
+    {"id": "quarters", "name": "Crew Quarters", "x": 2, "y": 3, "w": 3, "h": 2, "deck": "upper"},
+    {"id": "mess",     "name": "Mess",          "x": 2, "y": 5, "w": 3, "h": 3, "deck": "upper"},
+    {"id": "hold",     "name": "Main Hold",     "x": 2, "y": 5, "w": 3, "h": 4, "deck": "lower"},
+    {"id": "dock",     "name": "Docking Deck",  "x": 2, "y": 9, "w": 3, "h": 1}
+  ],
+  "consoles": [
+    {"id": "helm_main",  "kind": "helm",  "x": 3, "y": 1},
+    {"id": "cargo_main", "kind": "cargo", "x": 2, "y": 8}
+  ],
+  "spawn_tile": [3, 9],
+  "cargo": {"capacity": 40, "handling": "breakbulk"}
+}
