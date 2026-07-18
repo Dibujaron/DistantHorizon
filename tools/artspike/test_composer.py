@@ -135,6 +135,12 @@ def test_export_mockingbird(tmp_path):
     for a in meta["anchors"]:
         assert 0 <= a["x_px"] < meta["px_w"] and 0 <= a["y_px"] < meta["px_h"]
         assert a["y_px"] > meta["px_h"] * 0.7              # nozzles aft
+    # interior fit contract: the 7x10 deckplan sits at 3 px/tile from the
+    # sprite's top-left — if the sprite ever drifts off 21x45 the deckplan
+    # no longer fits the hull, so pin EXACT dimensions here.
+    assert (meta["px_w"], meta["px_h"]) == (21, 45)
+    assert abs(meta["interior"]["px_per_tile"] - 3.0) < 1e-9
+    assert meta["interior"]["origin_px"] == [0.0, 0.0]
     from PIL import Image
     n = np.asarray(Image.open(d / "normal.png"))
     assert tuple(n[0, 0][:3]) == (128, 128, 255)           # background flat, GL
@@ -149,6 +155,15 @@ def test_station_hull_berth_anchors(tmp_path):
     assert len(berths) == 3
     for a in berths:
         assert 0 <= a["x_px"] < meta["px_w"] and 0 <= a["y_px"] < meta["px_h"]
+    # interior fit contract: pad/anchor columns align to the authored berth
+    # tiles (6, 16, 26) of the 34-wide concourse at exactly 3 px/tile.
+    fit = meta["interior"]
+    assert abs(fit["px_per_tile"] - 3.0) < 1e-9
+    for a, b in zip(sorted(berths, key=lambda a: a["x_px"]), (6, 16, 26)):
+        assert abs(a["x_px"] - (fit["origin_px"][0] + (b + 0.5) * 3.0)) < 0.5
+    # anchors park ships ABOVE the concourse top edge
+    for a in berths:
+        assert a["y_px"] < fit["origin_px"][1]
     # no livery on stations: masks are all zero
     from PIL import Image
     m = np.asarray(Image.open(tmp_path / "ring_3berth_crane" / "mask.png"))
@@ -159,7 +174,7 @@ def test_station_ring_is_not_a_dome():
     """the structure authors flat plates/annuli — no whole-station doming"""
     from stations import station_hull
     from composer import hull_frame, compose_height
-    hull = station_hull(berths=1, crane=False, seed=7)
+    hull = station_hull(12, 5, (5,), crane=False, seed=7)
     frame = hull_frame(hull)
     h, covered = compose_height(hull, frame)
     assert h[covered].max() < 0.75

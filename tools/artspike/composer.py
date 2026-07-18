@@ -213,6 +213,15 @@ class ExportSpec:
     palette: tuple                # full classification universe
     c1_base: tuple                # shader base color for tint math
     c2_base: tuple
+    # Interior fit (M3.5 iteration 3): where the hull's deckplan tile grid
+    # sits inside the exported sprite, so the client can draw the exterior
+    # as a to-scale backdrop under the walkable tiles. Authored in MODEL
+    # units — units_per_tile is the tile pitch; origin_units is the model
+    # coordinate of deckplan tile (0,0)'s top-left corner, or None for the
+    # sprite's own top-left (frame origin). export_ship converts to px and
+    # writes meta["interior"] = {"px_per_tile", "origin_px"}. None = hull
+    # has no walkable interior fit (e.g. the stock variant sheet).
+    interior: object = None
 
 
 RIJ_C1, RIJ_C2 = (59, 141, 224), (238, 242, 246)
@@ -229,13 +238,19 @@ def _lh():
     return ship_longhorn()
 
 
+# Mockingbird interior fit: the 7x10 deckplan covers the sprite at 3 px per
+# tile from its top-left corner (21x45 px sprite = 7 tiles wide, rows 0-9;
+# the drums/engines below the docking deck are exterior-only sprite).
+# 45 px / 195 units -> 13 units per 3-px tile.
+MB_INTERIOR = {"units_per_tile": 13.0, "origin_units": None}
+
 SHIP_EXPORTS = [
     ExportSpec("mockingbird", lambda: _mb(False), 45, 195,
                ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
-               RIJ_C1, RIJ_C2),
+               RIJ_C1, RIJ_C2, interior=MB_INTERIOR),
     ExportSpec("mockingbird_stock", lambda: _mb(True), 45, 195,
                ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
-               RIJ_C1, RIJ_C2),
+               RIJ_C1, RIJ_C2, interior=MB_INTERIOR),
     # Longhorn livery: c1 = the orange trim, c2 = the gray body (it has no
     # truss white — the body IS the paintable surface on a liner)
     ExportSpec("longhorn", _lh, 41, 195,
@@ -308,6 +323,16 @@ def export_ship(spec, out_root, z_scale=6.5):
                      "y_px": (a.y - frame[1]) * px_per_unit}
                     for a in hull.anchors],
     }
+    if spec.interior is not None:
+        origin = spec.interior["origin_units"]
+        if origin is None:
+            origin = (frame[0], frame[1])
+        ox, oy = origin
+        meta["interior"] = {
+            "px_per_tile": spec.interior["units_per_tile"] * px_per_unit,
+            "origin_px": [(ox - frame[0]) * px_per_unit,
+                          (oy - frame[1]) * px_per_unit],
+        }
     (out / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     return meta
 
