@@ -137,13 +137,13 @@ func _build_frames(src: Image, cfg: Dictionary, poses: Array) -> Array:
 	if cut_arms:
 		# Carry the arms as their own pieces so they swing; leave the shoulders.
 		# The arm rects overlap the torso, so reconstruct the torso behind each
-		# arm (clamp the nearest torso-side colour across the slot) rather than
-		# erasing to transparent — otherwise a swinging arm exposes a hole over
-		# the torso and the dark deck shows through as a flickering black strip.
+		# arm rather than erasing to transparent — otherwise a swinging arm
+		# exposes a hole over the torso and the dark deck shows through as a
+		# flickering black strip.
 		arm_L = src.get_region(arm_l)
 		arm_R = src.get_region(arm_r)
-		_patch_under_arm(body, arm_l, 1)   # left arm: torso lies to the right
-		_patch_under_arm(body, arm_r, -1)  # right arm: torso lies to the left
+		_patch_under_arm(body, arm_l)
+		_patch_under_arm(body, arm_r)
 	var out := []
 	for p in poses:
 		var cell := Image.create(cell_w, cell_h, false, Image.FORMAT_RGBA8)
@@ -162,23 +162,17 @@ func _build_frames(src: Image, cfg: Dictionary, poses: Array) -> Array:
 	return out
 
 
-## Cut an arm out of the body but reconstruct the torso behind it: for each row,
-## clamp the nearest torso-side opaque colour across the whole slot (in place).
-## `inner_dir` is -1 when the torso lies to the LEFT of the arm, +1 to the RIGHT.
-## Rows with no opaque torso pixel on the inner side clear to transparent (the
-## arm's slot there is outside the silhouette, so showing the deck is correct).
-func _patch_under_arm(img: Image, rect: Rect2i, inner_dir: int) -> void:
-	var x0 := rect.position.x
+## Back the arm slot with the arm's OWN colour (in place) before cutting it out,
+## so a swinging arm never exposes a transparent hole (dark deck showing through)
+## and — because the fill matches the arm drawn over it — never leaves a lighter
+## torso-coloured band at the arm edge. Sampled from the arm rect's centre pixel.
+func _patch_under_arm(img: Image, rect: Rect2i) -> void:
+	var fill := img.get_pixel(
+		rect.position.x + rect.size.x / 2, rect.position.y + rect.size.y / 2)
+	if fill.a <= 0.0:
+		fill = Color(0, 0, 0, 0)
 	for y in range(rect.position.y, rect.position.y + rect.size.y):
-		var fill := Color(0, 0, 0, 0)
-		var sx := (x0 - 1) if inner_dir < 0 else (x0 + rect.size.x)
-		while sx >= 0 and sx < img.get_width():
-			var c := img.get_pixel(sx, y)
-			if c.a > 0.0:
-				fill = c
-				break
-			sx += inner_dir
-		for x in range(x0, x0 + rect.size.x):
+		for x in range(rect.position.x, rect.position.x + rect.size.x):
 			img.set_pixel(x, y, fill)
 
 
