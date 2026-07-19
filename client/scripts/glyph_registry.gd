@@ -19,6 +19,11 @@ var console_sprite: Dictionary = {}
 ## renderer that keys on ids rather than console kinds.
 var sprite_by_id: Dictionary = {}
 
+## Set (Dictionary used as a set) of centre glyphs that are decorative floor
+## tiles (rug/seat/bed/pallet …): Floor-kind, not a console/dock/spawn, and
+## carrying a client sprite. Mirrors `glyphs.is_decor` (glyphs.gleam).
+var _decor_glyphs: Dictionary = {}
+
 
 static func from_dict(data: Variant) -> GlyphRegistry:
 	var reg := GlyphRegistry.new()
@@ -31,6 +36,12 @@ static func from_dict(data: Variant) -> GlyphRegistry:
 				var sprite: Variant = c.get("sprite")
 				if console != null and sprite != null:
 					reg.console_sprite[str(console)] = str(sprite)
+				var tile: Variant = c.get("tile")
+				var dock: Variant = c.get("dock")
+				var spawn: Variant = c.get("spawn")
+				if str(tile) == "floor" and console == null \
+						and dock != true and spawn != true and sprite != null:
+					reg._decor_glyphs[str(c.get("glyph", ""))] = true
 	return reg
 
 
@@ -47,3 +58,10 @@ func _ingest(entries: Variant) -> void:
 ## renderer then falls back to a procedural draw).
 func sprite_for_console(kind: String) -> String:
 	return str(console_sprite.get(kind, ""))
+
+
+## Whether centre glyph `glyph` is a decorative floor tile (rug/seat/bed/
+## pallet …), preserved per-cell and rendered as art rather than bare floor.
+## Mirrors `glyphs.is_decor` (glyphs.gleam).
+func is_decor(glyph: String) -> bool:
+	return _decor_glyphs.has(glyph)
