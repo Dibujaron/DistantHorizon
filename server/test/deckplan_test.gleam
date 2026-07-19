@@ -1,5 +1,35 @@
 import dh_server/deckplan.{Console, DeckPlan}
 
+// ------------------------------------------------- docking ports (#31) --
+
+pub fn docking_ports_north_facing_test() {
+  // A dock tile at (0,1): its north edge is a door, and the tile to its
+  // north (0,0) is void — so its outward normal is N (the station berth case).
+  let rows = ["   ", " . ", "   ", " = ", "   ", "   "]
+  let assert Ok(g) = deckplan.parse_deck("d", rows)
+  let plan =
+    DeckPlan(
+      decks: [g],
+      consoles: [Console("dock", "dock", 0, 0, 1)],
+      spawn_deck: 0,
+      spawn_tile: #(0, 1),
+    )
+  assert deckplan.docking_ports(plan) == [#(0, 0, 1, deckplan.N)]
+}
+
+pub fn docking_ports_skips_port_with_no_void_facing_door_test() {
+  // A 1x1 dock tile with no doors and no void-facing edge is not a berth.
+  let assert Ok(g) = deckplan.parse_deck("d", ["   ", "   ", "   "])
+  let plan =
+    DeckPlan(
+      decks: [g],
+      consoles: [Console("dock", "dock", 0, 0, 0)],
+      spawn_deck: 0,
+      spawn_tile: #(0, 0),
+    )
+  assert deckplan.docking_ports(plan) == []
+}
+
 // ------------------------------------------------------------- parsing --
 
 pub fn parse_deck_two_rooms_test() {

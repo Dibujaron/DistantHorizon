@@ -20,6 +20,7 @@
 
 import dh_server/composite
 import dh_server/deckplan
+import dh_server/glyphs.{type Registry}
 import gleam/dynamic/decode
 import gleam/float
 import gleam/int
@@ -98,22 +99,34 @@ fn cos(x: Float) -> Float
 @external(erlang, "math", "sin")
 fn sin(x: Float) -> Float
 
-/// Read and decode a world document from a file. `path` is resolved
-/// relative to the process's working directory.
+/// Read and decode a world document from a file, using the built-in glyph
+/// legend. `path` is resolved relative to the process's working directory.
 pub fn load(path: String) -> Result(World, String) {
+  load_with(glyphs.default(), path)
+}
+
+/// `load`, but interpreting station concourse grids with an explicit glyph
+/// registry — the runtime path threads the loaded `glyphs.json` here.
+pub fn load_with(reg: Registry, path: String) -> Result(World, String) {
   use text <- result.try(
     simplifile.read(path)
     |> result.map_error(fn(err) {
       "failed to read world file " <> path <> ": " <> string.inspect(err)
     }),
   )
-  decode(text)
+  decode_with(reg, text)
 }
 
-/// Decode a world document from a JSON string, validating that every
+/// Decode a world document (built-in glyph legend), validating that every
 /// `parent` and `spawn_station` reference an id that actually exists.
 pub fn decode(json_text: String) -> Result(World, String) {
-  case json.parse(json_text, world_decoder()) {
+  decode_with(glyphs.default(), json_text)
+}
+
+/// `decode`, but interpreting station concourse grids with an explicit glyph
+/// registry.
+pub fn decode_with(reg: Registry, json_text: String) -> Result(World, String) {
+  case json.parse(json_text, world_decoder(reg)) {
     Ok(world) -> validate(world)
     Error(err) -> Error("invalid world document: " <> string.inspect(err))
   }
@@ -471,7 +484,7 @@ fn market_entry_decoder() -> decode.Decoder(MarketEntry) {
   ))
 }
 
-fn station_decoder() -> decode.Decoder(Station) {
+fn station_decoder(reg: Registry) -> decode.Decoder(Station) {
   use id <- decode.field("id", decode.string)
   use name <- decode.field("name", decode.string)
   use parent <- decode.field("parent", decode.string)
@@ -481,7 +494,7 @@ fn station_decoder() -> decode.Decoder(Station) {
   use concourse <- decode.optional_field(
     "concourse",
     None,
-    decode.optional(deckplan.decoder()),
+    decode.optional(deckplan.decoder(reg)),
   )
   use market <- decode.optional_field(
     "market",
@@ -568,7 +581,7 @@ fn berth_tuple_decoder() -> decode.Decoder(composite.Berth) {
   }
 }
 
-fn world_decoder() -> decode.Decoder(World) {
+fn world_decoder(reg: Registry) -> decode.Decoder(World) {
   use schema <- decode.field("schema", decode.int)
   use name <- decode.field("name", decode.string)
   use seed <- decode.field("seed", decode.int)
@@ -578,7 +591,7 @@ fn world_decoder() -> decode.Decoder(World) {
     decode.list(commodity_decoder()),
   )
   use bodies <- decode.field("bodies", decode.list(body_decoder()))
-  use stations <- decode.field("stations", decode.list(station_decoder()))
+  use stations <- decode.field("stations", decode.list(station_decoder(reg)))
   use spawn_station <- decode.field("spawn_station", decode.string)
   decode.success(World(
     schema: schema,

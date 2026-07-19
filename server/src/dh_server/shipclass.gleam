@@ -8,6 +8,7 @@
 //// what was loaded.
 
 import dh_server/deckplan.{type Console, type DeckPlan}
+import dh_server/glyphs.{type Registry}
 import gleam/dynamic/decode
 import gleam/json.{type Json}
 import gleam/list
@@ -47,22 +48,36 @@ pub type ShipClass {
   )
 }
 
-/// Read and decode a ship class document from a file. `path` is resolved
-/// relative to the process's working directory.
+/// Read and decode a ship class document from a file, using the built-in glyph
+/// legend. `path` is resolved relative to the process's working directory.
 pub fn load(path: String) -> Result(ShipClass, String) {
+  load_with(glyphs.default(), path)
+}
+
+/// `load`, but interpreting the deck grids with an explicit glyph registry —
+/// the runtime path threads the loaded `glyphs.json` here.
+pub fn load_with(reg: Registry, path: String) -> Result(ShipClass, String) {
   use text <- result.try(
     simplifile.read(path)
     |> result.map_error(fn(err) {
       "failed to read ship class file " <> path <> ": " <> string.inspect(err)
     }),
   )
-  decode(text)
+  decode_with(reg, text)
 }
 
-/// Decode a ship class document from a JSON string, validating the deck
+/// Decode a ship class document (built-in glyph legend), validating the deck
 /// plan's geometry and that the class has a helm console.
 pub fn decode(json_text: String) -> Result(ShipClass, String) {
-  case json.parse(json_text, ship_class_decoder()) {
+  decode_with(glyphs.default(), json_text)
+}
+
+/// `decode`, but interpreting the deck grids with an explicit glyph registry.
+pub fn decode_with(
+  reg: Registry,
+  json_text: String,
+) -> Result(ShipClass, String) {
+  case json.parse(json_text, ship_class_decoder(reg)) {
     Ok(class) -> validate(class)
     Error(err) -> Error("invalid ship class document: " <> string.inspect(err))
   }
@@ -118,11 +133,11 @@ fn cargo_decoder() -> decode.Decoder(#(Int, Handling)) {
   decode.success(#(capacity, handling))
 }
 
-fn ship_class_decoder() -> decode.Decoder(ShipClass) {
+fn ship_class_decoder(reg: Registry) -> decode.Decoder(ShipClass) {
   use schema <- decode.field("schema", decode.int)
   use id <- decode.field("id", decode.string)
   use name <- decode.field("name", decode.string)
-  use plan <- decode.then(deckplan.decoder())
+  use plan <- decode.then(deckplan.decoder(reg))
   use cargo <- decode.field("cargo", cargo_decoder())
   use dock_port_orientation <- decode.optional_field(
     "dock_port_orientation",

@@ -7,6 +7,7 @@
 
 import dh_server/accounts
 import dh_server/auth
+import dh_server/glyphs
 import dh_server/server
 import dh_server/shipclass
 import dh_server/sim
@@ -20,6 +21,8 @@ import gleam/string
 const default_world_path = "worlds/m1_system.json"
 
 const default_ship_class_path = "classes/mockingbird.json"
+
+const default_glyphs_path = "glyphs.json"
 
 const default_database_url = "postgres://postgres@127.0.0.1:5432/dh_dev"
 
@@ -50,11 +53,35 @@ fn build_authenticator() -> auth.Authenticator {
 }
 
 pub fn main() -> Nil {
+  // The glyph registry is loaded first: it is how every deck grid (ship
+  // classes, station concourses) is interpreted. A missing/broken file falls
+  // back to the built-in legend so the server still boots in dev.
+  let glyphs_path = case envoy.get("DH_GLYPHS") {
+    Ok(path) -> path
+    Error(Nil) -> default_glyphs_path
+  }
+  let registry = case glyphs.load(glyphs_path) {
+    Ok(reg) -> {
+      io.println("loaded glyph registry " <> glyphs_path)
+      reg
+    }
+    Error(err) -> {
+      io.println(
+        "WARNING: glyphs: could not load "
+        <> glyphs_path
+        <> " ("
+        <> err
+        <> "); falling back to the built-in legend",
+      )
+      glyphs.default()
+    }
+  }
+
   let world_path = case envoy.get("DH_WORLD") {
     Ok(path) -> path
     Error(Nil) -> default_world_path
   }
-  let world = case world.load(world_path) {
+  let world = case world.load_with(registry, world_path) {
     Ok(w) -> w
     Error(err) ->
       panic as { "failed to load world " <> world_path <> ": " <> err }
@@ -64,7 +91,7 @@ pub fn main() -> Nil {
     Ok(path) -> path
     Error(Nil) -> default_ship_class_path
   }
-  let class = case shipclass.load(ship_class_path) {
+  let class = case shipclass.load_with(registry, ship_class_path) {
     Ok(c) -> c
     Error(err) ->
       panic as {

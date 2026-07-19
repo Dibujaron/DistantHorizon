@@ -10,6 +10,7 @@
 //// (shipclass.gleam) and station concourses (world.gleam) are built from a
 //// `DeckPlan`; the same parser runs server-side and (mirrored) client-side.
 
+import dh_server/glyphs
 import gleam/dict
 import gleam/dynamic/decode
 import gleam/int
@@ -61,8 +62,8 @@ pub type DeckGrid {
 
 /// A single-tile interactable on one deck. `kind` is e.g. `"helm"`,
 /// `"cargo"` or `"broker"`; `deck` is the deck index it lives on. Consoles
-/// are authored as center glyphs in the deck grid (see `console_kind`) and
-/// derived at parse time; `id` is auto-generated from the kind.
+/// are authored as center glyphs in the deck grid (see `glyphs.console_kind`)
+/// and derived at parse time; `id` is auto-generated from the kind.
 pub type Console {
   Console(id: String, kind: String, deck: Int, x: Int, y: Int)
 }
@@ -79,30 +80,6 @@ pub type DeckPlan {
   )
 }
 
-/// The console kind a center glyph denotes, or `Error(Nil)` if the glyph is
-/// not a console (plain floor/void/stairs/spawn). Extensible legend.
-pub fn console_kind(glyph: String) -> Result(String, Nil) {
-  case glyph {
-    "h" -> Ok("helm")
-    "c" -> Ok("cargo")
-    "b" -> Ok("broker")
-    "Q" -> Ok("dock")
-    _ -> Error(Nil)
-  }
-}
-
-/// The center glyph for a console kind (inverse of `console_kind`), for
-/// re-serialising an authored grid. Empty string if the kind has no glyph.
-pub fn console_glyph(kind: String) -> String {
-  case kind {
-    "helm" -> "h"
-    "cargo" -> "c"
-    "broker" -> "b"
-    "dock" -> "Q"
-    _ -> ""
-  }
-}
-
 // ---------------------------------------------------------------- parse --
 
 /// Parse a `width` x `height` deck from `3*height` rows of `3*width`
@@ -116,6 +93,17 @@ pub fn console_glyph(kind: String) -> String {
 /// glyphs: space -> Open, `#` -> Wall, `=` -> Door, any other char ->
 /// Fixture(that char).
 pub fn parse_deck(
+  name: String,
+  rows: List(String),
+) -> Result(DeckGrid, String) {
+  parse_deck_with(glyphs.default(), name, rows)
+}
+
+/// `parse_deck` against an explicit glyph registry — the runtime path threads
+/// the loaded `glyphs.json` here so a modded vocabulary takes effect; the bare
+/// `parse_deck` uses the built-in `glyphs.default()`.
+pub fn parse_deck_with(
+  reg: glyphs.Registry,
   name: String,
   rows: List(String),
 ) -> Result(DeckGrid, String) {
@@ -142,17 +130,17 @@ pub fn parse_deck(
   let tiles =
     list.map(range(0, height), fn(y) {
       list.map(range(0, width), fn(x) {
-        parse_center(cell_at(cells, 3 * y + 1, 3 * x + 1))
+        parse_center(reg, cell_at(cells, 3 * y + 1, 3 * x + 1))
       })
     })
   let edges =
     list.map(range(0, height), fn(y) {
       list.map(range(0, width), fn(x) {
         #(
-          parse_edge(cell_at(cells, 3 * y, 3 * x + 1)),
-          parse_edge(cell_at(cells, 3 * y + 1, 3 * x + 2)),
-          parse_edge(cell_at(cells, 3 * y + 2, 3 * x + 1)),
-          parse_edge(cell_at(cells, 3 * y + 1, 3 * x)),
+          parse_edge(reg, cell_at(cells, 3 * y, 3 * x + 1)),
+          parse_edge(reg, cell_at(cells, 3 * y + 1, 3 * x + 2)),
+          parse_edge(reg, cell_at(cells, 3 * y + 2, 3 * x + 1)),
+          parse_edge(reg, cell_at(cells, 3 * y + 1, 3 * x)),
         )
       })
     })
@@ -165,20 +153,21 @@ pub fn parse_deck(
   ))
 }
 
-fn parse_center(ch: String) -> Tile {
-  case ch {
-    "." -> Void
-    "x" -> Stairs
-    _ -> Floor
+fn parse_center(reg: glyphs.Registry, ch: String) -> Tile {
+  case glyphs.center(reg, ch).tile {
+    glyphs.Void -> Void
+    glyphs.Stairs -> Stairs
+    glyphs.Floor -> Floor
   }
 }
 
-fn parse_edge(ch: String) -> Edge {
-  case ch {
-    " " -> Open
-    "#" -> Wall
-    "=" -> Door
-    other -> Fixture(other)
+fn parse_edge(reg: glyphs.Registry, ch: String) -> Edge {
+  case glyphs.edge(reg, ch).kind {
+    glyphs.Open -> Open
+    glyphs.Wall -> Wall
+    glyphs.Door -> Door
+    // A named or unknown edge glyph is a wall-fixture; keep its own char.
+    glyphs.Fixture -> Fixture(ch)
   }
 }
 
@@ -354,6 +343,38 @@ pub fn find_console_of_kind(
   list.find(plan.consoles, fn(c) { c.kind == kind })
 }
 
+/// Every docking port (`Q`) on the plan and its outward normal — the edge
+/// whose door (`=`) faces `Void`. `#(deck, x, y, outward_dir)`, in the
+/// consoles' row-major order. Ships derive their mooring tile from the
+/// west-facing port; stations derive each berth from a north-facing port —
+/// one shared rule so a `Q` in the grid is the single source of docking
+/// geometry (issue #31). A dock console with no void-facing door is skipped.
+pub fn docking_ports(plan: DeckPlan) -> List(#(Int, Int, Int, Dir)) {
+  list.filter_map(plan.consoles, fn(c) {
+    case c.kind == "dock" {
+      False -> Error(Nil)
+      True ->
+        case deck_at(plan, c.deck) {
+          Error(Nil) -> Error(Nil)
+          Ok(g) ->
+            case outward_dir(g, c.x, c.y) {
+              Ok(dir) -> Ok(#(c.deck, c.x, c.y, dir))
+              Error(Nil) -> Error(Nil)
+            }
+        }
+    }
+  })
+}
+
+/// The direction of a port's outer door: the edge carrying a `Door` whose
+/// neighbour tile is `Void`. `Error(Nil)` if the port has no void-facing door.
+fn outward_dir(g: DeckGrid, x: Int, y: Int) -> Result(Dir, Nil) {
+  list.find([N, E, S, W], fn(dir) {
+    let #(nx, ny) = neighbor(x, y, dir)
+    edge_in(g, x, y, dir) == Door && tile_at(g, nx, ny) == Void
+  })
+}
+
 /// Centre of tile (x, y) in tile units.
 pub fn tile_center(x: Int, y: Int) -> #(Float, Float) {
   #(int.to_float(x) +. 0.5, int.to_float(y) +. 0.5)
@@ -422,8 +443,8 @@ fn try_each(
 /// derived, namespaced `consoles` + `spawn` explicitly — the composite needs
 /// namespaced ids that glyphs can't express — so when those fields are present
 /// they win; otherwise they are derived from the glyphs.
-pub fn decoder() -> decode.Decoder(DeckPlan) {
-  use entries <- decode.field("decks", decode.list(deck_entry_decoder()))
+pub fn decoder(reg: glyphs.Registry) -> decode.Decoder(DeckPlan) {
+  use entries <- decode.field("decks", decode.list(deck_entry_decoder(reg)))
   use consoles_override <- decode.optional_field(
     "consoles",
     [],
@@ -435,7 +456,7 @@ pub fn decoder() -> decode.Decoder(DeckPlan) {
     decode.optional(spawn_decoder()),
   )
   let decks = list.map(entries, fn(e) { e.0 })
-  let #(derived_consoles, derived_spawn) = derive_markers(entries)
+  let #(derived_consoles, derived_spawn) = derive_markers(reg, entries)
   let consoles = case consoles_override {
     [] -> derived_consoles
     _ -> consoles_override
@@ -457,10 +478,11 @@ pub fn decoder() -> decode.Decoder(DeckPlan) {
 /// docking port (`Q`) whose outer door faces void on the port (west) side;
 /// failing that, any `s` spawn tile, or the first docking port.
 fn derive_markers(
+  reg: glyphs.Registry,
   entries: List(#(DeckGrid, List(String))),
 ) -> #(List(Console), #(Int, #(Int, Int))) {
   let scanned =
-    list.index_map(entries, fn(entry, deck) { scan_markers(entry.1, deck) })
+    list.index_map(entries, fn(entry, deck) { scan_markers(reg, entry.1, deck) })
   let raw_consoles = list.flat_map(scanned, fn(s) { s.0 })
   let spawn_glyphs = list.flat_map(scanned, fn(s) { s.1 })
   let consoles = assign_console_ids(raw_consoles)
@@ -471,6 +493,7 @@ fn derive_markers(
 /// Scan one deck's rows for console markers `#(kind, deck, x, y)` and bare
 /// spawn tiles `#(deck, x, y)`, in row-major order.
 fn scan_markers(
+  reg: glyphs.Registry,
   rows: List(String),
   deck: Int,
 ) -> #(List(#(String, Int, Int, Int)), List(#(Int, Int, Int))) {
@@ -484,12 +507,12 @@ fn scan_markers(
     list.fold(range(0, width), acc, fn(inner, x) {
       let #(cs, sp) = inner
       let ch = cell_at(cells, 3 * y + 1, 3 * x + 1)
-      case console_kind(ch) {
+      case glyphs.console_kind(reg, ch) {
         Ok(kind) -> #(list.append(cs, [#(kind, deck, x, y)]), sp)
         Error(Nil) ->
-          case ch {
-            "s" -> #(cs, list.append(sp, [#(deck, x, y)]))
-            _ -> inner
+          case glyphs.center(reg, ch).spawn {
+            True -> #(cs, list.append(sp, [#(deck, x, y)]))
+            False -> inner
           }
       }
     })
@@ -587,10 +610,12 @@ pub fn encode(plan: DeckPlan) -> Json {
 
 /// Decode one deck object into its parsed grid AND its raw rows (the rows are
 /// re-scanned for console/spawn glyphs by `derive_markers`).
-fn deck_entry_decoder() -> decode.Decoder(#(DeckGrid, List(String))) {
+fn deck_entry_decoder(
+  reg: glyphs.Registry,
+) -> decode.Decoder(#(DeckGrid, List(String))) {
   use name <- decode.field("name", decode.string)
   use grid <- decode.field("grid", decode.list(decode.string))
-  case parse_deck(name, grid) {
+  case parse_deck_with(reg, name, grid) {
     Ok(g) -> decode.success(#(g, grid))
     Error(e) ->
       decode.failure(#(empty_grid(name), []), "valid deck grid: " <> e)
