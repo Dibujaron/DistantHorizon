@@ -212,6 +212,17 @@ def test_tiles_export(tmp_path):
     assert d.getpixel((0, 0))[3] == 0            # decals are transparent
 
 
+def test_shade_never_overflows_to_invalid_hex():
+    """_shade must clamp channels to 255 so a brighten (k>1) can't overflow into
+    an invalid 7-hex-digit color. resvg renders an invalid fill as black, which
+    is exactly the black chest-badge bug on bright suits (#3b8de0, #d97a28)."""
+    from characters import _shade, CHARACTERS
+    for _name, (suit, _skin, _hair) in CHARACTERS:
+        out = _shade(suit, 1.45)
+        assert len(out) == 7 and out[0] == "#", f"{suit} -> {out}"
+        int(out[1:], 16)  # parses as a real #rrggbb
+
+
 def test_characters_export(tmp_path):
     from characters import CHARACTERS, export_characters
     export_characters(tmp_path)

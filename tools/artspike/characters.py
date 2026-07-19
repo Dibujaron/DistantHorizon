@@ -21,9 +21,11 @@ BOOT = "#232833"
 
 
 def _shade(hex_color, k=0.72):
-    r = int(int(hex_color[1:3], 16) * k)
-    g = int(int(hex_color[3:5], 16) * k)
-    b = int(int(hex_color[5:7], 16) * k)
+    # clamp to 255: a brighten (k > 1) must not overflow into an invalid
+    # 7-hex-digit color, which resvg would render as black.
+    r = min(255, int(int(hex_color[1:3], 16) * k))
+    g = min(255, int(int(hex_color[3:5], 16) * k))
+    b = min(255, int(int(hex_color[5:7], 16) * k))
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
