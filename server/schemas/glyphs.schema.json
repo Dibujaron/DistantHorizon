@@ -1,0 +1,96 @@
+{
+  "$schema": "http://json-schema.org/draft-06/schema#",
+  "$id": "https://distanthorizon.dev/schemas/glyphs.schema.json",
+  "title": "Interior tile-glyph registry",
+  "description": "The canonical vocabulary for interior deck-plan maps (docs/deckplan-format.md), loaded at server startup so the parser interprets maps from data. Derived from the Gleam decoders in server/src/dh_server/glyphs.gleam (registry_decoder/center_decoder/edge_decoder) — those decoders are the source of truth; this schema is documentation and a typo-catcher, not a substitute for them. additionalProperties is false at every object level even though the decoders ignore unknown fields, precisely so this schema catches typos the decoders would silently swallow. The 'sprite' and 'description' fields are client/doc metadata the server ignores.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "centers", "edges"],
+  "properties": {
+    "schema": { "type": "integer" },
+    "centers": {
+      "type": "array",
+      "description": "Center-tile glyphs: what a tile IS. A letter in the center is a console/marker; the same letter on an edge is a fixture — position disambiguates.",
+      "items": { "$ref": "#/$defs/center" }
+    },
+    "edges": {
+      "type": "array",
+      "description": "Edge-mid glyphs (N/E/S/W): what is on that side of a tile.",
+      "items": { "$ref": "#/$defs/edge" }
+    }
+  },
+  "$defs": {
+    "center": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["glyph", "id", "tile"],
+      "properties": {
+        "glyph": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1,
+          "description": "The single center character."
+        },
+        "id": {
+          "type": "string",
+          "description": "Long-form id (client sprite key), e.g. 'docking_port'."
+        },
+        "tile": {
+          "type": "string",
+          "enum": ["floor", "void", "stairs"],
+          "description": "The tile kind. floor/stairs are walkable; void is outside the hull. Consoles/dock/spawn are all floor-kind with extra flags."
+        },
+        "console": {
+          "type": "string",
+          "description": "Optional. The console kind this glyph installs (e.g. 'helm', 'broker', 'dock'). Absent for plain floor/void/stairs/spawn."
+        },
+        "dock": {
+          "type": "boolean",
+          "description": "Optional (default false). Whether this is a docking port; its outward normal is the edge whose door (=) faces void."
+        },
+        "spawn": {
+          "type": "boolean",
+          "description": "Optional (default false). Whether this is a bare spawn/arrival tile."
+        },
+        "sprite": {
+          "type": "string",
+          "description": "Optional. Client-side sprite id; the server ignores it."
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional human-readable doc; the server ignores it."
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["glyph", "id", "kind"],
+      "properties": {
+        "glyph": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1,
+          "description": "The single edge-mid character."
+        },
+        "id": {
+          "type": "string",
+          "description": "Long-form id (client sprite key), e.g. 'door'."
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["open", "wall", "door", "fixture"],
+          "description": "The edge kind. open/door are passable; wall/fixture block. fixture is a named wall-mounted decoration."
+        },
+        "sprite": {
+          "type": "string",
+          "description": "Optional. Client-side sprite id; the server ignores it."
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional human-readable doc; the server ignores it."
+        }
+      }
+    }
+  }
+}

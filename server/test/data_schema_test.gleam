@@ -16,6 +16,10 @@ const world_schema_path = "schemas/world.schema.json"
 
 const ship_class_schema_path = "schemas/ship_class.schema.json"
 
+const glyphs_schema_path = "schemas/glyphs.schema.json"
+
+const glyphs_path = "glyphs.json"
+
 const worlds_dir = "worlds"
 
 const classes_dir = "classes"
@@ -57,6 +61,12 @@ pub fn all_worlds_match_schema_test() {
 
 pub fn all_ship_classes_match_schema_test() {
   assert_all_validate(ship_class_schema_path, classes_dir)
+}
+
+pub fn glyph_registry_matches_schema_test() {
+  let schema = read_json(glyphs_schema_path)
+  let value = read_json(glyphs_path)
+  let assert Ok(Nil) = validate_with_schema(schema, value)
 }
 
 pub fn world_rejects_a_one_element_berth_test() {
