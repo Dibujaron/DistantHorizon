@@ -663,6 +663,7 @@ what makes the game developable by agents rather than merely reviewable.
   game wants to feel like.* Deliberately before M4: the milestone that makes it a game
   shouldn't look like a prototype when it lands. (Audio is deliberately absent here — it
   gets its own pass, M6.5.)
+  **✅ Done 2026-07-18**
 - **M4 — The run:** world generation from a seed; the debt clock (loan, interest, fees);
   retirement and scoring; lobby flow for creating/joining/resuming runs; universe/run-state
   persistence. Solo-universe only at first, but the universe/run split is built in here so
