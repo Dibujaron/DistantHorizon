@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "description": "16-colour tile palette (issue #29). The array index IS the NE-corner hex digit an author writes: index 0-9 = '0'-'9', index 10-15 = 'a'-'f'. Order follows Minecraft's 16 dyes (white -> black). Sprites are authored greyscale and MULTIPLIED by the slot colour at render, so retuning any hex here recolours every tile using that slot WITHOUT re-authoring a single map — authors reference the slot, never the value.",
+  "palette": [
+    { "name": "white",      "hex": "#F9FFFE" },
+    { "name": "orange",     "hex": "#F9801D" },
+    { "name": "magenta",    "hex": "#C74EBD" },
+    { "name": "light_blue", "hex": "#3AB3DA" },
+    { "name": "yellow",     "hex": "#FED83D" },
+    { "name": "lime",       "hex": "#80C71F" },
+    { "name": "pink",       "hex": "#F38BAA" },
+    { "name": "gray",       "hex": "#474F52" },
+    { "name": "light_gray", "hex": "#9D9D97" },
+    { "name": "cyan",       "hex": "#169C9C" },
+    { "name": "purple",     "hex": "#8932B8" },
+    { "name": "blue",       "hex": "#3C44AA" },
+    { "name": "brown",      "hex": "#835432" },
+    { "name": "green",      "hex": "#5E7C16" },
+    { "name": "red",        "hex": "#B02E26" },
+    { "name": "black",      "hex": "#1D1D21" }
+  ]
+}

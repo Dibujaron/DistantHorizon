@@ -269,12 +269,27 @@ pub fn default() -> Registry {
         ),
       ),
       #("s", CenterSpec("spawn", Floor, None, False, True, None)),
+      #("r", CenterSpec("rug", Floor, None, False, False, Some("rug"))),
+      #("e", CenterSpec("seat", Floor, None, False, False, Some("seat"))),
+      #("d", CenterSpec("bed", Floor, None, False, False, Some("bed"))),
+      #(
+        "p",
+        CenterSpec(
+          "cargo_pallet",
+          Floor,
+          None,
+          False,
+          False,
+          Some("cargo_pallet"),
+        ),
+      ),
     ]),
     edges: dict.from_list([
       #(" ", EdgeSpec("open", Open, None)),
       #("#", EdgeSpec("wall", Wall, Some("wall"))),
       #("=", EdgeSpec("door", Door, Some("door"))),
       #("v", EdgeSpec("viewscreen", Fixture, Some("viewscreen"))),
+      #("w", EdgeSpec("window", Fixture, Some("window"))),
     ]),
   )
 }
