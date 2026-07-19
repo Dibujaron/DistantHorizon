@@ -144,6 +144,40 @@ pub fn stairs_target_rejects_non_stairs_test() {
   assert deckplan.stairs_target(plan, 0, 0, 0) == Error(Nil)
 }
 
+pub fn stairs_target_skips_void_intermediate_deck_test() {
+  // deck 0 stairs, deck 1 VOID at the column, deck 2 stairs: the shaft bypasses
+  // the empty middle level (the Mockingbird forward-stairs-past-mezz case).
+  let void_grid = {
+    let assert Ok(g) = deckplan.parse_deck("v", ["   ", " . ", "   "])
+    g
+  }
+  let plan =
+    DeckPlan(
+      decks: [stairs_grid(), void_grid, stairs_grid()],
+      consoles: [],
+      spawn_deck: 0,
+      spawn_tile: #(0, 0),
+    )
+  assert deckplan.stairs_target(plan, 0, 0, 0) == Ok(2)
+  assert deckplan.stairs_target(plan, 2, 0, 0) == Ok(0)
+}
+
+pub fn stairs_target_floor_blocks_shaft_test() {
+  // A solid floor on the intermediate level blocks the shaft — no connection.
+  let floor_grid = {
+    let assert Ok(g) = deckplan.parse_deck("f", ["   ", "   ", "   "])
+    g
+  }
+  let plan =
+    DeckPlan(
+      decks: [stairs_grid(), floor_grid, stairs_grid()],
+      consoles: [],
+      spawn_deck: 0,
+      spawn_tile: #(0, 0),
+    )
+  assert deckplan.stairs_target(plan, 0, 0, 0) == Error(Nil)
+}
+
 // ------------------------------------------------------ consoles/valid --
 
 fn plan() -> deckplan.DeckPlan {

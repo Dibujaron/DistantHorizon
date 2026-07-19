@@ -245,13 +245,18 @@ pub fn edge_blocks(g: DeckGrid, x: Int, y: Int, dir: Dir) -> Bool {
 }
 
 /// The adjacent deck index a `Stairs` tile at `(x, y)` on `deck` connects to:
-/// the neighbouring deck (`deck+1`, then `deck-1`) that also has a `Stairs`
-/// tile at the same `(x, y)`. `Error(Nil)` if `(x, y)` is not stairs or no
-/// aligned neighbour exists. Stairs connect STRICTLY `deck±1` so a ladder
-/// column can be reused across many decks without ambiguity; the composite
-/// preserves this by indexing docked decks by their level relative to the
-/// concourse (see composite.build), so physically-adjacent decks stay
-/// index-adjacent. `deck+1` (downward) wins a tie.
+/// the nearest deck (searching `deck+1` downward first, then `deck-1` upward)
+/// that has a `Stairs` tile at the same `(x, y)`. `Error(Nil)` if `(x, y)` is
+/// not stairs or no aligned stair connects.
+///
+/// A shaft may pass through intermediate levels that are `Void` at that
+/// column — the search skips them and keeps going — but a solid `Floor` (or
+/// running off the deck stack) blocks it. This lets a stair bypass a level the
+/// column doesn't exist on, e.g. the Mockingbird's forward stairs skipping the
+/// mezzanine, which is void there. The composite keeps physically-adjacent
+/// decks index-adjacent (see composite.build) so this ordering survives
+/// docking; ships sit at non-overlapping x-offsets, so no column spans two
+/// hulls. `deck+1` (downward) wins a tie.
 pub fn stairs_target(
   plan: DeckPlan,
   deck: Int,
@@ -263,23 +268,34 @@ pub fn stairs_target(
     Ok(g) ->
       case tile_at(g, x, y) {
         Stairs ->
-          case stairs_here(plan, deck + 1, x, y) {
-            True -> Ok(deck + 1)
-            False ->
-              case stairs_here(plan, deck - 1, x, y) {
-                True -> Ok(deck - 1)
-                False -> Error(Nil)
-              }
+          case scan_stairs(plan, deck, 1, x, y) {
+            Ok(target) -> Ok(target)
+            Error(Nil) -> scan_stairs(plan, deck, -1, x, y)
           }
         _ -> Error(Nil)
       }
   }
 }
 
-fn stairs_here(plan: DeckPlan, deck: Int, x: Int, y: Int) -> Bool {
-  case deck_at(plan, deck) {
-    Error(Nil) -> False
-    Ok(g) -> tile_at(g, x, y) == Stairs
+/// Walk decks in direction `step` (+1 = down, -1 = up) from `deck`, passing
+/// through levels that are `Void` at `(x, y)`, until a `Stairs` tile connects
+/// or a solid `Floor` (or the end of the stack) blocks.
+fn scan_stairs(
+  plan: DeckPlan,
+  deck: Int,
+  step: Int,
+  x: Int,
+  y: Int,
+) -> Result(Int, Nil) {
+  let next = deck + step
+  case deck_at(plan, next) {
+    Error(Nil) -> Error(Nil)
+    Ok(g) ->
+      case tile_at(g, x, y) {
+        Stairs -> Ok(next)
+        Void -> scan_stairs(plan, next, step, x, y)
+        Floor -> Error(Nil)
+      }
   }
 }
 

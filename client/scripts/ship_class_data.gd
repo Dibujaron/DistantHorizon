@@ -229,24 +229,37 @@ func edge_at(deck: int, tx: int, ty: int, dir: int) -> int:
 	return Edge.OPEN if g == null else g.edge_in(tx, ty, dir)
 
 
-## The adjacent deck index a Stairs tile at (tx, ty) on `deck` connects to
-## (deck+1, then deck-1), or -1. Strict deck±1 so ladder columns can repeat
-## across decks; the composite indexes docked decks by concourse-relative
-## level to keep adjacency. Mirrors stairs_target in deckplan.gleam.
+## The deck index a Stairs tile at (tx, ty) on `deck` connects to: the nearest
+## deck (searching deck+1 down first, then deck-1 up) with a Stairs at (tx, ty),
+## or -1. The shaft passes through intermediate levels that are VOID at that
+## column, but a solid FLOOR (or the end of the deck stack) blocks it — so a
+## stair can bypass a level the column doesn't exist on (e.g. the Mockingbird's
+## forward stairs skipping the void mezzanine). Mirrors stairs_target in
+## deckplan.gleam.
 func stairs_target(deck: int, tx: int, ty: int) -> int:
 	var g := get_deck(deck)
 	if g == null or g.tile_at(tx, ty) != Tile.STAIRS:
 		return -1
-	if _stairs_here(deck + 1, tx, ty):
-		return deck + 1
-	if _stairs_here(deck - 1, tx, ty):
-		return deck - 1
-	return -1
+	var down := _scan_stairs(deck, 1, tx, ty)
+	if down != -1:
+		return down
+	return _scan_stairs(deck, -1, tx, ty)
 
 
-func _stairs_here(deck: int, tx: int, ty: int) -> bool:
-	var g := get_deck(deck)
-	return g != null and g.tile_at(tx, ty) == Tile.STAIRS
+## Walk decks in direction `step` (+1 = down, -1 = up) from `deck`, skipping
+## levels that are VOID at (tx, ty), until a Stairs connects (returns that deck)
+## or a Floor / the end of the stack blocks (returns -1).
+func _scan_stairs(deck: int, step: int, tx: int, ty: int) -> int:
+	var next := deck + step
+	var g := get_deck(next)
+	if g == null:
+		return -1
+	var t: int = g.tile_at(tx, ty)
+	if t == Tile.STAIRS:
+		return next
+	if t == Tile.VOID:
+		return _scan_stairs(next, step, tx, ty)
+	return -1  # Floor blocks the shaft
 
 
 func find_console(console_id: String) -> Console:
