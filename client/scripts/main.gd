@@ -161,7 +161,7 @@ var _predicting: bool = false
 ## Predicted deck of the own character (split-level plans): advances with
 ## step_walk's center-tile rule, seeded from the server on every space
 ## message, adopted from the server on a hard prediction snap.
-var _predicted_deck: String = "upper"
+var _predicted_deck: int = 0
 
 ## 0 = fully system view, 1 = fully interior; eased across the transition.
 ## Drives THE WINDOW's matched zoom blend and WorldView's interior mode.
@@ -308,11 +308,11 @@ func _update_own_prediction(move_input: Vector2, delta: float) -> void:
 		_predicted_pos = own_char.position()
 		_predicted_deck = own_char.deck
 		_predicting = true
-	_predicted_pos = ShipClassData.step_walk(
+	var stepped := ShipClassData.step_walk(
 		plan, _predicted_deck, _predicted_pos.x, _predicted_pos.y,
 		move_input.x, move_input.y, delta)
-	_predicted_deck = plan.deck_after(
-		_predicted_deck, _predicted_pos.x, _predicted_pos.y)
+	_predicted_pos = stepped["pos"]
+	_predicted_deck = stepped["deck"]
 
 func _toggle_dock() -> void:
 	if not NetworkClient.logged_in:
@@ -431,20 +431,19 @@ func _nearest_console_in_range(own_char: CharacterState) -> ShipClassData.Consol
 	var nearest: ShipClassData.Console = null
 	var nearest_dist := SIT_RANGE_TILES
 	for console in plan.consoles:
+		# Only consoles on the same deck are reachable, and a docking port is
+		# an airlock, not a seat — skip both (the server rejects them anyway).
+		if console.deck != own_char.deck or console.kind == "dock":
+			continue
 		var dist := pos.distance_to(console.tile_center())
 		if dist <= nearest_dist:
 			nearest_dist = dist
 			nearest = console
 	return nearest
 
-## Label for a console in status-label prompts: its room's name if it's
-## inside one (e.g. "Helm"), else its kind, capitalized.
+## Label for a console in status-label prompts: its kind, capitalized
+## (e.g. "Helm", "Cargo", "Broker", "Dock").
 func _console_label(console: ShipClassData.Console) -> String:
-	var plan := _current_plan()
-	if plan != null:
-		var room := plan.room_at(console.x, console.y)
-		if room != null:
-			return room.name
 	return console.kind.capitalize()
 
 ## Seconds of wall-clock time elapsed since the latest snapshot, capped so a
@@ -545,13 +544,13 @@ func _update_interior_view() -> void:
 
 ## The deck the interior renders from: predicted while walking, server
 ## truth otherwise.
-func _own_view_deck() -> String:
+func _own_view_deck() -> int:
 	if _predicting:
 		return _predicted_deck
 	var own_char := _own_character()
 	if own_char != null:
 		return own_char.deck
-	return _space.you_deck if _space != null else "upper"
+	return _space.you_deck if _space != null else 0
 
 
 ## Exterior-sprite backdrops for every hull in the current space: the

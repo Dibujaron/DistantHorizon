@@ -121,9 +121,10 @@ pub fn encode_welcome_contains_character_id_and_ship_class_test() {
   assert string.contains(text, "\"character_id\":42")
   assert string.contains(text, "\"ship_class\":")
   assert string.contains(text, "\"id\":\"mockingbird\"")
-  assert string.contains(text, "\"spawn_tile\":[5,22]")
+  assert string.contains(text, "\"decks\":")
+  assert string.contains(text, "\"spawn\":")
   assert string.contains(text, "\"consoles\":")
-  assert string.contains(text, "helm_main")
+  assert string.contains(text, "helm")
 }
 
 pub fn encode_error_test() {
@@ -265,7 +266,7 @@ pub fn encode_walkers_test() {
       place: character.OnStation("meridian_highport"),
       x: 2.5,
       y: 2.5,
-      deck: deckplan.Lower,
+      deck: 1,
       seat: Some("s1:helm_main"),
       move_dx: 0.0,
       move_dy: 0.0,
@@ -277,19 +278,17 @@ pub fn encode_walkers_test() {
   assert string.contains(text, "\"type\":\"walkers\"")
   assert string.contains(text, "\"space\":\"station:meridian_highport\"")
   assert string.contains(text, "\"epoch\":3")
-  assert string.contains(text, "\"deck\":\"lower\"")
+  assert string.contains(text, "\"deck\":1")
   assert string.contains(text, "\"seat\":\"s1:helm_main\"")
 }
 
 pub fn encode_space_test() {
+  let assert Ok(g) = deckplan.parse_deck("d", ["   ", "   ", "   "])
   let plan =
-    deckplan.DeckPlan(
-      grid: deckplan.Grid(width: 3, height: 3),
-      walkable: [".#.", "###", ".#."],
-      rooms: [],
-      consoles: [],
-      spawn_tile: #(1, 1),
-    )
+    deckplan.DeckPlan(decks: [g], consoles: [], spawn_deck: 0, spawn_tile: #(
+      0,
+      0,
+    ))
   let you =
     character.Character(
       id: 4,
@@ -298,7 +297,7 @@ pub fn encode_space_test() {
       place: character.OnStation("meridian_highport"),
       x: 2.5,
       y: 2.5,
-      deck: deckplan.Upper,
+      deck: 0,
       seat: None,
       move_dx: 0.0,
       move_dy: 0.0,
@@ -308,7 +307,7 @@ pub fn encode_space_test() {
       protocol.StationSpace("meridian_highport"),
       2,
       plan,
-      [composite.Mooring(ship_id: 1, dx: 1, dy: 0)],
+      [composite.Mooring(ship_id: 1, dx: 1, dy: 0, deck_map: [], ship_width: 0)],
       Some(#(0, 4)),
       you,
     )
@@ -321,7 +320,7 @@ pub fn encode_space_test() {
   assert string.contains(text, "\"concourse\":{\"dx\":0,\"dy\":4}")
   assert string.contains(
     text,
-    "\"you\":{\"x\":2.5,\"y\":2.5,\"deck\":\"upper\",\"seat\":null}",
+    "\"you\":{\"x\":2.5,\"y\":2.5,\"deck\":0,\"seat\":null}",
   )
 }
 
@@ -386,7 +385,8 @@ pub fn encode_market_test() {
 
 pub fn encode_cargo_sorts_hold_and_lists_transfers_test() {
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  let s = ship.spawn_docked(7, w, 0.0, 0)
+  let s =
+    ship.spawn_docked(7, w, 0.0, 0, shipclass.default_dock_port_orientation)
   let s =
     ship.Ship(
       ..s,

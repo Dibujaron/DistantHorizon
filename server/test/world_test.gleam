@@ -269,6 +269,10 @@ pub fn decode_accepts_market_with_broker_console_test() {
   let assert Ok(_) = world.decode(doc)
 }
 
+/// A 3x2 all-floor concourse deck grid (v3, all-open edges) as a JSON array
+/// literal — enough for the market/broker validation tests.
+const tiny_concourse_grid = "[\"         \",\"         \",\"         \",\"         \",\"         \",\"         \"]"
+
 /// Tiny valid world with one station whose market is `market_json` and
 /// whose concourse has a broker console.
 fn tiny_world_with_market(market_json: String) -> String {
@@ -279,10 +283,11 @@ fn tiny_world_with_market(market_json: String) -> String {
   <> "\"stations\":[{\"id\":\"stn\",\"name\":\"Stn\",\"parent\":\"star\","
   <> "\"orbit\":{\"radius\":50.0,\"period_s\":60.0,\"phase\":0.0},"
   <> "\"dock_radius\":10.0,"
-  <> "\"concourse\":{\"grid\":{\"width\":3,\"height\":2},"
-  <> "\"walkable\":[\"###\",\"###\"],\"rooms\":[],"
+  <> "\"concourse\":{\"decks\":[{\"name\":\"c\",\"grid\":"
+  <> tiny_concourse_grid
+  <> "}],\"rooms\":[],"
   <> "\"consoles\":[{\"id\":\"broker_main\",\"kind\":\"broker\",\"x\":1,\"y\":0}],"
-  <> "\"spawn_tile\":[1,1]},"
+  <> "\"spawn\":{\"deck\":0,\"tile\":[1,1]}},"
   <> "\"market\":"
   <> market_json
   <> "}],"
@@ -298,12 +303,13 @@ fn tiny_world_with_concourse_consoles(consoles_json: String) -> String {
   <> "\"stations\":[{\"id\":\"stn\",\"name\":\"Stn\",\"parent\":\"star\","
   <> "\"orbit\":{\"radius\":50.0,\"period_s\":60.0,\"phase\":0.0},"
   <> "\"dock_radius\":10.0,"
-  <> "\"concourse\":{\"grid\":{\"width\":3,\"height\":2},"
-  <> "\"walkable\":[\"###\",\"###\"],\"rooms\":[],"
+  <> "\"concourse\":{\"decks\":[{\"name\":\"c\",\"grid\":"
+  <> tiny_concourse_grid
+  <> "}],\"rooms\":[],"
   <> "\"consoles\":"
   <> consoles_json
   <> ","
-  <> "\"spawn_tile\":[1,1]},"
+  <> "\"spawn\":{\"deck\":0,\"tile\":[1,1]}},"
   <> "\"market\":[{\"commodity\":\"water\",\"initial\":5,\"price\":10,\"elasticity\":1}]}],"
   <> "\"spawn_station\":\"stn\"}"
 }
@@ -349,6 +355,17 @@ pub fn berths_decode_test() {
     ]
 }
 
+pub fn moored_heading_uses_ship_port_test() {
+  let assert Ok(w) = world.load("worlds/m1_system.json")
+  // The moored heading derives from the docking ship's own dock-port
+  // orientation: a nose-forward port (0.0) must NOT yield the same heading as
+  // the side-on default (pi/2), or the ship-port argument is being ignored.
+  let side_on =
+    world.moored_heading(w, "meridian_highport", 0, 1.5707963267948966)
+  let nose_in = world.moored_heading(w, "meridian_highport", 0, 0.0)
+  assert side_on != nose_in
+}
+
 pub fn berth_on_non_walkable_tile_is_invalid_test() {
   // Minimal world JSON with a berth pointing at a void tile.
   let assert Error(e) = world.decode(world_json_with_berth(0, 0))
@@ -362,6 +379,11 @@ pub fn berth_with_walkable_north_neighbor_is_invalid_test() {
   assert string.contains(e, "berth")
 }
 
+/// A 6x5 concourse (v3, all-open edges): void row 0, a walkable berth stub at
+/// (2,1), a floor block at rows 2-3, matching the old footprint. Berth
+/// validation reads only tile walkability, so edges are left open.
+const berth_concourse_grid = "[\"                  \",\" .  .  .  .  .  . \",\"                  \",\"                  \",\" .  .     .  .  . \",\"                  \",\"                  \",\" .              . \",\"                  \",\"                  \",\" .              . \",\"                  \",\"                  \",\" .  .  .  .  .  . \",\"                  \"]"
+
 /// A compact single-station world with one substitutable berth, for
 /// exercising berth validation in isolation. The embedded concourse has a
 /// walkable spawn_tile at [2,2].
@@ -372,12 +394,12 @@ fn world_json_with_berth(x: Int, y: Int) -> String {
   <> "\"stations\":[{\"id\":\"st\",\"name\":\"st\",\"parent\":\"star\","
   <> "\"orbit\":{\"radius\":10.0,\"period_s\":10.0,\"phase\":0.0},"
   <> "\"dock_radius\":5.0,"
-  <> "\"concourse\":{"
-  <> "\"grid\":{\"width\":6,\"height\":5},"
-  <> "\"walkable\":[\"......\",\"..#...\",\".####.\",\".####.\",\"......\"],"
+  <> "\"concourse\":{\"decks\":[{\"name\":\"c\",\"grid\":"
+  <> berth_concourse_grid
+  <> "}],"
   <> "\"rooms\":[],"
   <> "\"consoles\":[],"
-  <> "\"spawn_tile\":[2,2]},"
+  <> "\"spawn\":{\"deck\":0,\"tile\":[2,2]}},"
   <> "\"berths\":[["
   <> int.to_string(x)
   <> ","

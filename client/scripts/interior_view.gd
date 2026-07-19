@@ -18,11 +18,10 @@ class_name InteriorView
 ## from the export's interior-fit meta. Hull skin shows wherever the plan
 ## has no floor inside the silhouette; space shows outside it.
 ##
-## Split-level decks: the walkable alphabet (see ShipClassData.char_at)
-## stacks two floors on one grid. Only the deck the own character is on
-## renders ('2' tiles show their current-deck floor, 'B' between-levels
-## and '#' generic tiles always show); characters on the other deck of a
-## stacked region are hidden.
+## Decks (deck-plan v3): each deck is its own grid; only the deck the own
+## character is on renders (`view_deck`, an index). There is NO cross-deck
+## sightline — void tiles on the view deck paint nothing (hull or window).
+## `x` stairs tiles connect decks; characters on another deck are hidden.
 ##
 ## The view-cone prototype (V toggles, OFF by default — parked for a
 ## revisit now that hull fit landed): full-viewport directional tile
@@ -35,7 +34,6 @@ class_name InteriorView
 const TILE_PIXELS := 64.0
 
 const FLOOR_COLOR := Color(0.16, 0.17, 0.22)      # fallback when art missing
-const ROOM_LABEL_COLOR := Color(0.85, 0.85, 0.9, 0.55)
 const CONSOLE_HELM_COLOR := Color(0.55, 0.85, 1.0)
 const CONSOLE_CARGO_COLOR := Color(0.9, 0.75, 0.35)
 const CONSOLE_DEFAULT_COLOR := Color(0.8, 0.8, 0.85)
@@ -44,14 +42,6 @@ const OTHER_CHARACTER_COLOR := Color(0.85, 0.85, 0.9, 0.7)
 const CHARACTER_LABEL_COLOR := Color(0.8, 0.8, 0.85, 0.8)
 const CHARACTER_RADIUS_TILES := 0.3
 const FONT_SIZE := 16  # Jersey 15 diegetic slot (UiTheme)
-
-const ROOM_TINT_ALPHA := 0.10
-const ROOM_TINT_PALETTE := [
-	Color(0.25, 0.35, 0.45),
-	Color(0.35, 0.3, 0.45),
-	Color(0.3, 0.4, 0.3),
-	Color(0.45, 0.35, 0.3),
-]
 
 const WALL_PX := 14.0
 
@@ -114,7 +104,7 @@ var ship_class: ShipClassData = null
 var characters: Array[CharacterState] = []
 var own_character_id: int = -1
 var focus_tile: Vector2 = Vector2.ZERO
-var view_deck: String = "upper"
+var view_deck: int = 0
 var backdrops: Array[Backdrop] = []
 
 ## Toggled by main.gd on the V action. OFF is the walking experience for
@@ -149,7 +139,7 @@ func set_frame_data(
 	p_characters: Array[CharacterState],
 	p_own_character_id: int,
 	p_focus_tile: Vector2,
-	p_view_deck: String = "upper",
+	p_view_deck: int = 0,
 	p_backdrops: Array[Backdrop] = []
 ) -> void:
 	ship_class = p_ship_class
@@ -170,7 +160,6 @@ func _draw() -> void:
 	_draw_floor(origin)
 	_draw_structure(origin)
 	_draw_signage(origin)
-	_draw_room_labels(origin)
 	_draw_consoles(origin)
 	_draw_view_cone(origin)
 	_draw_characters(origin)
@@ -227,9 +216,24 @@ func _update_backdrops(origin: Vector2) -> void:
 			child.visible = false
 
 
+## The deck grid currently in view (may be null before data arrives).
+func _deck() -> ShipClassData.Deck:
+	return ship_class.get_deck(view_deck)
+
+
+func _grid_w() -> int:
+	var g := _deck()
+	return g.width if g != null else 0
+
+
+func _grid_h() -> int:
+	var g := _deck()
+	return g.height if g != null else 0
+
+
 func _grid_origin() -> Vector2:
 	var viewport_size := get_viewport_rect().size
-	var grid_size_px := Vector2(ship_class.grid_width, ship_class.grid_height) * TILE_PIXELS
+	var grid_size_px := Vector2(_grid_w(), _grid_h()) * TILE_PIXELS
 	var origin := (viewport_size - grid_size_px) * 0.5
 	if grid_size_px.x > viewport_size.x:
 		origin.x = clampf(
@@ -251,17 +255,26 @@ func _tile_to_screen(tile: Vector2, origin: Vector2) -> Vector2:
 ## the other deck paint nothing: the hull backdrop shows there (you're
 ## looking at hull skin over the other floor, not through it).
 func _vis(tx: int, ty: int) -> bool:
-	return ship_class.visible_floor(view_deck, tx, ty)
+	return ship_class.tile_at(view_deck, tx, ty) != ShipClassData.Tile.VOID
 
 
-## The first room containing the tile that belongs to the view deck (or to
-## both). Stacked regions author one room per deck (hold under mess).
-func _room_for_tile(tx: int, ty: int) -> ShipClassData.Room:
-	for room in ship_class.rooms:
-		if room.contains_tile(tx, ty) \
-				and (room.deck == "" or room.deck == view_deck):
-			return room
-	return null
+## The rendered structure on the boundary between tile (tx,ty) and its `dir`
+## neighbour, merging both facing edges (the v3 double-wall model): a
+## wall/fixture on either side reads as WALL; otherwise a door on either side
+## reads as DOOR; else OPEN. Mirrors edge_blocks' OR-rule.
+func _boundary(tx: int, ty: int, dir: int) -> int:
+	var g := _deck()
+	if g == null:
+		return ShipClassData.Edge.OPEN
+	var a := g.edge_in(tx, ty, dir)
+	var d: Vector2i = ShipClassData.EDGE_DELTAS[dir]
+	var b := g.edge_in(tx + d.x, ty + d.y, (dir + 2) % 4)
+	if a == ShipClassData.Edge.WALL or a == ShipClassData.Edge.FIXTURE \
+			or b == ShipClassData.Edge.WALL or b == ShipClassData.Edge.FIXTURE:
+		return ShipClassData.Edge.WALL
+	if a == ShipClassData.Edge.DOOR or b == ShipClassData.Edge.DOOR:
+		return ShipClassData.Edge.DOOR
+	return ShipClassData.Edge.OPEN
 
 
 ## #20: the open deck reads as one continuous surface — a flat fill under every
@@ -269,8 +282,8 @@ func _room_for_tile(tx: int, ty: int) -> ShipClassData.Room:
 ## on top. Structure (walls, doors) is NOT drawn here: it lives at the edges,
 ## in _draw_structure, driven by the per-edge data (#19).
 func _draw_floor(origin: Vector2) -> void:
-	for ty in ship_class.grid_height:
-		for tx in ship_class.grid_width:
+	for ty in _grid_h():
+		for tx in _grid_w():
 			if not _vis(tx, ty):
 				continue  # void/other-deck paints NOTHING — hull or window
 			var pos := _tile_to_screen(Vector2(tx, ty), origin)
@@ -281,12 +294,6 @@ func _draw_floor(origin: Vector2) -> void:
 				if tex != null:
 					draw_texture_rect(tex, rect, false,
 						Color(1, 1, 1, FLOOR_TEXTURE_ALPHA))
-			var room := _room_for_tile(tx, ty)
-			if room != null:
-				var tint_index := ship_class.rooms.find(room) % ROOM_TINT_PALETTE.size()
-				var tint: Color = ROOM_TINT_PALETTE[tint_index]
-				tint.a = ROOM_TINT_ALPHA
-				draw_rect(rect, tint, true)
 
 
 ## Walls and doors from the per-edge tile data (#19/#20). Each visible floor
@@ -299,14 +306,14 @@ func _draw_structure(origin: Vector2) -> void:
 	var wall_tex := _lib.interior("wall_n")
 	if wall_tex == null:
 		return
-	for ty in ship_class.grid_height:
-		for tx in ship_class.grid_width:
+	for ty in _grid_h():
+		for tx in _grid_w():
 			if not _vis(tx, ty):
 				continue
 			var pos := _tile_to_screen(Vector2(tx, ty), origin)
 			for dir in 4:
-				var kind := ship_class.edge_at(view_deck, tx, ty, dir)
-				if kind == ShipClassData.Edge.NONE or not _owns_edge(tx, ty, dir):
+				var kind := _boundary(tx, ty, dir)
+				if kind == ShipClassData.Edge.OPEN or not _owns_edge(tx, ty, dir):
 					continue
 				if kind == ShipClassData.Edge.DOOR:
 					_draw_edge_door(pos, dir)
@@ -328,8 +335,7 @@ func _owns_edge(tx: int, ty: int, dir: int) -> bool:
 ## Whether tile (tx,ty)'s `dir` edge is a solid barrier (wall or edge-mounted
 ## equipment) — used for the corner welds.
 func _edge_is_wall(tx: int, ty: int, dir: int) -> bool:
-	var k := ship_class.edge_at(view_deck, tx, ty, dir)
-	return k == ShipClassData.Edge.WALL or k == ShipClassData.Edge.EQUIPMENT
+	return _boundary(tx, ty, dir) == ShipClassData.Edge.WALL
 
 
 ## Sets the draw transform so a local (TILE_PIXELS x WALL_PX) strip at the
@@ -403,37 +409,37 @@ func _draw_wall_corners(pos: Vector2, tx: int, ty: int) -> void:
 
 
 func _walkable(tx: int, ty: int) -> bool:
-	if tx < 0 or ty < 0 or tx >= ship_class.grid_width or ty >= ship_class.grid_height:
-		return false
-	return ship_class.is_walkable(tx, ty)
+	return ship_class.is_walkable(view_deck, tx, ty)
 
 
 # --------------------------------------------------------------- signage --
+## Berth signage is now DATA-free: a berth mouth on a concourse is detected
+## structurally — a walkable tile isolated east/west (a 1-wide stub poking up
+## from the concourse floor). Only drawn on station spaces (heuristic: the plan
+## has a broker console); numbered left to right.
 func _draw_signage(origin: Vector2) -> void:
 	var hazard := _lib.interior("hazard")
 	var airlock := _lib.interior("picto_airlock")
-	for room in ship_class.rooms:
-		if not room.id.begins_with("berth_"):
-			continue
-		var n := int(room.id.trim_prefix("berth_"))
-		var center := _tile_to_screen(
-			Vector2(room.x + room.w * 0.5, room.y + room.h * 0.5), origin)
-		var digit := _lib.interior("digit_%d" % (n % 10))
+	var stubs := _berth_stubs()
+	for i in stubs.size():
+		var stub: Vector2i = stubs[i]
+		var pos := _tile_to_screen(Vector2(stub), origin)
+		var center := pos + Vector2(TILE_PIXELS, TILE_PIXELS) * 0.5
+		var digit := _lib.interior("digit_%d" % ((i + 1) % 10))
 		if digit != null:
-			draw_texture(digit, center - Vector2(13, 20),
-				Color(1, 1, 1, 0.8))
+			draw_texture(digit, center - Vector2(13, 20), Color(1, 1, 1, 0.8))
 		if airlock != null:
-			# hatch-wheel picto centered on the berth stub tile, under the
-			# digit — not jammed into the corner against the hazard strips
-			draw_texture(airlock, center - Vector2(20, 20),
-				Color(1, 1, 1, 0.3))
+			draw_texture(airlock, center - Vector2(20, 20), Color(1, 1, 1, 0.3))
 		if hazard != null:
-			_draw_berth_hazards(room, hazard, origin)
+			# hazard strip on the berth mouth (its south edge into the concourse)
+			draw_texture_rect(hazard, Rect2(
+				pos + Vector2(0, TILE_PIXELS - WALL_PX),
+				Vector2(TILE_PIXELS, WALL_PX)), false)
 	# faded trade pictogram on the floor beside each broker console
 	var trade := _lib.interior("picto_trade")
 	if trade != null:
 		for console in ship_class.consoles:
-			if console.kind != "broker":
+			if console.kind != "broker" or console.deck != view_deck:
 				continue
 			var tile := Vector2i(int(console.tile_center().x), int(console.tile_center().y))
 			var spot := tile + Vector2i(-1, 0) if _vis(tile.x - 1, tile.y) else tile
@@ -442,64 +448,44 @@ func _draw_signage(origin: Vector2) -> void:
 				Color(1, 1, 1, 0.35))
 
 
-## Hazard strips along every edge where a berth-room tile meets walkable
-## floor OUTSIDE the room — the berth mouth gets striped.
-func _draw_berth_hazards(room, hazard: Texture2D, origin: Vector2) -> void:
-	var t := TILE_PIXELS
-	var strip := Vector2(t, WALL_PX)
-	for ty in range(room.y, room.y + room.h):
-		for tx in range(room.x, room.x + room.w):
-			if not _vis(tx, ty):
-				continue
-			var pos := _tile_to_screen(Vector2(tx, ty), origin)
-			for dir: Vector2i in [Vector2i(0, -1), Vector2i(0, 1), Vector2i(1, 0), Vector2i(-1, 0)]:
-				var nx := tx + dir.x
-				var ny := ty + dir.y
-				if not _vis(nx, ny):
-					continue
-				if _room_contains(room, nx, ny):
-					continue
-				if dir == Vector2i(0, -1):
-					draw_texture_rect(hazard, Rect2(pos, strip), false)
-				elif dir == Vector2i(0, 1):
-					draw_texture_rect(hazard,
-						Rect2(pos + Vector2(0, t - WALL_PX), strip), false)
-				elif dir == Vector2i(1, 0):
-					draw_set_transform(pos + Vector2(t, 0), PI / 2, Vector2.ONE)
-					draw_texture_rect(hazard, Rect2(Vector2.ZERO, strip), false)
-					draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-				else:
-					draw_set_transform(pos + Vector2(WALL_PX, 0), PI / 2, Vector2.ONE)
-					draw_texture_rect(hazard, Rect2(Vector2.ZERO, strip), false)
-					draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-
-func _room_contains(room, tx: int, ty: int) -> bool:
-	return tx >= room.x and tx < room.x + room.w \
-		and ty >= room.y and ty < room.y + room.h
-
-
-func _draw_room_labels(origin: Vector2) -> void:
-	if _font == null:
-		return
-	for room in ship_class.rooms:
-		if room.id.begins_with("berth_"):
-			continue  # berths carry stencil digits instead
-		if room.deck != "" and room.deck != view_deck:
-			continue  # the other floor's room — not visible from this deck
-		var center := _tile_to_screen(Vector2(room.x + room.w * 0.5, room.y + room.h * 0.5), origin)
-		var text_size := _font.get_string_size(room.name, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE)
-		draw_string(
-			_font, center - text_size * 0.5, room.name,
-			HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, ROOM_LABEL_COLOR)
+## Berth-stub tiles on the view deck, sorted left to right. A berth stub is a
+## 1-wide tile (void east AND west) poking up from the WIDE concourse floor —
+## its south neighbour is itself wide (floor to its east or west). That last
+## clause is what excludes the docking tube, whose segments are a 1-wide column
+## (each segment's south neighbour is another 1-wide tile). Empty unless the
+## plan is a concourse (has a broker console), so ship interiors draw nothing.
+func _berth_stubs() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var is_concourse := false
+	for console in ship_class.consoles:
+		if console.kind == "broker":
+			is_concourse = true
+			break
+	if not is_concourse:
+		return out
+	for ty in _grid_h():
+		for tx in _grid_w():
+			var isolated := _vis(tx, ty) and not _vis(tx - 1, ty) and not _vis(tx + 1, ty)
+			var wide_south := _vis(tx, ty + 1) \
+					and (_vis(tx - 1, ty + 1) or _vis(tx + 1, ty + 1))
+			if isolated and wide_south:
+				out.append(Vector2i(tx, ty))
+	out.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.x < b.x)
+	return out
 
 
 # -------------------------------------------------------------- consoles --
 func _draw_consoles(origin: Vector2) -> void:
 	for console in ship_class.consoles:
-		if not _vis(console.x, console.y):
-			continue  # a console on the other deck is under/over this floor
+		if console.deck != view_deck:
+			continue  # a console on another deck is under/over this floor
 		var center := _tile_to_screen(console.tile_center(), origin)
+		# A docking port is an airlock hatch, not a console desk.
+		if console.kind == "dock":
+			var picto := _lib.interior("picto_airlock")
+			if picto != null:
+				draw_texture(picto, center - Vector2(20, 20), Color(1, 1, 1, 0.65))
+			continue
 		var tex := _lib.interior("console_" + console.kind)
 		if tex != null:
 			draw_texture(tex, center - Vector2(22, 22))
@@ -578,7 +564,7 @@ func _line_of_sight(from_tile: Vector2i, to_tile: Vector2i) -> bool:
 	while true:
 		var here := Vector2i(x0, y0)
 		if here != from_tile:
-			var walkable := ship_class.is_walkable(x0, y0)
+			var walkable := ship_class.is_walkable(view_deck, x0, y0)
 			if walkable and seen_void:
 				return false  # hull re-entry blocks — no seeing into other interiors
 			if not walkable:
@@ -602,12 +588,10 @@ func _draw_characters(origin: Vector2) -> void:
 		var is_own: bool = character.id == own_character_id
 		var tile := Vector2i(int(character.x), int(character.y))
 		if not is_own:
-			# Split-level: a body on the other deck of this footprint is
-			# behind a floor/ceiling — not drawn.
-			if not _vis(tile.x, tile.y):
+			# A body on another deck is behind a floor/ceiling — not drawn.
+			if character.deck != view_deck:
 				continue
-			if ship_class.char_at(tile.x, tile.y) == "2" \
-					and character.deck != view_deck:
+			if not _vis(tile.x, tile.y):
 				continue
 		if not is_own and not _tile_visible(tile):
 			continue  # the view-cone hides who you can't see

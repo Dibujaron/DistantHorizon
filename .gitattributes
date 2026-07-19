@@ -1,0 +1,2 @@
+server/**/*.gleam text eol=lf
+client/**/*.gd    text eol=lf

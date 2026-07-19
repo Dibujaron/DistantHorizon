@@ -360,7 +360,13 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
             Ok(berth) -> {
               let t = int.to_float(state.tick) *. ship.dt
               let new_ship =
-                ship.spawn_docked(state.next_ship_id, state.world, t, berth)
+                ship.spawn_docked(
+                  state.next_ship_id,
+                  state.world,
+                  t,
+                  berth,
+                  state.class.dock_port_orientation,
+                )
               // Rebuild the spawn station's composite with the new mooring
               // before placing the character in the composite frame.
               let state =
@@ -393,12 +399,8 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
                   place: character.OnStation(state.world.spawn_station),
                   x: hx,
                   y: hy,
-                  deck: deckplan.deck_of_tile(
-                    space.composite.plan,
-                    deckplan.Upper,
-                    helm.x,
-                    helm.y,
-                  ),
+                  // The composite helm console carries its composite deck.
+                  deck: helm.deck,
                   // helm.id is already the namespaced composite id.
                   seat: Some(helm.id),
                   move_dx: 0.0,
@@ -469,11 +471,13 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
           with_helm_ship(state, character_id, reply, fn(state, found) {
             let t = int.to_float(state.tick) *. ship.dt
             case
-              ship.try_dock(found, state.world, t, free_berth(
-                state,
-                found.id,
-                _,
-              ))
+              ship.try_dock(
+                found,
+                state.world,
+                t,
+                free_berth(state, found.id, _),
+                state.class.dock_port_orientation,
+              )
             {
               Error(reason) -> {
                 process.send(reply, Error(reason))
@@ -494,14 +498,20 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
                     case c.ship_id == docked.id && c.place == character.Aboard {
                       False -> c
                       True -> {
-                        // Ship frame -> moored (rotated) frame + offset.
+                        // Ship frame -> moored (rotated) frame + offset, and
+                        // the body's ship deck -> its composite deck.
                         let #(rx, ry) =
-                          composite.from_ship_frame(state.class.plan, c.x, c.y)
+                          composite.from_ship_frame(
+                            composite.plan_width(state.class.plan),
+                            c.x,
+                            c.y,
+                          )
                         character.Character(
                           ..c,
                           place: character.OnStation(station_id),
                           x: rx +. int.to_float(mooring.dx),
                           y: ry +. int.to_float(mooring.dy),
+                          deck: composite.composite_deck_of(mooring, c.deck),
                           seat: option.map(c.seat, composite.namespace_id(
                             docked.id,
                             _,
@@ -825,19 +835,29 @@ fn handle_undock_split(
         list.map(state.characters, fn(c) {
           let departing =
             c.place == character.OnStation(station_id)
-            && composite.tile_on_mooring(mooring, state.class.plan, c.x, c.y)
+            && composite.tile_on_mooring(
+              mooring,
+              state.class.plan,
+              c.deck,
+              c.x,
+              c.y,
+            )
           case departing {
             False -> c
             True -> {
-              // Moored (rotated) composite frame -> ship frame.
-              let #(sx, sy) =
-                composite.to_ship_frame(mooring, state.class.plan, c.x, c.y)
+              // Moored (rotated) composite frame -> ship frame, composite
+              // deck -> the ship's own deck index.
+              let #(sx, sy) = composite.to_ship_frame(mooring, c.x, c.y)
+              let ship_deck =
+                composite.ship_deck_of(mooring, c.deck)
+                |> result.unwrap(0)
               character.Character(
                 ..c,
                 ship_id: target.id,
                 place: character.Aboard,
                 x: sx,
                 y: sy,
+                deck: ship_deck,
                 seat: strip_namespace(c.seat),
               )
             }
@@ -1266,9 +1286,13 @@ fn rebuild_space(state: State, station_id: String) -> State {
               station.berths,
               docked_ships_at(state, station_id),
             )
-          let #(old_dx, old_dy) = case find_space(state.spaces, station_id) {
-            Ok(old) -> #(old.composite.concourse_dx, old.composite.concourse_dy)
-            Error(Nil) -> #(0, 0)
+          let old_composite = case find_space(state.spaces, station_id) {
+            Ok(old) -> Some(old.composite)
+            Error(Nil) -> None
+          }
+          let #(old_dx, old_dy) = case old_composite {
+            Some(old) -> #(old.concourse_dx, old.concourse_dy)
+            None -> #(0, 0)
           }
           let shift_x = int.to_float(built.concourse_dx - old_dx)
           let shift_y = int.to_float(built.concourse_dy - old_dy)
@@ -1284,11 +1308,18 @@ fn rebuild_space(state: State, station_id: String) -> State {
               case c.place == character.OnStation(station_id) {
                 False -> c
                 True -> {
+                  // Deck indices shift as ships dock/undock; remap the body's
+                  // composite deck onto the new composite before checking it.
+                  let new_deck = case old_composite {
+                    Some(old) -> composite.remap_deck(old, built, c.deck)
+                    None -> c.deck
+                  }
                   let moved =
                     character.Character(
                       ..c,
                       x: c.x +. shift_x,
                       y: c.y +. shift_y,
+                      deck: new_deck,
                     )
                   case
                     character.can_stand_at(
@@ -1304,6 +1335,9 @@ fn rebuild_space(state: State, station_id: String) -> State {
                         ..moved,
                         x: spawn_x,
                         y: spawn_y,
+                        // Re-floor onto the concourse plane, whatever index it
+                        // landed at for this composite.
+                        deck: built.plan.spawn_deck,
                         seat: None,
                         move_dx: 0.0,
                         move_dy: 0.0,

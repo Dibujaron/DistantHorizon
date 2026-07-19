@@ -38,11 +38,11 @@
 ////   docked (null while flying), so the client parks each moored hull at its
 ////   own berth anchor (the same berth the server releases it at on undock).
 ////   {"v":1,"type":"space","space":"station:<id>"|"ship:N","epoch":N,
-////    "plan":{"grid":{...},"walkable":[...],"rooms":[...],"consoles":[...],
-////            "spawn_tile":[x,y]},
+////    "plan":{"decks":[{"name","grid":[rows]}...],"rooms":[...],
+////            "consoles":[...],"spawn":{"deck":N,"tile":[x,y]}},
 ////    "moorings":[{"ship_id":N,"dx":N,"dy":N}...],
 ////    "concourse":null|{"dx":N,"dy":N},
-////    "you":{"x":F,"y":F,"seat":null|S}} — the plan a client should now be
+////    "you":{"x":F,"y":F,"deck":N,"seat":null|S}} — the plan a client should
 ////   walking, with their own position/seat in its frame. Sent on login and
 ////   to every occupant of a space whose plan changed (dock/undock/despawn
 ////   rebuild). Ship spaces carry epoch 0 and moorings []. The client adopts
@@ -347,7 +347,7 @@ pub fn encode_space(
       json.object([
         #("x", json.float(you.x)),
         #("y", json.float(you.y)),
-        #("deck", json.string(deckplan.deck_to_string(you.deck))),
+        #("deck", json.int(you.deck)),
         #("seat", json.nullable(you.seat, json.string)),
       ]),
     ),
@@ -391,7 +391,7 @@ fn encode_character(c: Character) -> Json {
     #("name", json.string(c.name)),
     #("x", json.float(c.x)),
     #("y", json.float(c.y)),
-    #("deck", json.string(deckplan.deck_to_string(c.deck))),
+    #("deck", json.int(c.deck)),
     #("seat", json.nullable(c.seat, json.string)),
   ])
 }

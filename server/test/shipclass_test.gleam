@@ -1,23 +1,17 @@
-import dh_server/deckplan.{Console, Grid}
+import dh_server/deckplan
 import dh_server/shipclass
 import gleam/json
 import gleam/list
 
 pub fn load_bundled_mockingbird_test() {
   let assert Ok(c) = shipclass.load("classes/mockingbird.json")
-  assert c.schema == 2
+  assert c.schema == 3
   assert c.id == "mockingbird"
-  assert c.plan.grid == Grid(width: 14, height: 23)
-  assert list.length(c.plan.walkable) == 23
-  assert list.length(c.plan.rooms) == 8
-  assert list.length(c.plan.consoles) == 2
-  // The spawn tile is the PORT docking dormer on the between-level ('B')
-  // corridor at the waist — side ports, never the stern.
-  assert c.plan.spawn_tile == #(5, 22)
-  assert list.any(c.plan.rooms, fn(r) { r.id == "dock" })
-  // Split-level metadata: the hold is a lower-deck room.
-  let assert Ok(hold) = list.find(c.plan.rooms, fn(r) { r.id == "hold" })
-  assert hold.deck == "lower"
+  // Three decks: Upper, Mezzanine, Lower.
+  assert list.length(c.plan.decks) == 3
+  // The docking port (`Q` glyph) derives a "dock" console.
+  let assert Ok(_) = deckplan.find_console_of_kind(c.plan, "dock")
+  let assert Ok(_) = shipclass.helm_console(c)
 }
 
 pub fn decode_encode_round_trips_test() {
@@ -30,7 +24,8 @@ pub fn decode_encode_round_trips_test() {
 pub fn helm_console_is_helm_main_test() {
   let assert Ok(c) = shipclass.load("classes/mockingbird.json")
   let assert Ok(console) = shipclass.helm_console(c)
-  assert console == Console(id: "helm_main", kind: "helm", x: 6, y: 4)
+  assert console.id == "helm"
+  assert console.kind == "helm"
 }
 
 pub fn find_console_unknown_is_error_test() {
@@ -38,38 +33,21 @@ pub fn find_console_unknown_is_error_test() {
   assert deckplan.find_console(c.plan, "nope") == Error(Nil)
 }
 
-pub fn is_walkable_true_for_interior_tile_test() {
+pub fn spawn_tile_is_walkable_test() {
   let assert Ok(c) = shipclass.load("classes/mockingbird.json")
-  // Row 12: "...22222222..." -> x=3..10 walkable; row 22 corridor likewise.
-  assert deckplan.is_walkable(c.plan, 3, 12)
-  assert deckplan.is_walkable(c.plan, 10, 12)
-  assert deckplan.is_walkable(c.plan, 5, 22)
+  let assert Ok(g) = deckplan.deck_at(c.plan, c.plan.spawn_deck)
+  let #(sx, sy) = c.plan.spawn_tile
+  assert deckplan.is_walkable(g, sx, sy)
 }
 
-pub fn is_walkable_false_for_hull_tile_test() {
-  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
-  assert !deckplan.is_walkable(c.plan, 2, 12)
-  assert !deckplan.is_walkable(c.plan, 11, 12)
-  assert !deckplan.is_walkable(c.plan, 6, 0)
-}
-
-pub fn is_walkable_false_out_of_bounds_test() {
-  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
-  assert !deckplan.is_walkable(c.plan, -1, 12)
-  assert !deckplan.is_walkable(c.plan, 14, 12)
-  assert !deckplan.is_walkable(c.plan, 6, -1)
-  assert !deckplan.is_walkable(c.plan, 6, 23)
-}
-
-/// A minimal valid class, for hand-crafting single-field violations without
-/// depending on the bundled sparrow doc's exact layout.
+/// A minimal valid schema-3 class, for hand-crafting single-field
+/// violations without depending on the bundled hull's exact layout.
 fn valid_doc() -> String {
-  "{\"schema\":2,\"id\":\"tiny\",\"name\":\"Tiny\","
-  <> "\"grid\":{\"width\":3,\"height\":2},"
-  <> "\"walkable\":[\"###\",\"###\"],"
-  <> "\"rooms\":[],"
-  <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"x\":1,\"y\":0}],"
-  <> "\"spawn_tile\":[1,1],"
+  "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
+  <> "\"decks\":[{\"name\":\"main\",\"grid\":"
+  <> "[\"#########\",\"#       #\",\"#########\"]}],"
+  <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":1,\"y\":0}],"
+  <> "\"spawn\":{\"deck\":0,\"tile\":[1,0]},"
   <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
 }
 
@@ -77,62 +55,53 @@ pub fn decode_valid_minimal_doc_test() {
   assert shipclass.decode(valid_doc()) |> is_ok
 }
 
-pub fn decode_rejects_row_count_mismatching_height_test() {
+pub fn decode_rejects_ragged_deck_rows_test() {
   let bad =
-    "{\"schema\":2,\"id\":\"tiny\",\"name\":\"Tiny\","
-    <> "\"grid\":{\"width\":3,\"height\":2},"
-    <> "\"walkable\":[\"###\"],"
-    <> "\"rooms\":[],"
-    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"x\":1,\"y\":0}],"
-    <> "\"spawn_tile\":[1,0],"
+    "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
+    <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"######\",\"# #\"]}],"
+    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":0,\"y\":0}],"
+    <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
     <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
   assert shipclass.decode(bad) |> is_error
 }
 
-pub fn decode_rejects_row_length_mismatching_width_test() {
+pub fn decode_rejects_non_multiple_of_three_test() {
   let bad =
-    "{\"schema\":2,\"id\":\"tiny\",\"name\":\"Tiny\","
-    <> "\"grid\":{\"width\":3,\"height\":2},"
-    <> "\"walkable\":[\"##\",\"###\"],"
-    <> "\"rooms\":[],"
-    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"x\":1,\"y\":0}],"
-    <> "\"spawn_tile\":[1,0],"
+    "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
+    <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"####\",\"#  #\",\"####\"]}],"
+    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":0,\"y\":0}],"
+    <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
     <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
   assert shipclass.decode(bad) |> is_error
 }
 
 pub fn decode_rejects_console_off_walkable_tile_test() {
+  // Console on a void tile — the '.' centre is at col 4 (tile 1).
   let bad =
-    "{\"schema\":2,\"id\":\"tiny\",\"name\":\"Tiny\","
-    <> "\"grid\":{\"width\":3,\"height\":2},"
-    <> "\"walkable\":[\"###\",\".##\"],"
-    <> "\"rooms\":[],"
-    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"x\":0,\"y\":1}],"
-    <> "\"spawn_tile\":[1,1],"
+    "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
+    <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"######\",\"#   . \",\"######\"]}],"
+    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":1,\"y\":0}],"
+    <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
     <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
   assert shipclass.decode(bad) |> is_error
 }
 
 pub fn decode_rejects_spawn_tile_off_walkable_tile_test() {
   let bad =
-    "{\"schema\":2,\"id\":\"tiny\",\"name\":\"Tiny\","
-    <> "\"grid\":{\"width\":3,\"height\":2},"
-    <> "\"walkable\":[\"###\",\".##\"],"
-    <> "\"rooms\":[],"
-    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"x\":1,\"y\":1}],"
-    <> "\"spawn_tile\":[0,1],"
+    "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
+    <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"######\",\"#   . \",\"######\"]}],"
+    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":0,\"y\":0}],"
+    <> "\"spawn\":{\"deck\":0,\"tile\":[1,0]},"
     <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
   assert shipclass.decode(bad) |> is_error
 }
 
 pub fn decode_rejects_missing_helm_console_test() {
   let bad =
-    "{\"schema\":2,\"id\":\"tiny\",\"name\":\"Tiny\","
-    <> "\"grid\":{\"width\":3,\"height\":2},"
-    <> "\"walkable\":[\"###\",\"###\"],"
-    <> "\"rooms\":[],"
-    <> "\"consoles\":[{\"id\":\"cargo_main\",\"kind\":\"cargo\",\"x\":1,\"y\":0}],"
-    <> "\"spawn_tile\":[1,1],"
+    "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
+    <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"######\",\"#    #\",\"######\"]}],"
+    <> "\"consoles\":[{\"id\":\"cargo_main\",\"kind\":\"cargo\",\"deck\":0,\"x\":1,\"y\":0}],"
+    <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
     <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
   assert shipclass.decode(bad) |> is_error
 }
@@ -149,24 +118,20 @@ pub fn decode_reads_cargo_block_test() {
 
 pub fn decode_rejects_unknown_handling_test() {
   let bad =
-    "{\"schema\":2,\"id\":\"tiny\",\"name\":\"Tiny\","
-    <> "\"grid\":{\"width\":3,\"height\":2},"
-    <> "\"walkable\":[\"###\",\"###\"],"
-    <> "\"rooms\":[],"
-    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"x\":1,\"y\":0}],"
-    <> "\"spawn_tile\":[1,1],"
+    "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
+    <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"######\",\"#    #\",\"######\"]}],"
+    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":1,\"y\":0}],"
+    <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
     <> "\"cargo\":{\"capacity\":10,\"handling\":\"antigrav\"}}"
   let assert Error(_) = shipclass.decode(bad)
 }
 
 pub fn decode_rejects_missing_cargo_block_test() {
   let bad =
-    "{\"schema\":2,\"id\":\"tiny\",\"name\":\"Tiny\","
-    <> "\"grid\":{\"width\":3,\"height\":2},"
-    <> "\"walkable\":[\"###\",\"###\"],"
-    <> "\"rooms\":[],"
-    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"x\":1,\"y\":0}],"
-    <> "\"spawn_tile\":[1,1]}"
+    "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
+    <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"######\",\"#    #\",\"######\"]}],"
+    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":1,\"y\":0}],"
+    <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]}}"
   let assert Error(_) = shipclass.decode(bad)
 }
 

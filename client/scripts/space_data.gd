@@ -37,7 +37,7 @@ var concourse_dx: int = 0
 var concourse_dy: int = 0
 var you_x: float = 0.0
 var you_y: float = 0.0
-var you_deck: String = "upper"  ## split-level: seeds own-deck prediction
+var you_deck: int = 0  ## which deck: seeds own-deck prediction
 var you_seat: Variant = null  ## console id or null
 
 
@@ -60,7 +60,7 @@ static func from_dict(data: Dictionary) -> SpaceData:
 	if you is Dictionary:
 		space.you_x = float(you.get("x", 0.0))
 		space.you_y = float(you.get("y", 0.0))
-		space.you_deck = str(you.get("deck", "upper"))
+		space.you_deck = int(you.get("deck", 0))
 		space.you_seat = you.get("seat")
 	return space
 
