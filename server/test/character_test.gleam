@@ -213,6 +213,36 @@ pub fn leaving_stairs_does_not_re_switch_test() {
   assert after.x >. 2.0
 }
 
+pub fn deck_change_snaps_to_stair_center_test() {
+  let plan = stairs_plan()
+  // Walking east onto the stairs at (1,0): the tick the deck flips, the body
+  // is snapped to that tile's center (1.5, 0.5) — never left at the tile edge
+  // where its circle could overlap a wall on the new deck.
+  let c = standing_on(0, 0.5, 0.5) |> character.set_move(1.0, 0.0)
+  let after = step_to_deck_change(c, plan, 0, 60)
+  assert after.deck == 1
+  assert after.x == 1.5
+  assert after.y == 0.5
+}
+
+fn step_to_deck_change(
+  c: Character,
+  plan: DeckPlan,
+  orig: Int,
+  tries: Int,
+) -> Character {
+  case tries {
+    0 -> c
+    _ -> {
+      let n = character.step(c, plan)
+      case n.deck != orig {
+        True -> n
+        False -> step_to_deck_change(n, plan, orig, tries - 1)
+      }
+    }
+  }
+}
+
 pub fn no_stairs_no_deck_change_test() {
   let plan = corridor_wall()
   let c = standing_at(0.5, 0.5) |> character.set_move(1.0, 0.0)

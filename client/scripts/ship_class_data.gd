@@ -272,7 +272,12 @@ static func step_walk(cls: ShipClassData, deck: int, x: float, y: float, dx: flo
 	var candidate_y := y + input.y * WALK_SPEED * delta
 	var out_y := candidate_y if _can_stand(g, out_x, candidate_y) else y
 	var new_deck := _deck_after_step(cls, g, deck, old_tx, old_ty, out_x, out_y)
-	return {"pos": Vector2(out_x, out_y), "deck": new_deck}
+	# On a deck change, snap to the stair tile's center so the collision circle
+	# fits cleanly on both decks (mirrors character.gleam).
+	var out_pos := Vector2(out_x, out_y)
+	if new_deck != deck:
+		out_pos = Vector2(floor(out_x) + 0.5, floor(out_y) + 0.5)
+	return {"pos": out_pos, "deck": new_deck}
 
 
 ## The deck after a step: walking ONTO a stairs tile from a non-stairs tile

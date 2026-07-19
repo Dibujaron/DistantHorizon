@@ -435,9 +435,12 @@ func _draw_signage(origin: Vector2) -> void:
 				Color(1, 1, 1, 0.35))
 
 
-## Berth-stub tiles on the view deck (walkable, void to the east AND west, floor
-## to the south), sorted left to right. Empty unless the plan is a concourse
-## (has a broker console), so ship interiors never draw berth signage.
+## Berth-stub tiles on the view deck, sorted left to right. A berth stub is a
+## 1-wide tile (void east AND west) poking up from the WIDE concourse floor —
+## its south neighbour is itself wide (floor to its east or west). That last
+## clause is what excludes the docking tube, whose segments are a 1-wide column
+## (each segment's south neighbour is another 1-wide tile). Empty unless the
+## plan is a concourse (has a broker console), so ship interiors draw nothing.
 func _berth_stubs() -> Array[Vector2i]:
 	var out: Array[Vector2i] = []
 	var is_concourse := false
@@ -449,8 +452,10 @@ func _berth_stubs() -> Array[Vector2i]:
 		return out
 	for ty in _grid_h():
 		for tx in _grid_w():
-			if _vis(tx, ty) and not _vis(tx - 1, ty) and not _vis(tx + 1, ty) \
-					and _vis(tx, ty + 1):
+			var isolated := _vis(tx, ty) and not _vis(tx - 1, ty) and not _vis(tx + 1, ty)
+			var wide_south := _vis(tx, ty + 1) \
+					and (_vis(tx - 1, ty + 1) or _vis(tx + 1, ty + 1))
+			if isolated and wide_south:
 				out.append(Vector2i(tx, ty))
 	out.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.x < b.x)
 	return out

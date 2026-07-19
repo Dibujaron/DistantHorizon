@@ -101,7 +101,14 @@ pub fn step(character: Character, plan: DeckPlan) -> Character {
           }
           let deck =
             deck_after_step(plan, grid, character.deck, old_tx, old_ty, x, y)
-          Character(..character, x: x, y: y, deck: deck)
+          // On a deck change, snap to the stair tile's center: the collision
+          // circle fits cleanly there on BOTH decks, so switching at the tile
+          // edge can't leave the body overlapping a wall on the new deck.
+          let #(fx, fy) = case deck == character.deck {
+            True -> #(x, y)
+            False -> deckplan.tile_center(tile_index(x), tile_index(y))
+          }
+          Character(..character, x: fx, y: fy, deck: deck)
         }
       }
   }
