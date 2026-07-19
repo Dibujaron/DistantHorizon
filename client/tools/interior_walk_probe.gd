@@ -4,7 +4,10 @@ extends Node2D
 ## contention. Verifies frame selection, scaling/anchoring, facing and the
 ## idle/walk switch actually render. Not shipped; a tools/ harness.
 ##
-## Run:  godot --path client --scene res://tools/interior_walk_probe.tscn
+## Run:  godot --path client res://tools/interior_walk_probe.tscn   (watch live)
+##       Pass the .tscn positionally — a .gd or a --scene flag is ignored and
+##       Godot falls back to the project's MAIN scene (the actual game).
+##       Add --headless with DH_SHOT to capture without opening a window.
 ## Env:  DH_SHOT=<path> captures one frame mid-walk, then quits.
 ## Env:  DH_SHOT_T=<seconds> overrides the default capture time (0.9), so a
 ##       shot can be taken mid any leg of the own character's box path
