@@ -108,6 +108,7 @@ pub fn helm_console(class: ShipClass) -> Result(Console, Nil) {
 
 fn validate(class: ShipClass) -> Result(ShipClass, String) {
   use _ <- result.try(deckplan.validate(class.plan))
+  use _ <- result.try(deckplan.validate_docking_ports(class.plan))
   case helm_console(class) {
     Error(Nil) -> Error("no console of kind \"helm\"")
     Ok(_) ->

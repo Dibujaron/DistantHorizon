@@ -348,19 +348,33 @@ pub fn find_console_of_kind(
 /// consoles' row-major order. Ships derive their mooring tile from the
 /// west-facing port; stations derive each berth from a north-facing port —
 /// one shared rule so a `Q` in the grid is the single source of docking
-/// geometry (issue #31). A dock console with no void-facing door is skipped.
-pub fn docking_ports(plan: DeckPlan) -> List(#(Int, Int, Int, Dir)) {
-  list.filter_map(plan.consoles, fn(c) {
-    case c.kind == "dock" {
-      False -> Error(Nil)
-      True ->
-        case deck_at(plan, c.deck) {
-          Error(Nil) -> Error(Nil)
-          Ok(g) ->
-            case outward_dir(g, c.x, c.y) {
-              Ok(dir) -> Ok(#(c.deck, c.x, c.y, dir))
-              Error(Nil) -> Error(Nil)
-            }
+/// geometry (issue #31).
+///
+/// A docking port MUST carry at least one door on an edge that faces void
+/// (`deckplan-format.md`: the outer door the gangway connects through). One
+/// that doesn't is an authoring error caught at load (via `validate`), so this
+/// returns `Error` naming the offending tile rather than silently dropping it.
+pub fn docking_ports(
+  plan: DeckPlan,
+) -> Result(List(#(Int, Int, Int, Dir)), String) {
+  plan.consoles
+  |> list.filter(fn(c) { c.kind == "dock" })
+  |> list.try_map(fn(c) {
+    case deck_at(plan, c.deck) {
+      Error(Nil) -> Error("a docking port references an out-of-range deck")
+      Ok(g) ->
+        case outward_dir(g, c.x, c.y) {
+          Ok(dir) -> Ok(#(c.deck, c.x, c.y, dir))
+          Error(Nil) ->
+            Error(
+              "docking port at ("
+              <> int.to_string(c.x)
+              <> ", "
+              <> int.to_string(c.y)
+              <> ") on deck "
+              <> int.to_string(c.deck)
+              <> " has no door facing void",
+            )
         }
     }
   })
@@ -407,6 +421,18 @@ pub fn validate(plan: DeckPlan) -> Result(DeckPlan, String) {
         True -> Ok(plan)
         False -> Error("spawn_tile is not on a walkable tile")
       }
+  }
+}
+
+/// Authored-plan check (NOT for composites): every docking port must carry a
+/// void-facing outer door — the berth normal (`deckplan-format.md`). Ship
+/// classes and station concourses run this at load; the derived composite does
+/// not, because a docked port's void-facing door is consumed by its gangway
+/// tube. Returns the plan unchanged on success.
+pub fn validate_docking_ports(plan: DeckPlan) -> Result(DeckPlan, String) {
+  case docking_ports(plan) {
+    Ok(_) -> Ok(plan)
+    Error(e) -> Error(e)
   }
 }
 

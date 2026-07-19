@@ -106,6 +106,18 @@ pub fn decode_rejects_missing_helm_console_test() {
   assert shipclass.decode(bad) |> is_error
 }
 
+pub fn decode_rejects_docking_port_without_void_facing_door_test() {
+  // A Q docking port walled in on every side — no door faces void — is an
+  // authoring error (the format requires the outer gangway door). Consoles
+  // (helm + dock) derive from the 'h'/'Q' grid glyphs.
+  let bad =
+    "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
+    <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"#########\",\"#   h  Q#\",\"#########\"]}],"
+    <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
+    <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
+  assert shipclass.decode(bad) |> is_error
+}
+
 pub fn decode_rejects_garbage_test() {
   assert shipclass.decode("not json") |> is_error
 }

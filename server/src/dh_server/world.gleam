@@ -362,6 +362,7 @@ fn validate_trade(world: World) -> Result(World, String) {
       None -> Ok(world)
       Some(plan) ->
         deckplan.validate(plan)
+        |> result.try(deckplan.validate_docking_ports)
         |> result.map_error(fn(e) {
           "station " <> station.id <> " concourse: " <> e
         })

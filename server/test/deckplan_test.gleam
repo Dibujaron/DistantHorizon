@@ -14,11 +14,12 @@ pub fn docking_ports_north_facing_test() {
       spawn_deck: 0,
       spawn_tile: #(0, 1),
     )
-  assert deckplan.docking_ports(plan) == [#(0, 0, 1, deckplan.N)]
+  assert deckplan.docking_ports(plan) == Ok([#(0, 0, 1, deckplan.N)])
 }
 
-pub fn docking_ports_skips_port_with_no_void_facing_door_test() {
-  // A 1x1 dock tile with no doors and no void-facing edge is not a berth.
+pub fn docking_ports_errors_on_port_with_no_void_facing_door_test() {
+  // A 1x1 dock tile with no void-facing door violates the format — it is an
+  // authoring error, not a berth to silently skip.
   let assert Ok(g) = deckplan.parse_deck("d", ["   ", "   ", "   "])
   let plan =
     DeckPlan(
@@ -27,7 +28,7 @@ pub fn docking_ports_skips_port_with_no_void_facing_door_test() {
       spawn_deck: 0,
       spawn_tile: #(0, 0),
     )
-  assert deckplan.docking_ports(plan) == []
+  let assert Error(_) = deckplan.docking_ports(plan)
 }
 
 // ------------------------------------------------------------- parsing --
