@@ -247,20 +247,22 @@ def test_shade_never_overflows_to_invalid_hex():
 
 
 def test_characters_export(tmp_path):
-    from characters import CHARACTERS, export_characters
+    """Each character exports the full front sprite plus the baker's body/arm
+    layers, all 22x34 with a transparent background and real content."""
+    from characters import CHARACTERS, LAYERS, export_characters
     export_characters(tmp_path)
     from PIL import Image
     import numpy as np
     for name, _ in CHARACTERS:
-        for suffix in ("", "_back", "_side"):
+        for suffix in LAYERS:
             img = Image.open(tmp_path / f"{name}{suffix}.png")
             assert img.size == (22, 34)
             assert img.getpixel((0, 0))[3] == 0        # transparent background
             assert np.asarray(img)[..., 3].max() > 0   # not a blank cell
-        front = np.asarray(Image.open(tmp_path / f"{name}.png"))
-        for suffix in ("_back", "_side"):
-            view = np.asarray(Image.open(tmp_path / f"{name}{suffix}.png"))
-            assert not np.array_equal(front, view)     # a real turn, not a copy
+        # the armless body must actually differ from the full sprite (arms gone)
+        full = np.asarray(Image.open(tmp_path / f"{name}.png"))
+        body = np.asarray(Image.open(tmp_path / f"{name}_body.png"))
+        assert not np.array_equal(full, body)
     assert {n for n, _ in CHARACTERS} == {"player", "crew_0", "crew_1", "crew_2"}
 
 
