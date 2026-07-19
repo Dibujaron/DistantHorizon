@@ -212,6 +212,29 @@ def test_tiles_export(tmp_path):
     assert d.getpixel((0, 0))[3] == 0            # decals are transparent
 
 
+def test_baked_walk_sheets_have_no_interior_holes():
+    """A swinging arm must not expose a transparent column over the torso -- the
+    dark deck would show through the body as a flickering black strip. On every
+    frame of the front/back walk sheets, no fully-transparent pixel may sit
+    between the leftmost and rightmost opaque pixels of a row."""
+    from PIL import Image
+    import numpy as np
+    root = HERE.parents[1] / "client" / "assets" / "characters"
+    sheet_cells = 5
+    for name in ("player", "crew_0", "crew_1", "crew_2"):
+        for suffix in ("_walk", "_back_walk"):
+            im = np.asarray(Image.open(root / f"{name}{suffix}.png").convert("RGBA"))
+            cw = im.shape[1] // sheet_cells
+            for fi in range(sheet_cells):
+                a = im[:, fi * cw:(fi + 1) * cw, 3] > 20
+                for y in range(a.shape[0]):
+                    xs = np.where(a[y])[0]
+                    if len(xs) < 2:
+                        continue
+                    assert a[y, xs.min():xs.max() + 1].all(), \
+                        f"{name}{suffix} frame {fi} row {y}: interior transparent hole"
+
+
 def test_shade_never_overflows_to_invalid_hex():
     """_shade must clamp channels to 255 so a brighten (k>1) can't overflow into
     an invalid 7-hex-digit color. resvg renders an invalid fill as black, which
