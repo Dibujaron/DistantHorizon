@@ -76,6 +76,10 @@ const WALK_FRAME_MS := 1000.0 / WALK_FPS
 const MOVE_EPS := 0.01
 const MOVE_COAST_MS := 140
 const FACE_EPS := 0.01
+## Movement must beat the cross-axis by this factor to change facing, so a
+## near-diagonal path holds its current facing instead of strobing sheets.
+const HYST_RATIO := 1.3
+enum Facing { DOWN, UP, LEFT, RIGHT }
 
 
 ## One hull exterior drawn under the tiles: `asset` names a ship kind or
@@ -114,7 +118,7 @@ var view_cone_enabled: bool = false
 var _font: Font
 var _lib: AssetLibrary = null
 var _floor_tex: Array[Texture2D] = []
-var _facing: Dictionary = {}        # character id -> -1.0 | 1.0
+var _facing: Dictionary = {}        # character id -> Facing enum
 var _last_pos: Dictionary = {}      # character id -> last drawn Vector2 (tiles)
 var _walk_until: Dictionary = {}    # character id -> ms the walk cycle coasts to
 ## LOS cache: Vector2i tile -> bool visible; recomputed when the own tile,
@@ -645,6 +649,18 @@ func _line_of_sight(from_tile: Vector2i, to_tile: Vector2i) -> bool:
 
 
 # ------------------------------------------------------------ characters --
+## Pick a facing from this frame's movement delta. Sub-threshold movement or a
+## near-diagonal (neither axis clearly dominant) holds the previous facing.
+static func _facing_from_delta(dx: float, dy: float, prev: int) -> int:
+	if abs(dx) < FACE_EPS and abs(dy) < FACE_EPS:
+		return prev
+	if abs(dx) > HYST_RATIO * abs(dy):
+		return Facing.RIGHT if dx > 0.0 else Facing.LEFT
+	if abs(dy) > HYST_RATIO * abs(dx):
+		return Facing.DOWN if dy > 0.0 else Facing.UP
+	return prev
+
+
 func _draw_characters(origin: Vector2) -> void:
 	var radius_px := CHARACTER_RADIUS_TILES * TILE_PIXELS
 	for character in characters:
@@ -666,39 +682,56 @@ func _draw_characters(origin: Vector2) -> void:
 			else "crew_%d" % (absi(hash(character.id)) % 3)
 		var tex := _lib.character(base_name)
 		var walk := _lib.character(base_name + "_walk")
+		var back_walk := _lib.character(base_name + "_back_walk")
+		var side_walk := _lib.character(base_name + "_side_walk")
 		if tex != null:
 			# Facing + walk state from how far the body moved since last frame.
 			var last: Vector2 = _last_pos.get(character.id, character.position())
-			var facing: float = _facing.get(character.id, 1.0)
-			if character.x - last.x > FACE_EPS:
-				facing = 1.0
-			elif character.x - last.x < -FACE_EPS:
-				facing = -1.0
+			var prev_facing: int = _facing.get(character.id, Facing.DOWN)
+			var facing := _facing_from_delta(
+				character.x - last.x, character.y - last.y, prev_facing)
 			var now := Time.get_ticks_msec()
 			if character.position().distance_to(last) > MOVE_EPS:
 				_walk_until[character.id] = now + MOVE_COAST_MS
 			var walking: bool = not character.is_seated() \
 				and now < int(_walk_until.get(character.id, 0))
+			if character.is_seated():
+				facing = Facing.DOWN          # seated at a console: face front
 			_facing[character.id] = facing
 			_last_pos[character.id] = character.position()
-			# feet at the collision circle's bottom edge; facing flips the
-			# sprite horizontally with left/right movement.
+			# Choose the sheet for this facing; side art is drawn facing right,
+			# so LEFT flips it. Missing directional sheets fall back to front.
+			var sheet := walk
+			var flip := 1.0
+			match facing:
+				Facing.UP:
+					if back_walk != null:
+						sheet = back_walk
+				Facing.RIGHT:
+					if side_walk != null:
+						sheet = side_walk
+				Facing.LEFT:
+					if side_walk != null:
+						sheet = side_walk
+					flip = -1.0
+			# feet at the collision circle's bottom edge; flip mirrors the
+			# side view for left-facing (or the front fallback, as before).
 			draw_set_transform(screen_pos + Vector2(0, radius_px),
-				0.0, Vector2(facing, 1.0))
-			if walk != null:
+				0.0, Vector2(flip, 1.0))
+			if sheet != null:
 				# Play the baked cycle: idle = cell 0, walking = cells 1.. by
 				# wall-clock phase (offset per id so crew don't march in step).
 				# The sheet is padded, so scale each cell to keep the body the
 				# same on-screen size CHAR_SIZE gives the native art.
-				var cell_w := walk.get_width() / SHEET_CELLS
-				var cell_h := walk.get_height()
+				var cell_w := sheet.get_width() / SHEET_CELLS
+				var cell_h := sheet.get_height()
 				var draw_w := CHAR_SIZE.x * float(cell_w) / float(tex.get_width())
 				var draw_h := CHAR_SIZE.y * float(cell_h) / float(tex.get_height())
 				var frame := 0
 				if walking:
 					frame = 1 + (int(now / WALK_FRAME_MS) + character.id) \
 						% (SHEET_CELLS - 1)
-				draw_texture_rect_region(walk,
+				draw_texture_rect_region(sheet,
 					Rect2(Vector2(-draw_w * 0.5, -draw_h), Vector2(draw_w, draw_h)),
 					Rect2(frame * cell_w, 0, cell_w, cell_h))
 			else:
