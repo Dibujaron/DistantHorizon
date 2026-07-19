@@ -14,7 +14,7 @@
 
 import gleam/dict.{type Dict}
 import gleam/dynamic/decode
-import gleam/json
+import gleam/json.{type Json}
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
@@ -40,9 +40,10 @@ pub type EdgeKind {
   Fixture
 }
 
-/// One center-glyph entry: long-form `id` (the client's sprite key), tile
-/// kind, the console `kind` it installs (if any), whether it is a docking
-/// port, and whether it is a bare spawn tile.
+/// One center-glyph entry: long-form `id`, tile kind, the console `kind` it
+/// installs (if any), whether it is a docking port, whether it is a bare spawn
+/// tile, and the client `sprite` key (server ignores it beyond forwarding it on
+/// the wire; `None` = render procedurally).
 pub type CenterSpec {
   CenterSpec(
     id: String,
@@ -50,12 +51,13 @@ pub type CenterSpec {
     console: Option(String),
     dock: Bool,
     spawn: Bool,
+    sprite: Option(String),
   )
 }
 
-/// One edge-glyph entry: long-form `id` and edge kind.
+/// One edge-glyph entry: long-form `id`, edge kind, and client `sprite` key.
 pub type EdgeSpec {
-  EdgeSpec(id: String, kind: EdgeKind)
+  EdgeSpec(id: String, kind: EdgeKind, sprite: Option(String))
 }
 
 /// The loaded vocabulary: center and edge glyphs, each keyed by their single
@@ -77,6 +79,7 @@ pub fn center(reg: Registry, glyph: String) -> CenterSpec {
         console: None,
         dock: False,
         spawn: False,
+        sprite: None,
       )
   }
 }
@@ -86,7 +89,7 @@ pub fn center(reg: Registry, glyph: String) -> CenterSpec {
 pub fn edge(reg: Registry, glyph: String) -> EdgeSpec {
   case dict.get(reg.edges, glyph) {
     Ok(spec) -> spec
-    Error(Nil) -> EdgeSpec(id: "fixture", kind: Fixture)
+    Error(Nil) -> EdgeSpec(id: "fixture", kind: Fixture, sprite: None)
   }
 }
 
@@ -155,9 +158,21 @@ fn center_decoder() -> decode.Decoder(#(String, CenterSpec)) {
   )
   use dock <- decode.optional_field("dock", False, decode.bool)
   use spawn <- decode.optional_field("spawn", False, decode.bool)
+  use sprite <- decode.optional_field(
+    "sprite",
+    None,
+    decode.map(decode.string, Some),
+  )
   decode.success(#(
     glyph,
-    CenterSpec(id: id, tile: tile, console: console, dock: dock, spawn: spawn),
+    CenterSpec(
+      id: id,
+      tile: tile,
+      console: console,
+      dock: dock,
+      spawn: spawn,
+      sprite: sprite,
+    ),
   ))
 }
 
@@ -165,7 +180,12 @@ fn edge_decoder() -> decode.Decoder(#(String, EdgeSpec)) {
   use glyph <- decode.field("glyph", decode.string)
   use id <- decode.field("id", decode.string)
   use kind <- decode.field("kind", edge_kind_decoder())
-  decode.success(#(glyph, EdgeSpec(id: id, kind: kind)))
+  use sprite <- decode.optional_field(
+    "sprite",
+    None,
+    decode.map(decode.string, Some),
+  )
+  decode.success(#(glyph, EdgeSpec(id: id, kind: kind, sprite: sprite)))
 }
 
 fn tile_kind_decoder() -> decode.Decoder(TileKind) {
@@ -201,20 +221,113 @@ fn edge_kind_decoder() -> decode.Decoder(EdgeKind) {
 pub fn default() -> Registry {
   Registry(
     centers: dict.from_list([
-      #(" ", CenterSpec("floor", Floor, None, False, False)),
-      #(".", CenterSpec("void", Void, None, False, False)),
-      #("x", CenterSpec("stairs", Stairs, None, False, False)),
-      #("h", CenterSpec("helm_console", Floor, Some("helm"), False, False)),
-      #("c", CenterSpec("cargo_console", Floor, Some("cargo"), False, False)),
-      #("b", CenterSpec("broker_console", Floor, Some("broker"), False, False)),
-      #("Q", CenterSpec("docking_port", Floor, Some("dock"), True, False)),
-      #("s", CenterSpec("spawn", Floor, None, False, True)),
+      #(" ", CenterSpec("floor", Floor, None, False, False, None)),
+      #(".", CenterSpec("void", Void, None, False, False, None)),
+      #("x", CenterSpec("stairs", Stairs, None, False, False, Some("stairs"))),
+      #(
+        "h",
+        CenterSpec(
+          "helm_console",
+          Floor,
+          Some("helm"),
+          False,
+          False,
+          Some("console_helm"),
+        ),
+      ),
+      #(
+        "c",
+        CenterSpec(
+          "cargo_console",
+          Floor,
+          Some("cargo"),
+          False,
+          False,
+          Some("console_cargo"),
+        ),
+      ),
+      #(
+        "b",
+        CenterSpec(
+          "broker_console",
+          Floor,
+          Some("broker"),
+          False,
+          False,
+          Some("console_broker"),
+        ),
+      ),
+      #(
+        "Q",
+        CenterSpec(
+          "docking_port",
+          Floor,
+          Some("dock"),
+          True,
+          False,
+          Some("picto_airlock"),
+        ),
+      ),
+      #("s", CenterSpec("spawn", Floor, None, False, True, None)),
     ]),
     edges: dict.from_list([
-      #(" ", EdgeSpec("open", Open)),
-      #("#", EdgeSpec("wall", Wall)),
-      #("=", EdgeSpec("door", Door)),
-      #("v", EdgeSpec("viewscreen", Fixture)),
+      #(" ", EdgeSpec("open", Open, None)),
+      #("#", EdgeSpec("wall", Wall, Some("wall"))),
+      #("=", EdgeSpec("door", Door, Some("door"))),
+      #("v", EdgeSpec("viewscreen", Fixture, Some("viewscreen"))),
     ]),
   )
+}
+
+// -------------------------------------------------------------- encode ----
+
+/// The registry as JSON for the `welcome` wire: the long-form id, role flags,
+/// and client `sprite` key of every glyph, keyed by glyph char. The client
+/// builds its `id`/console-kind -> sprite map from this so art isn't coupled to
+/// the single-char encoding (issue #32).
+pub fn encode(reg: Registry) -> Json {
+  json.object([
+    #("centers", json.array(dict.to_list(reg.centers), encode_center)),
+    #("edges", json.array(dict.to_list(reg.edges), encode_edge)),
+  ])
+}
+
+fn encode_center(entry: #(String, CenterSpec)) -> Json {
+  let #(glyph, spec) = entry
+  json.object([
+    #("glyph", json.string(glyph)),
+    #("id", json.string(spec.id)),
+    #("tile", json.string(tile_kind_name(spec.tile))),
+    #("console", json.nullable(spec.console, json.string)),
+    #("dock", json.bool(spec.dock)),
+    #("spawn", json.bool(spec.spawn)),
+    #("sprite", json.nullable(spec.sprite, json.string)),
+  ])
+}
+
+fn encode_edge(entry: #(String, EdgeSpec)) -> Json {
+  let #(glyph, spec) = entry
+  json.object([
+    #("glyph", json.string(glyph)),
+    #("id", json.string(spec.id)),
+    #("kind", json.string(edge_kind_name(spec.kind))),
+    #("sprite", json.nullable(spec.sprite, json.string)),
+  ])
+}
+
+fn tile_kind_name(kind: TileKind) -> String {
+  case kind {
+    Floor -> "floor"
+    Void -> "void"
+    Stairs -> "stairs"
+  }
+}
+
+fn edge_kind_name(kind: EdgeKind) -> String {
+  case kind {
+    Open -> "open"
+    Wall -> "wall"
+    Door -> "door"
+    Fixture -> "fixture"
+  }
 }

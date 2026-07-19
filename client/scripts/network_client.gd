@@ -70,6 +70,9 @@ var logged_in: bool = false
 ## ship_id, which a crew transfer can reassign); routing is by character id.
 var character_id: int = -1
 var ship_class: ShipClassData = null
+## The tile-glyph registry (server/glyphs.json), parsed at welcome (issue #32).
+## The interior renderer reads console sprite ids from it. Null until welcome.
+var glyphs: GlyphRegistry = null
 ## The walkable space we're currently in (M3.1); null until the first
 ## `space` message arrives right after `welcome`.
 var space: SpaceData = null
@@ -227,6 +230,7 @@ func _handle_welcome(message: Dictionary) -> void:
 	var class_doc: Variant = message.get("ship_class")
 	if class_doc is Dictionary:
 		ship_class = ShipClassData.from_dict(class_doc)
+	glyphs = GlyphRegistry.from_dict(message.get("glyphs"))
 	logged_in = true
 	print("[net] welcome: ship_id=%d account_id=%d character_id=%d" % [ship_id, account_id, character_id])
 	welcome_received.emit(ship_id, world)

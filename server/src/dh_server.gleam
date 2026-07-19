@@ -126,7 +126,7 @@ pub fn main() -> Nil {
     Error(e) -> io.println("failed to start sim: " <> string.inspect(e))
     Ok(sim_started) -> {
       let sim_subject = sim_started.data
-      case server.start(sim_subject, world, class, authenticator) {
+      case server.start(sim_subject, world, class, registry, authenticator) {
         Ok(_) -> {
           io.println(
             "dh_server listening on ws://"

@@ -7,7 +7,7 @@
     { "glyph": "h", "id": "helm_console", "tile": "floor", "console": "helm", "sprite": "console_helm", "description": "Helm console (walkable floor)." },
     { "glyph": "c", "id": "cargo_console", "tile": "floor", "console": "cargo", "sprite": "console_cargo", "description": "Cargo console (walkable floor)." },
     { "glyph": "b", "id": "broker_console", "tile": "floor", "console": "broker", "sprite": "console_broker", "description": "Broker console — station concourses (walkable floor)." },
-    { "glyph": "Q", "id": "docking_port", "tile": "floor", "console": "dock", "dock": true, "sprite": "airlock", "description": "Docking port / airlock (walkable floor); a mooring/boarding tile. Its outward normal is the edge whose door (=) faces void." },
+    { "glyph": "Q", "id": "docking_port", "tile": "floor", "console": "dock", "dock": true, "sprite": "picto_airlock", "description": "Docking port / airlock (walkable floor); a mooring/boarding tile. Its outward normal is the edge whose door (=) faces void." },
     { "glyph": "s", "id": "spawn", "tile": "floor", "spawn": true, "description": "Spawn / arrival tile (walkable floor); where crew appear ashore." }
   ],
   "edges": [

@@ -62,6 +62,7 @@
 import dh_server/character.{type Character}
 import dh_server/composite
 import dh_server/deckplan.{type DeckPlan}
+import dh_server/glyphs
 import dh_server/market
 import dh_server/ship.{type Ship}
 import dh_server/shipclass.{type ShipClass}
@@ -169,6 +170,7 @@ pub fn encode_welcome(
   character_id: Int,
   world: World,
   class: ShipClass,
+  registry: glyphs.Registry,
 ) -> String {
   json.object([
     #("v", json.int(version)),
@@ -180,6 +182,7 @@ pub fn encode_welcome(
     #("dt", json.float(ship.dt)),
     #("world", world.encode(world)),
     #("ship_class", shipclass.encode(class)),
+    #("glyphs", glyphs.encode(registry)),
   ])
   |> json.to_string
 }
