@@ -17,6 +17,7 @@
 
 import dh_server/auth.{type Authenticator}
 import dh_server/glyphs
+import dh_server/palette
 import dh_server/protocol
 import dh_server/shipclass.{type ShipClass}
 import dh_server/sim
@@ -46,10 +47,11 @@ pub fn start(
   world: World,
   class: ShipClass,
   registry: glyphs.Registry,
+  palette: palette.Palette,
   authenticator: Authenticator,
 ) -> Result(actor.Started(static_supervisor.Supervisor), actor.StartError) {
   mist.new(fn(req) {
-    route(req, sim_subject, world, class, registry, authenticator)
+    route(req, sim_subject, world, class, registry, palette, authenticator)
   })
   |> mist.port(port)
   |> mist.bind(bind_address)
@@ -62,6 +64,7 @@ fn route(
   world: World,
   class: ShipClass,
   registry: glyphs.Registry,
+  palette: palette.Palette,
   authenticator: Authenticator,
 ) -> Response(ResponseData) {
   case request.path_segments(req) {
@@ -77,6 +80,7 @@ fn route(
             world,
             class,
             registry,
+            palette,
             authenticator,
           )
         },
@@ -108,6 +112,7 @@ fn handle_ws(
   world: World,
   class: ShipClass,
   registry: glyphs.Registry,
+  palette: palette.Palette,
   authenticator: Authenticator,
 ) -> mist.Next(Session, sim.ClientMsg) {
   case message {
@@ -128,6 +133,7 @@ fn handle_ws(
         world,
         class,
         registry,
+        palette,
         authenticator,
       ))
 
@@ -144,6 +150,7 @@ fn handle_client_text(
   world: World,
   class: ShipClass,
   registry: glyphs.Registry,
+  palette: palette.Palette,
   authenticator: Authenticator,
 ) -> Session {
   case protocol.parse_client_message(text) {
@@ -180,6 +187,7 @@ fn handle_client_text(
                         world,
                         class,
                         registry,
+                        palette,
                       ),
                     )
                   LoggedIn(client, ship_id, character_id)
