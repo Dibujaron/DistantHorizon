@@ -106,74 +106,24 @@
     "station": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "parent", "orbit", "dock_radius"],
+      "required": ["id", "name", "class", "parent", "orbit"],
+      "description": "A world station instance: per-instance placement/economy plus a `class` reference (issue #30). dock_radius/crane/concourse come from the referenced station class, and berths derive from that concourse's Q glyphs (issue #31) — none of them live here.",
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
+        "class": {
+          "type": "string",
+          "description": "References a station class id under server/stationclasses/ (resolved by the Gleam decoder; an unknown id is rejected there, not by this schema)."
+        },
         "parent": {
           "type": "string",
           "description": "Must reference an existing body id (enforced by the Gleam decoder's validate step, not by this schema)."
         },
         "orbit": { "$ref": "#/$defs/orbit" },
-        "dock_radius": {
-          "type": "number",
-          "description": "decode.float: JSON value must have a decimal point, a bare integer is rejected."
-        },
-        "crane": {
-          "type": "boolean",
-          "description": "Optional field (decode.optional_field, default false). The fast-handling path: container hulls can only trade where crane is true."
-        },
-        "concourse": {
-          "description": "Optional field (decode.optional_field, default None) whose value may also be null; when present and non-null it is a walkable interior deck plan. null/absent means crews cannot go ashore.",
-          "oneOf": [
-            { "type": "null" },
-            { "$ref": "#/$defs/deckplan" }
-          ]
-        },
         "market": {
           "type": "array",
-          "description": "Optional field (decode.optional_field, default []).",
+          "description": "Optional field (decode.optional_field, default []). Per-instance trade terms.",
           "items": { "$ref": "#/$defs/market_entry" }
-        },
-        "berths": {
-          "type": "array",
-          "description": "Optional field (decode.optional_field, default []). Authored docking ports on the concourse's top edge (M3.1); empty means ships cannot dock here. Each port is an object (issue #14); a bare legacy [x, y] tile array is still accepted by the decoder and defaults orientation/anchor.",
-          "items": {
-            "oneOf": [
-              {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["tile"],
-                "properties": {
-                  "tile": {
-                    "type": "array",
-                    "description": "[x, y] interior/composite tile the ship moors onto.",
-                    "items": { "type": "integer" },
-                    "minItems": 2,
-                    "maxItems": 2
-                  },
-                  "orientation": {
-                    "type": "number",
-                    "description": "Optional (default pi/2, north). The port's outward normal in world radians (y-up, 0 = +x/east): the direction a moored hull sits from, and departs toward, the station centre."
-                  },
-                  "anchor": {
-                    "type": "array",
-                    "description": "Optional (default [0, 0]). The mooring point's world-unit offset from the station centre — the exterior pose a docked hull holds and is released at on undock (issue #13).",
-                    "items": { "type": "number" },
-                    "minItems": 2,
-                    "maxItems": 2
-                  }
-                }
-              },
-              {
-                "type": "array",
-                "description": "Legacy [x, y] tile coordinate (orientation/anchor defaulted).",
-                "items": { "type": "integer" },
-                "minItems": 2,
-                "maxItems": 2
-              }
-            ]
-          }
         }
       }
     },

@@ -11,6 +11,7 @@ import dh_server/glyphs
 import dh_server/server
 import dh_server/shipclass
 import dh_server/sim
+import dh_server/stationclass
 import dh_server/world
 import envoy
 import gleam/erlang/process
@@ -77,11 +78,30 @@ pub fn main() -> Nil {
     }
   }
 
+  // Station classes are loaded next, with the active registry, then keyed by
+  // id; the world resolves each station's `class` reference against them.
+  let station_classes_dir = case envoy.get("DH_STATION_CLASSES") {
+    Ok(dir) -> dir
+    Error(Nil) -> world.default_station_classes_dir
+  }
+  let station_classes = case
+    stationclass.load_dir_with(registry, station_classes_dir)
+  {
+    Ok(cs) -> cs
+    Error(err) ->
+      panic as {
+        "failed to load station classes from "
+        <> station_classes_dir
+        <> ": "
+        <> err
+      }
+  }
+
   let world_path = case envoy.get("DH_WORLD") {
     Ok(path) -> path
     Error(Nil) -> default_world_path
   }
-  let world = case world.load_with(registry, world_path) {
+  let world = case world.load_with(station_classes, world_path) {
     Ok(w) -> w
     Error(err) ->
       panic as { "failed to load world " <> world_path <> ": " <> err }

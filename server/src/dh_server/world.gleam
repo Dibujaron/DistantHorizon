@@ -20,7 +20,8 @@
 
 import dh_server/composite
 import dh_server/deckplan
-import dh_server/glyphs.{type Registry}
+import dh_server/stationclass.{type StationClass}
+import gleam/dict.{type Dict}
 import gleam/dynamic/decode
 import gleam/float
 import gleam/int
@@ -30,6 +31,10 @@ import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import simplifile
+
+/// The default on-disk folder of station class documents, mirroring
+/// `stationclasses/*.json` (overridable at startup via `DH_STATION_CLASSES`).
+pub const default_station_classes_dir = "stationclasses"
 
 const two_pi = 6.283185307179586
 
@@ -68,16 +73,17 @@ pub type Station {
     name: String,
     parent: String,
     orbit: Orbit,
+    /// Resolved from the referenced station class (issue #30).
     dock_radius: Float,
-    /// Container-crane berths (the fast handling path; container hulls can
-    /// only trade where this is True).
+    /// Resolved from the station class: container-crane berths (the fast
+    /// handling path; container hulls can only trade where this is True).
     crane: Bool,
-    /// Walkable concourse interior; None means crews cannot go ashore.
+    /// Resolved from the station class: walkable concourse interior; None means
+    /// crews cannot go ashore. Its `Q` glyphs are the station's berths
+    /// (`station_berths`, issue #31).
     concourse: Option(deckplan.DeckPlan),
+    /// Per-instance trade terms (stays in the world doc, not the class).
     market: List(MarketEntry),
-    /// Authored mooring anchors on the concourse's top edge; empty = ships
-    /// cannot dock here (M3.1).
-    berths: List(composite.Berth),
   )
 }
 
@@ -99,34 +105,44 @@ fn cos(x: Float) -> Float
 @external(erlang, "math", "sin")
 fn sin(x: Float) -> Float
 
-/// Read and decode a world document from a file, using the built-in glyph
-/// legend. `path` is resolved relative to the process's working directory.
+/// Read and decode a world document from a file, resolving each station's
+/// `class` reference against the station classes in
+/// `default_station_classes_dir`. `path` is resolved relative to the process's
+/// working directory.
 pub fn load(path: String) -> Result(World, String) {
-  load_with(glyphs.default(), path)
+  use classes <- result.try(stationclass.load_dir(default_station_classes_dir))
+  load_with(classes, path)
 }
 
-/// `load`, but interpreting station concourse grids with an explicit glyph
-/// registry — the runtime path threads the loaded `glyphs.json` here.
-pub fn load_with(reg: Registry, path: String) -> Result(World, String) {
+/// `load`, but with an explicit station-class map — the runtime path loads the
+/// classes with the active glyph registry and threads them here.
+pub fn load_with(
+  classes: Dict(String, StationClass),
+  path: String,
+) -> Result(World, String) {
   use text <- result.try(
     simplifile.read(path)
     |> result.map_error(fn(err) {
       "failed to read world file " <> path <> ": " <> string.inspect(err)
     }),
   )
-  decode_with(reg, text)
+  decode_with(classes, text)
 }
 
-/// Decode a world document (built-in glyph legend), validating that every
-/// `parent` and `spawn_station` reference an id that actually exists.
+/// Decode a world document, resolving `class` references against
+/// `default_station_classes_dir`.
 pub fn decode(json_text: String) -> Result(World, String) {
-  decode_with(glyphs.default(), json_text)
+  use classes <- result.try(stationclass.load_dir(default_station_classes_dir))
+  decode_with(classes, json_text)
 }
 
-/// `decode`, but interpreting station concourse grids with an explicit glyph
-/// registry.
-pub fn decode_with(reg: Registry, json_text: String) -> Result(World, String) {
-  case json.parse(json_text, world_decoder(reg)) {
+/// `decode`, but with an explicit station-class map, validating that every
+/// `parent`/`spawn_station`/`class` reference resolves.
+pub fn decode_with(
+  classes: Dict(String, StationClass),
+  json_text: String,
+) -> Result(World, String) {
+  case json.parse(json_text, world_decoder(classes)) {
     Ok(world) -> validate(world)
     Error(err) -> Error("invalid world document: " <> string.inspect(err))
   }
@@ -201,8 +217,29 @@ pub fn get_station(world: World, station_id: String) -> Result(Station, Nil) {
   list.find(world.stations, fn(s) { s.id == station_id })
 }
 
-/// A station's berth by index (its docking-port record), or `Error(Nil)` if
-/// the station or index is unknown.
+/// A station's berths, derived from the `Q` docking-port glyphs in its
+/// concourse (issue #31): one berth per port, its tile the glyph's position and
+/// its `orientation` the world-radian direction of the edge whose door faces
+/// void. Empty if the station has no concourse or no ports. This is the single
+/// source of docking geometry — no separate authored list.
+pub fn station_berths(station: Station) -> List(composite.Berth) {
+  case station.concourse {
+    None -> []
+    Some(plan) ->
+      case deckplan.docking_ports(plan) {
+        // Ports are validated at load; if somehow malformed, treat as none.
+        Error(_) -> []
+        Ok(ports) ->
+          list.map(ports, fn(p) {
+            let #(_deck, x, y, dir) = p
+            composite.Berth(x: x, y: y, orientation: orientation_of(dir))
+          })
+      }
+  }
+}
+
+/// A station's berth by index, or `Error(Nil)` if the station or index is
+/// unknown.
 pub fn station_berth(
   world: World,
   station_id: String,
@@ -213,32 +250,76 @@ pub fn station_berth(
     Ok(station) ->
       case index >= 0 {
         False -> Error(Nil)
-        True -> list.drop(station.berths, index) |> list.first
+        True -> list.drop(station_berths(station), index) |> list.first
       }
   }
 }
 
-/// The exterior mooring pose of a ship docked in `berth_index` at
-/// `station_id` at sim time `t`: `#(x, y, vx, vy)` where position is the
-/// station centre plus the berth's authored world anchor, and velocity is the
-/// station's rail velocity (a docked hull rides the rail). This is the pose a
-/// docked ship is pinned to each tick AND released at on undock, so undocking
-/// never teleports the hull toward the station centre (issue #13). Falls back
-/// to the bare station pose (centre + rail velocity) when the berth is unknown
-/// — e.g. a test station with no authored berths — so a hull still moors
-/// rather than the lookup crashing.
+/// The world-radian outward normal (y-up, 0 = +x/east) for a berth whose outer
+/// door faces `dir` in the concourse grid (y-down). North (a berth mouth open
+/// to the void above the concourse) yields pi/2 — the side-on look.
+fn orientation_of(dir: deckplan.Dir) -> Float {
+  case dir {
+    deckplan.N -> pi /. 2.0
+    deckplan.E -> 0.0
+    deckplan.S -> 0.0 -. pi /. 2.0
+    deckplan.W -> pi
+  }
+}
+
+/// The moored sim pose of a ship docked in `berth_index` at `station_id` at
+/// sim time `t`: `#(x, y, vx, vy)`. Position is the station centre, plus the
+/// berth tile's planar offset (the concourse is 1 m/tile, centred on the
+/// station), plus `standoff` metres out along the berth's outward normal —
+/// `standoff` being the docking ship's own `dock_standoff` (issue #31). This is
+/// the pose a docked ship is pinned to each tick AND released at on undock, so
+/// undocking never teleports the hull (issue #13). Velocity is the station's
+/// rail velocity (a docked hull rides the rail). Falls back to the bare station
+/// pose when the berth is unknown — e.g. a test station with no ports.
 pub fn moored_position(
   world: World,
   station_id: String,
   berth_index: Int,
+  standoff: Float,
   t: Float,
 ) -> #(Float, Float, Float, Float) {
   let #(cx, cy) = station_position(world, station_id, t)
   let #(vx, vy) = station_velocity(world, station_id, t)
-  case station_berth(world, station_id, berth_index) {
-    Error(Nil) -> #(cx, cy, vx, vy)
-    Ok(berth) -> #(cx +. berth.anchor_x, cy +. berth.anchor_y, vx, vy)
+  case
+    get_station(world, station_id),
+    station_berth(world, station_id, berth_index)
+  {
+    Ok(station), Ok(berth) -> {
+      let #(w, h) = concourse_dims(station)
+      let #(ox, oy) = berth_planar_offset(berth.x, berth.y, w, h)
+      let nx = cos(berth.orientation)
+      let ny = sin(berth.orientation)
+      #(cx +. ox +. nx *. standoff, cy +. oy +. ny *. standoff, vx, vy)
+    }
+    _, _ -> #(cx, cy, vx, vy)
   }
+}
+
+/// The concourse's tile dimensions (deck 0), or `#(0, 0)` if none.
+fn concourse_dims(station: Station) -> #(Int, Int) {
+  case station.concourse {
+    None -> #(0, 0)
+    Some(plan) ->
+      case deckplan.deck_at(plan, 0) {
+        Ok(g) -> #(g.width, g.height)
+        Error(Nil) -> #(0, 0)
+      }
+  }
+}
+
+/// The berth tile's world-space offset from the station centre, in metres
+/// (1 m/tile), with the concourse centred on the station. Tile x runs east
+/// (world +x); tile y runs south (world -y), so a berth near the concourse top
+/// sits north (+y) of centre.
+fn berth_planar_offset(bx: Int, by: Int, w: Int, h: Int) -> #(Float, Float) {
+  let ox = int.to_float(bx) +. 0.5 -. int.to_float(w) /. 2.0
+  let oy = int.to_float(h) /. 2.0 -. { int.to_float(by) +. 0.5 }
+  #(ox, oy)
 }
 
 /// The world heading a ship holds while moored in `berth_index` at
@@ -345,7 +426,7 @@ fn validate(world: World) -> Result(World, String) {
     _, Ok(station) -> Error("unknown parent body id: " <> station.parent)
     Error(Nil), Error(Nil) ->
       case list.contains(station_ids, world.spawn_station) {
-        True -> validate_trade(world) |> result.try(validate_berths)
+        True -> validate_trade(world)
         False -> Error("unknown spawn_station id: " <> world.spawn_station)
       }
   }
@@ -400,46 +481,6 @@ fn validate_trade(world: World) -> Result(World, String) {
   })
 }
 
-/// Berth validation: a station that declares berths must have a
-/// concourse; every berth tile must be walkable, and the tile directly
-/// north of it must NOT be walkable (that's where the moored airlock
-/// lands, and it must not overlap the concourse floor).
-fn validate_berths(world: World) -> Result(World, String) {
-  list.fold(world.stations, Ok(world), fn(acc, station) {
-    use _ <- result.try(acc)
-    case station.berths, station.concourse {
-      [], _ -> Ok(world)
-      [_, ..], None ->
-        Error("station " <> station.id <> " has berths but no concourse")
-      berths, Some(plan) ->
-        list.fold(berths, Ok(world), fn(acc2, berth) {
-          use _ <- result.try(acc2)
-          let label =
-            "station "
-            <> station.id
-            <> " berth ("
-            <> int.to_string(berth.x)
-            <> ","
-            <> int.to_string(berth.y)
-            <> ")"
-          // Concourses are single-deck (index 0); berths land on that plane.
-          case deckplan.deck_at(plan, 0) {
-            Error(Nil) -> Error(label <> ": concourse has no decks")
-            Ok(g) ->
-              case deckplan.is_walkable(g, berth.x, berth.y) {
-                False -> Error(label <> " is not walkable")
-                True ->
-                  case deckplan.is_walkable(g, berth.x, berth.y - 1) {
-                    True -> Error(label <> " has a walkable north neighbor")
-                    False -> Ok(world)
-                  }
-              }
-          }
-        })
-    }
-  })
-}
-
 fn orbit_decoder() -> decode.Decoder(Orbit) {
   use radius <- decode.field("radius", decode.float)
   use period_s <- decode.field("period_s", decode.float)
@@ -485,104 +526,45 @@ fn market_entry_decoder() -> decode.Decoder(MarketEntry) {
   ))
 }
 
-fn station_decoder(reg: Registry) -> decode.Decoder(Station) {
+/// Decode one world station instance: per-instance placement/economy plus a
+/// `class` reference resolved against `classes` (issue #30). The resolved
+/// station carries the class's `dock_radius`/`crane`/`concourse`; berths are
+/// derived from the concourse's `Q` glyphs at use (`station_berths`). An
+/// unknown class id fails the decode.
+fn station_decoder(
+  classes: Dict(String, StationClass),
+) -> decode.Decoder(Station) {
   use id <- decode.field("id", decode.string)
   use name <- decode.field("name", decode.string)
   use parent <- decode.field("parent", decode.string)
   use orbit <- decode.field("orbit", orbit_decoder())
-  use dock_radius <- decode.field("dock_radius", decode.float)
-  use crane <- decode.optional_field("crane", False, decode.bool)
-  use concourse <- decode.optional_field(
-    "concourse",
-    None,
-    decode.optional(deckplan.decoder(reg)),
-  )
+  use class_id <- decode.field("class", decode.string)
   use market <- decode.optional_field(
     "market",
     [],
     decode.list(market_entry_decoder()),
   )
-  use berths <- decode.optional_field(
-    "berths",
-    [],
-    decode.list(berth_decoder()),
-  )
-  decode.success(Station(
-    id: id,
-    name: name,
-    parent: parent,
-    orbit: orbit,
-    dock_radius: dock_radius,
-    crane: crane,
-    concourse: concourse,
-    market: market,
-    berths: berths,
-  ))
-}
-
-/// Decode one authored docking port. Object form:
-/// `{"tile":[x,y], "orientation":F?, "anchor":[ax,ay]?}` — `tile` required,
-/// `orientation`/`anchor` optional (default: side-on north, zero anchor, i.e.
-/// M3.5's centre-pinned side-on mooring). A bare legacy `[x, y]` array is
-/// still accepted and takes those same defaults, so pre-#14 world docs load
-/// unchanged.
-fn berth_decoder() -> decode.Decoder(composite.Berth) {
-  decode.one_of(berth_object_decoder(), or: [berth_tuple_decoder()])
-}
-
-fn berth_object_decoder() -> decode.Decoder(composite.Berth) {
-  use tile <- decode.field("tile", decode.list(decode.int))
-  use orientation <- decode.optional_field(
-    "orientation",
-    composite.default_orientation,
-    decode.float,
-  )
-  use anchor <- decode.optional_field(
-    "anchor",
-    [0.0, 0.0],
-    decode.list(decode.float),
-  )
-  let #(ax, ay) = case anchor {
-    [x, y] -> #(x, y)
-    _ -> #(0.0, 0.0)
-  }
-  case tile {
-    [x, y] ->
-      decode.success(composite.Berth(
-        x: x,
-        y: y,
-        orientation: orientation,
-        anchor_x: ax,
-        anchor_y: ay,
+  case dict.get(classes, class_id) {
+    Ok(sc) ->
+      decode.success(Station(
+        id: id,
+        name: name,
+        parent: parent,
+        orbit: orbit,
+        dock_radius: sc.dock_radius,
+        crane: sc.crane,
+        concourse: Some(sc.concourse),
+        market: market,
       ))
-    _ ->
+    Error(Nil) ->
       decode.failure(
-        composite.Berth(0, 0, composite.default_orientation, 0.0, 0.0),
-        "berth object with a two-element tile [x, y]",
+        Station(id, name, parent, orbit, 0.0, False, None, market),
+        "known station class id (got \"" <> class_id <> "\")",
       )
   }
 }
 
-fn berth_tuple_decoder() -> decode.Decoder(composite.Berth) {
-  use coords <- decode.then(decode.list(decode.int))
-  case coords {
-    [x, y] ->
-      decode.success(composite.Berth(
-        x: x,
-        y: y,
-        orientation: composite.default_orientation,
-        anchor_x: 0.0,
-        anchor_y: 0.0,
-      ))
-    _ ->
-      decode.failure(
-        composite.Berth(0, 0, composite.default_orientation, 0.0, 0.0),
-        "two-element [x, y] array",
-      )
-  }
-}
-
-fn world_decoder(reg: Registry) -> decode.Decoder(World) {
+fn world_decoder(classes: Dict(String, StationClass)) -> decode.Decoder(World) {
   use schema <- decode.field("schema", decode.int)
   use name <- decode.field("name", decode.string)
   use seed <- decode.field("seed", decode.int)
@@ -592,7 +574,10 @@ fn world_decoder(reg: Registry) -> decode.Decoder(World) {
     decode.list(commodity_decoder()),
   )
   use bodies <- decode.field("bodies", decode.list(body_decoder()))
-  use stations <- decode.field("stations", decode.list(station_decoder(reg)))
+  use stations <- decode.field(
+    "stations",
+    decode.list(station_decoder(classes)),
+  )
   use spawn_station <- decode.field("spawn_station", decode.string)
   decode.success(World(
     schema: schema,
@@ -641,6 +626,12 @@ fn encode_market_entry(entry: MarketEntry) -> Json {
   ])
 }
 
+/// Encode a station for the `welcome` wire: the fully RESOLVED station (its
+/// class's concourse/dock_radius/crane inlined) plus its derived berths — NOT
+/// the on-disk `class` reference. The client gets everything it needs to render
+/// without resolving station classes; the class indirection is an on-disk
+/// authoring concern only. (So `encode` and `decode` are intentionally
+/// asymmetric: decode reads a `class` ref, encode emits the resolved station.)
 fn encode_station(station: Station) -> Json {
   json.object([
     #("id", json.string(station.id)),
@@ -651,20 +642,16 @@ fn encode_station(station: Station) -> Json {
     #("crane", json.bool(station.crane)),
     #("concourse", json.nullable(station.concourse, deckplan.encode)),
     #("market", json.array(station.market, encode_market_entry)),
-    #("berths", json.array(station.berths, encode_berth)),
+    #("berths", json.array(station_berths(station), encode_berth)),
   ])
 }
 
+/// A derived berth on the wire: its tile and outward orientation. The moored
+/// pose is computed client-side (sprite anchors) and server-side
+/// (`moored_position`); there is no anchor to send.
 fn encode_berth(berth: composite.Berth) -> Json {
   json.object([
     #("tile", json.preprocessed_array([json.int(berth.x), json.int(berth.y)])),
     #("orientation", json.float(berth.orientation)),
-    #(
-      "anchor",
-      json.preprocessed_array([
-        json.float(berth.anchor_x),
-        json.float(berth.anchor_y),
-      ]),
-    ),
   ])
 }

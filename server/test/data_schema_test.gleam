@@ -16,6 +16,10 @@ const world_schema_path = "schemas/world.schema.json"
 
 const ship_class_schema_path = "schemas/ship_class.schema.json"
 
+const station_class_schema_path = "schemas/station_class.schema.json"
+
+const station_classes_dir = "stationclasses"
+
 const glyphs_schema_path = "schemas/glyphs.schema.json"
 
 const glyphs_path = "glyphs.json"
@@ -61,6 +65,10 @@ pub fn all_worlds_match_schema_test() {
 
 pub fn all_ship_classes_match_schema_test() {
   assert_all_validate(ship_class_schema_path, classes_dir)
+}
+
+pub fn all_station_classes_match_schema_test() {
+  assert_all_validate(station_class_schema_path, station_classes_dir)
 }
 
 pub fn glyph_registry_matches_schema_test() {

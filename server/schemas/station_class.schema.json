@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-06/schema#",
+  "$id": "https://distanthorizon.dev/schemas/station_class.schema.json",
+  "title": "Station class document",
+  "description": "A reusable station design: its concourse deck plan (deck-plan format v3, docs/deckplan-format.md) plus docking characteristics (dock_radius, crane). Worlds reference a station class by id and carry only per-instance placement/economy (issue #30). Derived from the Gleam decoders in server/src/dh_server/stationclass.gleam (station_class_decoder) and server/src/dh_server/deckplan.gleam (decoder, embedded at the top level via decode.then) — those decoders are the source of truth; this schema is documentation and a typo-catcher. additionalProperties is false at every object level even though the decoders ignore unknown fields, precisely so this schema catches typos. Berths are NOT authored here: they derive from the concourse's Q docking-port glyphs (issue #31).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "name", "dock_radius", "decks"],
+  "properties": {
+    "schema": { "type": "integer" },
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "dock_radius": {
+      "type": "number",
+      "description": "decode.float: JSON value must have a decimal point; a bare integer is rejected."
+    },
+    "crane": {
+      "type": "boolean",
+      "description": "Optional field (decode.optional_field, default false). The fast-handling path: container hulls can only trade where crane is true."
+    },
+    "decks": {
+      "type": "array",
+      "description": "The concourse deck plan (usually a single deck). Consoles (b=broker), the spawn tile (s), and berths (Q docking ports) are authored as center glyphs and derived at load.",
+      "items": { "$ref": "#/$defs/deck" }
+    },
+    "consoles": {
+      "type": "array",
+      "description": "Optional. Normally derived from the grid glyphs; the server re-emits a derived list over the wire but hand-authored docs omit it.",
+      "items": { "$ref": "#/$defs/console" }
+    },
+    "spawn": { "$ref": "#/$defs/spawn" }
+  },
+  "$defs": {
+    "deck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "grid"],
+      "properties": {
+        "name": { "type": "string" },
+        "grid": {
+          "type": "array",
+          "description": "3*height rows of 3*width chars: each tile is a 3x3 block (centre = floor/void/stairs/console/dock/spawn; N/E/S/W edge-mids = wall/door/fixture). See docs/deckplan-format.md and server/glyphs.json.",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "console": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "x", "y"],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "type": "string" },
+        "deck": { "type": "integer" },
+        "x": { "type": "integer" },
+        "y": { "type": "integer" }
+      }
+    },
+    "spawn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tile"],
+      "properties": {
+        "deck": { "type": "integer" },
+        "tile": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2
+        }
+      }
+    }
+  }
+}
