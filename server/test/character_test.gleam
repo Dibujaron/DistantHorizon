@@ -31,10 +31,7 @@ fn corridor_void() -> DeckPlan {
 
 fn single_deck(rows: List(String)) -> DeckPlan {
   let assert Ok(g) = deckplan.parse_deck("d", rows)
-  DeckPlan(decks: [g], rooms: [], consoles: [], spawn_deck: 0, spawn_tile: #(
-    0,
-    0,
-  ))
+  DeckPlan(decks: [g], consoles: [], spawn_deck: 0, spawn_tile: #(0, 0))
 }
 
 // Two decks, uniform 3x1, both with a stairs tile at (1,0) — the vertical
@@ -42,13 +39,10 @@ fn single_deck(rows: List(String)) -> DeckPlan {
 fn stairs_plan() -> DeckPlan {
   let assert Ok(upper) = deckplan.parse_deck("upper", stairs_rows())
   let assert Ok(lower) = deckplan.parse_deck("lower", stairs_rows())
-  DeckPlan(
-    decks: [upper, lower],
-    rooms: [],
-    consoles: [],
-    spawn_deck: 0,
-    spawn_tile: #(0, 0),
-  )
+  DeckPlan(decks: [upper, lower], consoles: [], spawn_deck: 0, spawn_tile: #(
+    0,
+    0,
+  ))
 }
 
 fn stairs_rows() -> List(String) {
@@ -64,7 +58,6 @@ fn console_plan() -> DeckPlan {
     deckplan.parse_deck("lower", ["#########", "#       #", "#########"])
   DeckPlan(
     decks: [upper, lower],
-    rooms: [],
     consoles: [
       Console(id: "helm_main", kind: "helm", deck: 0, x: 1, y: 0),
       Console(id: "cargo_main", kind: "cargo", deck: 1, x: 1, y: 0),

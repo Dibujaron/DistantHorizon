@@ -1,4 +1,4 @@
-import dh_server/deckplan.{Console, DeckPlan, Room}
+import dh_server/deckplan.{Console, DeckPlan}
 
 // ------------------------------------------------------------- parsing --
 
@@ -87,7 +87,6 @@ fn stairs_grid() -> deckplan.DeckGrid {
 fn two_deck_plan() -> deckplan.DeckPlan {
   DeckPlan(
     decks: [stairs_grid(), stairs_grid()],
-    rooms: [],
     consoles: [],
     spawn_deck: 0,
     spawn_tile: #(0, 0),
@@ -120,7 +119,6 @@ fn plan() -> deckplan.DeckPlan {
   let assert Ok(g) = deckplan.parse_deck("main", ["      ", "      ", "      "])
   DeckPlan(
     decks: [g],
-    rooms: [Room(id: "r", name: "Room", deck: 0, x: 0, y: 0, w: 2, h: 1)],
     consoles: [Console(id: "desk", kind: "broker", deck: 0, x: 1, y: 0)],
     spawn_deck: 0,
     spawn_tile: #(0, 0),
@@ -145,7 +143,6 @@ pub fn validate_rejects_console_off_walkable_test() {
   let bad =
     DeckPlan(
       decks: [g],
-      rooms: [],
       consoles: [Console(id: "d", kind: "broker", deck: 0, x: 0, y: 0)],
       spawn_deck: 0,
       spawn_tile: #(0, 0),
@@ -156,10 +153,7 @@ pub fn validate_rejects_console_off_walkable_test() {
 pub fn validate_rejects_bad_spawn_tile_test() {
   let assert Ok(g) = deckplan.parse_deck("main", ["   ", " . ", "   "])
   let bad =
-    DeckPlan(decks: [g], rooms: [], consoles: [], spawn_deck: 0, spawn_tile: #(
-      0,
-      0,
-    ))
+    DeckPlan(decks: [g], consoles: [], spawn_deck: 0, spawn_tile: #(0, 0))
   let assert Error(_) = deckplan.validate(bad)
 }
 

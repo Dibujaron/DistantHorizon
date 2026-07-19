@@ -7,7 +7,7 @@
   "additionalProperties": false,
   "required": [
     "schema", "id", "name",
-    "decks", "spawn",
+    "decks",
     "cargo"
   ],
   "properties": {
@@ -18,12 +18,9 @@
       "type": "array",
       "items": { "$ref": "#/$defs/deck" }
     },
-    "rooms": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/room" }
-    },
     "consoles": {
       "type": "array",
+      "description": "Optional. Authored as center glyphs in the grids (h=helm, c=cargo, b=broker, Q=docking port) and derived at load; the server re-emits this list (namespaced, over the wire) but hand-authored docs omit it.",
       "items": { "$ref": "#/$defs/console" }
     },
     "spawn": { "$ref": "#/$defs/spawn" },
@@ -61,23 +58,6 @@
           "description": "3*height rows of 3*width chars: each tile is a 3x3 block (centre = floor/void/stairs; N/E/S/W edge-mids = wall/door/fixture). See docs/deckplan-format.md. Row count and each row's length must be multiples of 3 and consistent (enforced by the Gleam decoder, not by this schema).",
           "items": { "type": "string" }
         }
-      }
-    },
-    "room": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "name", "x", "y", "w", "h"],
-      "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "deck": {
-          "type": "integer",
-          "description": "Which deck index this room sits on (default 0)."
-        },
-        "x": { "type": "integer" },
-        "y": { "type": "integer" },
-        "w": { "type": "integer" },
-        "h": { "type": "integer" }
       }
     },
     "console": {

@@ -4,7 +4,7 @@
 //// decks. Ships moor SIDE-ON (plans rotated 90 CCW).
 
 import dh_server/composite.{Berth, DockedShip, Mooring}
-import dh_server/deckplan.{type DeckPlan, Console, DeckPlan, Room}
+import dh_server/deckplan.{type DeckPlan, Console, DeckPlan}
 import gleam/int
 import gleam/list
 
@@ -17,7 +17,6 @@ fn ship_plan() -> DeckPlan {
   let assert Ok(lower) = deckplan.parse_deck("lower", deck_rows())
   DeckPlan(
     decks: [upper, lower],
-    rooms: [Room(id: "hold", name: "Hold", deck: 1, x: 0, y: 0, w: 2, h: 2)],
     consoles: [
       Console(id: "helm_main", kind: "helm", deck: 0, x: 0, y: 0),
       Console(id: "cargo_main", kind: "cargo", deck: 1, x: 0, y: 1),
@@ -50,9 +49,6 @@ fn concourse() -> DeckPlan {
   let assert Ok(g) = deckplan.parse_deck("concourse", rows)
   DeckPlan(
     decks: [g],
-    rooms: [
-      Room(id: "concourse", name: "Concourse", deck: 0, x: 0, y: 2, w: 5, h: 1),
-    ],
     consoles: [Console(id: "broker_main", kind: "broker", deck: 0, x: 1, y: 2)],
     spawn_deck: 0,
     spawn_tile: #(2, 2),
@@ -143,10 +139,6 @@ pub fn ship_console_ids_are_namespaced_and_deck_remapped_test() {
   // Concourse consoles keep their plain ids on deck 0.
   let assert Ok(broker) = deckplan.find_console(c.plan, "broker_main")
   assert broker.deck == 0
-  // Ship rooms are namespaced and deck-remapped too.
-  let assert Ok(hold) = list.find(c.plan.rooms, fn(r) { r.id == "s3:hold" })
-  assert hold.deck == 0
-  assert list.any(c.plan.rooms, fn(r) { r.id == "concourse" })
 }
 
 pub fn unknown_berth_index_is_an_error_test() {

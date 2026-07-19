@@ -273,7 +273,7 @@ fn walk_down_the_gangway(
   helm_x
 }
 
-/// walk_down_the_gangway, then along the floor to `broker_main` at
+/// walk_down_the_gangway, then along the floor to `broker0` at
 /// composite (10.5, 15.5) — the stitched-space replacement for M3's
 /// stand/walk/disembark.
 fn walk_to_broker(
@@ -468,10 +468,7 @@ fn composite_helm_position(
   // The composite carries the moored (rotated + translated) console — the
   // same lookup production uses at login.
   let assert Ok(helm) =
-    deckplan.find_console(
-      built.plan,
-      composite.namespace_id(ship_id, "helm_main"),
-    )
+    deckplan.find_console(built.plan, composite.namespace_id(ship_id, "helm"))
   #(int.to_float(helm.x) +. 0.5, int.to_float(helm.y) +. 0.5)
 }
 
@@ -487,7 +484,7 @@ pub fn login_lands_in_the_station_space_seated_at_own_helm_test() {
   assert walk_space == "station:meridian_highport"
   let assert Ok(CrewMember(x: x, y: y, seat: seat, ..)) =
     list.find(characters, fn(c) { c.id == char_id })
-  assert seat == Some("s" <> int.to_string(ship_id) <> ":helm_main")
+  assert seat == Some("s" <> int.to_string(ship_id) <> ":helm")
   // Every berth is free at the very first login, so free_berth's pick is a
   // direct hash(seed, "meridian_highport:<ship_id>") mod 3 into
   // [berth_0, berth_1, berth_2]. Derive the picked berth and its mooring
@@ -514,7 +511,7 @@ pub fn dock_while_docked_is_already_docked_test() {
   let client = process.new_subject()
   let assert Ok(#(_ship_id, char_id)) = sim.add_player(s, "ada", client, 1000)
   // Login spawns docked, seated at the ship's own namespaced helm
-  // ("s{ship_id}:helm_main"). Requesting dock from there must report
+  // ("s{ship_id}:helm"). Requesting dock from there must report
   // already-docked, not misread the namespaced seat as "not at helm".
   let assert Error("already_docked") = sim.request_dock(s, char_id, 1000)
 }
@@ -548,7 +545,7 @@ pub fn walking_from_ship_to_concourse_is_just_walking_test_pending_v3walk() {
   // deck, through the airlock, across the berth stub, onto the floor.
   walk_to_broker(s, client, char)
   let assert protocol.SeatResult(ok: True, ..) =
-    sim.request_sit(s, char, "broker_main", 1000)
+    sim.request_sit(s, char, "broker0", 1000)
 }
 
 pub fn undock_splits_bodies_by_tile_test_pending_v3walk() {
@@ -571,7 +568,7 @@ pub fn undock_splits_bodies_by_tile_test_pending_v3walk() {
     receive_walkers_for(pilot, "ship:" <> int.to_string(ship_p))
   let assert Ok(CrewMember(x: x, y: y, seat: seat, ..)) =
     list.find(crew, fn(c) { c.id == char_p })
-  assert seat == Some("helm_main")
+  assert seat == Some("helm")
   assert x == 6.5
   assert y == 4.5
   // grace still walks the station space, which no longer moors ship_p.
@@ -732,7 +729,7 @@ pub fn seat_occupancy_is_scoped_to_the_shared_space_test() {
   // grace's sit attempt. grace stands first, then tries to take ada's helm.
   let assert protocol.SeatResult(ok: True, ..) =
     sim.request_stand(s, char_b, 1000)
-  let helm_a = "s" <> int.to_string(ship_a) <> ":helm_main"
+  let helm_a = "s" <> int.to_string(ship_a) <> ":helm"
   let result = sim.request_sit(s, char_b, helm_a, 1000)
   assert result.ok == False
   // Too far (grace is docked at a different berth than ada's helm) or
@@ -837,7 +834,7 @@ pub fn buy_delivers_over_time_then_sell_pays_out_test_pending_v3walk() {
   // disembark.
   walk_to_broker(s, client, char)
   let assert protocol.SeatResult(ok: True, ..) =
-    sim.request_sit(s, char, "broker_main", 1000)
+    sim.request_sit(s, char, "broker0", 1000)
 
   let buy = sim.request_buy(s, char, "machinery", 2, 1000)
   assert buy.ok
@@ -888,7 +885,7 @@ pub fn undock_is_blocked_mid_transfer_test_pending_v3walk() {
   // Walk to the broker and start a long inbound transfer on ada's own ship.
   walk_to_broker(s, client, char)
   let assert protocol.SeatResult(ok: True, ..) =
-    sim.request_sit(s, char, "broker_main", 1000)
+    sim.request_sit(s, char, "broker0", 1000)
   let buy = sim.request_buy(s, char, "machinery", 20, 1000)
   assert buy.ok
   // Walk back to the helm and sit (the transfer keeps running while docked).
@@ -896,7 +893,7 @@ pub fn undock_is_blocked_mid_transfer_test_pending_v3walk() {
     sim.request_stand(s, char, 1000)
   walk_broker_to_helm(s, client, char, helm_x)
   let assert protocol.SeatResult(ok: True, ..) =
-    sim.request_sit(s, char, "s" <> int.to_string(ship_a) <> ":helm_main", 1000)
+    sim.request_sit(s, char, "s" <> int.to_string(ship_a) <> ":helm", 1000)
   // ada cannot leave mid-load...
   assert sim.request_undock(s, char, 1000) == Error("transfer_in_progress")
   // ...until the robots finish (20 units at 1 u/s).

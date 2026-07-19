@@ -9,7 +9,8 @@ pub fn load_bundled_mockingbird_test() {
   assert c.id == "mockingbird"
   // Three decks: Upper, Mezzanine, Lower.
   assert list.length(c.plan.decks) == 3
-  assert list.any(c.plan.rooms, fn(r) { r.id == "dock" })
+  // The docking port (`Q` glyph) derives a "dock" console.
+  let assert Ok(_) = deckplan.find_console_of_kind(c.plan, "dock")
   let assert Ok(_) = shipclass.helm_console(c)
 }
 
@@ -23,7 +24,7 @@ pub fn decode_encode_round_trips_test() {
 pub fn helm_console_is_helm_main_test() {
   let assert Ok(c) = shipclass.load("classes/mockingbird.json")
   let assert Ok(console) = shipclass.helm_console(c)
-  assert console.id == "helm_main"
+  assert console.id == "helm"
   assert console.kind == "helm"
 }
 
@@ -45,7 +46,6 @@ fn valid_doc() -> String {
   "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
   <> "\"decks\":[{\"name\":\"main\",\"grid\":"
   <> "[\"#########\",\"#       #\",\"#########\"]}],"
-  <> "\"rooms\":[],"
   <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":1,\"y\":0}],"
   <> "\"spawn\":{\"deck\":0,\"tile\":[1,0]},"
   <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
@@ -59,7 +59,6 @@ pub fn decode_rejects_ragged_deck_rows_test() {
   let bad =
     "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
     <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"######\",\"# #\"]}],"
-    <> "\"rooms\":[],"
     <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":0,\"y\":0}],"
     <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
     <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
@@ -70,7 +69,6 @@ pub fn decode_rejects_non_multiple_of_three_test() {
   let bad =
     "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
     <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"####\",\"#  #\",\"####\"]}],"
-    <> "\"rooms\":[],"
     <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":0,\"y\":0}],"
     <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
     <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
@@ -82,7 +80,6 @@ pub fn decode_rejects_console_off_walkable_tile_test() {
   let bad =
     "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
     <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"######\",\"#   . \",\"######\"]}],"
-    <> "\"rooms\":[],"
     <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":1,\"y\":0}],"
     <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
     <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
@@ -93,7 +90,6 @@ pub fn decode_rejects_spawn_tile_off_walkable_tile_test() {
   let bad =
     "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
     <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"######\",\"#   . \",\"######\"]}],"
-    <> "\"rooms\":[],"
     <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":0,\"y\":0}],"
     <> "\"spawn\":{\"deck\":0,\"tile\":[1,0]},"
     <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
@@ -104,7 +100,6 @@ pub fn decode_rejects_missing_helm_console_test() {
   let bad =
     "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
     <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"######\",\"#    #\",\"######\"]}],"
-    <> "\"rooms\":[],"
     <> "\"consoles\":[{\"id\":\"cargo_main\",\"kind\":\"cargo\",\"deck\":0,\"x\":1,\"y\":0}],"
     <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
     <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
@@ -125,7 +120,6 @@ pub fn decode_rejects_unknown_handling_test() {
   let bad =
     "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
     <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"######\",\"#    #\",\"######\"]}],"
-    <> "\"rooms\":[],"
     <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":1,\"y\":0}],"
     <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
     <> "\"cargo\":{\"capacity\":10,\"handling\":\"antigrav\"}}"
@@ -136,7 +130,6 @@ pub fn decode_rejects_missing_cargo_block_test() {
   let bad =
     "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
     <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"######\",\"#    #\",\"######\"]}],"
-    <> "\"rooms\":[],"
     <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":1,\"y\":0}],"
     <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]}}"
   let assert Error(_) = shipclass.decode(bad)

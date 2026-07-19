@@ -124,7 +124,7 @@ pub fn encode_welcome_contains_character_id_and_ship_class_test() {
   assert string.contains(text, "\"decks\":")
   assert string.contains(text, "\"spawn\":")
   assert string.contains(text, "\"consoles\":")
-  assert string.contains(text, "helm_main")
+  assert string.contains(text, "helm")
 }
 
 pub fn encode_error_test() {
@@ -285,13 +285,10 @@ pub fn encode_walkers_test() {
 pub fn encode_space_test() {
   let assert Ok(g) = deckplan.parse_deck("d", ["   ", "   ", "   "])
   let plan =
-    deckplan.DeckPlan(
-      decks: [g],
-      rooms: [],
-      consoles: [],
-      spawn_deck: 0,
-      spawn_tile: #(0, 0),
-    )
+    deckplan.DeckPlan(decks: [g], consoles: [], spawn_deck: 0, spawn_tile: #(
+      0,
+      0,
+    ))
   let you =
     character.Character(
       id: 4,

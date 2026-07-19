@@ -51,11 +51,35 @@ room       (double wall
 | (space) | Open floor — walkable |
 | `.` | Void — outside the hull; not a tile |
 | `x` | Stairs / ladder — walkable, and connects to the vertically-aligned tile on the adjacent deck |
+| `h` | Helm console (walkable floor) |
+| `c` | Cargo console (walkable floor) |
+| `b` | Broker console — station concourses (walkable floor) |
+| `Q` | Docking port / airlock (walkable floor) — a mooring/boarding tile |
+| `s` | Spawn / arrival tile (walkable floor) — where crew appear ashore |
 
-Consoles and rooms are **not** encoded in the grid — they keep their structured
-lists (`rooms`, `consoles`), because they carry ids, names, and kinds a single
-glyph can't. The grid owns structure (floor / void / walls / doors / fixtures /
-stairs); the lists own labelled metadata, matched to the grid by position.
+The console/airlock/spawn glyphs are an **authoring** convenience: **the map is
+the single source of truth**, so the position can't drift from a separate list.
+At load the server derives a structured console list (ids auto-generated from
+the kind — `helm`, or `broker0`/`broker1` when repeated) and the spawn/mooring
+tile from these glyphs. A letter in the **center** is a console; the same letter
+on an **edge-mid** is a fixture — position disambiguates. The kind legend is
+extensible (`h`/`c`/`b`/`Q` today).
+
+A **docking port** (`Q`) is a full tile that moors to a station or another hull.
+It must have **at least one door (`=`) on an edge that faces void** — the *outer*
+door the gangway connects through; other doors/shape are free (an L-bend, three
+doors, whatever). A ship's mooring/spawn tile is derived as the docking port
+whose outer door faces void on the **port (west)** side (the side that meets the
+gangway under side-on mooring).
+
+The wire form carries the derived, **namespaced** console list explicitly
+(`s3:helm`) — the composite needs ids that glyphs can't express — so when
+`consoles`/`spawn` are present on an object they win; otherwise they're derived
+from the glyphs. Hand-authored docs omit them.
+
+Rooms are gone: there is no `rooms` list. Console prompt labels derive from the
+console kind, and station berth signage is detected structurally (a walkable
+concourse tile with void directly to its north is a berth mouth).
 
 ### Edges (N / E / S / W mid characters) — what's on that side
 
@@ -112,17 +136,17 @@ own deck), and Lower (bow ramp, main hold, docking deck).
   "id": "mockingbird",
   "name": "Mockingbird",
   "decks": [
-    { "name": "Upper",     "grid": [ /* rows of 3×W chars */ ] },
-    { "name": "Mezzanine", "grid": [ /* ... */ ] },
-    { "name": "Lower",     "grid": [ /* ... */ ] }
+    { "name": "Upper",     "grid": [ /* rows of 3×W chars; `h` marks the helm */ ] },
+    { "name": "Mezzanine", "grid": [ /* ... `Q` marks the docking ports ... */ ] },
+    { "name": "Lower",     "grid": [ /* ... `c` marks the cargo console ... */ ] }
   ],
-  "rooms":    [ { "id": "mess", "name": "Mess", "deck": 0, "x": 3, "y": 9, "w": 8, "h": 4 } ],
-  "consoles": [ { "id": "helm_main", "kind": "helm", "deck": 0, "x": 6, "y": 4 } ],
-  "spawn":    { "deck": 2, "tile": [5, 22] },
   "cargo":    { "capacity": 40, "handling": "breakbulk" },
   "dock_port_orientation": 1.5707963267948966
 }
 ```
+
+No `rooms`, `consoles`, or `spawn` lists — those are read from the grid glyphs.
+(`cargo` here is the hold's capacity/handling block, not the cargo console.)
 
 - A deck's tile dimensions are derived from its grid: `width = len(row) / 3`,
   `height = len(grid) / 3`. Every row in a deck must be the same length, and row

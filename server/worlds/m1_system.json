@@ -95,44 +95,6 @@
             ]
           }
         ],
-        "rooms": [
-          {
-            "id": "concourse",
-            "name": "Concourse",
-            "x": 1,
-            "y": 2,
-            "w": 92,
-            "h": 3,
-            "deck": 0
-          },
-          {
-            "id": "berth_1",
-            "name": "Berth 1",
-            "x": 22,
-            "y": 1,
-            "w": 1,
-            "h": 1,
-            "deck": 0
-          },
-          {
-            "id": "berth_2",
-            "name": "Berth 2",
-            "x": 54,
-            "y": 1,
-            "w": 1,
-            "h": 1,
-            "deck": 0
-          },
-          {
-            "id": "berth_3",
-            "name": "Berth 3",
-            "x": 86,
-            "y": 1,
-            "w": 1,
-            "h": 1,
-            "deck": 0
-          }
-        ],
         "consoles": [
           {
             "id": "broker_main",
@@ -251,26 +213,6 @@
               " .  .  .  .  .  .  .  .  .  .  .  . ",
               "                                    "
             ]
-          }
-        ],
-        "rooms": [
-          {
-            "id": "concourse",
-            "name": "Concourse",
-            "x": 1,
-            "y": 2,
-            "w": 10,
-            "h": 2,
-            "deck": 0
-          },
-          {
-            "id": "berth_1",
-            "name": "Berth 1",
-            "x": 5,
-            "y": 1,
-            "w": 1,
-            "h": 1,
-            "deck": 0
           }
         ],
         "consoles": [

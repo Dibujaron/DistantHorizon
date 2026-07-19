@@ -190,23 +190,6 @@
         }
       }
     },
-    "room": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "name", "x", "y", "w", "h"],
-      "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "deck": {
-          "type": "integer",
-          "description": "Which deck index this room sits on (default 0)."
-        },
-        "x": { "type": "integer" },
-        "y": { "type": "integer" },
-        "w": { "type": "integer" },
-        "h": { "type": "integer" }
-      }
-    },
     "console": {
       "type": "object",
       "additionalProperties": false,
@@ -246,18 +229,15 @@
     "deckplan": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["decks", "spawn"],
+      "required": ["decks"],
       "properties": {
         "decks": {
           "type": "array",
           "items": { "$ref": "#/$defs/deck" }
         },
-        "rooms": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/room" }
-        },
         "consoles": {
           "type": "array",
+          "description": "Optional. Authored as center glyphs (h/c/b/Q) and derived at load; the server re-emits it (namespaced) over the wire.",
           "items": { "$ref": "#/$defs/console" }
         },
         "spawn": { "$ref": "#/$defs/spawn" }

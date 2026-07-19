@@ -10,10 +10,12 @@
 //// (shipclass.gleam) and station concourses (world.gleam) are built from a
 //// `DeckPlan`; the same parser runs server-side and (mirrored) client-side.
 
+import gleam/dict
 import gleam/dynamic/decode
 import gleam/int
 import gleam/json.{type Json}
 import gleam/list
+import gleam/option.{None, Some}
 import gleam/string
 
 /// What a tile's edge carries. `Open` is passable; `Wall` and `Fixture`
@@ -57,28 +59,48 @@ pub type DeckGrid {
   )
 }
 
-/// A labelled rectangle of tiles on one deck, for rendering/labels only (no
-/// door graph). `deck` is the deck index it lives on.
-pub type Room {
-  Room(id: String, name: String, deck: Int, x: Int, y: Int, w: Int, h: Int)
-}
-
 /// A single-tile interactable on one deck. `kind` is e.g. `"helm"`,
-/// `"cargo"` or `"broker"`; `deck` is the deck index it lives on.
+/// `"cargo"` or `"broker"`; `deck` is the deck index it lives on. Consoles
+/// are authored as center glyphs in the deck grid (see `console_kind`) and
+/// derived at parse time; `id` is auto-generated from the kind.
 pub type Console {
   Console(id: String, kind: String, deck: Int, x: Int, y: Int)
 }
 
-/// A whole interior: its decks, the labelled rooms/consoles that sit on
-/// them, and where arriving characters appear (deck + tile).
+/// A whole interior: its decks, the consoles that sit on them, and where
+/// arriving characters appear (deck + tile). Consoles and the spawn tile are
+/// authored as center glyphs in the grids and derived at parse time.
 pub type DeckPlan {
   DeckPlan(
     decks: List(DeckGrid),
-    rooms: List(Room),
     consoles: List(Console),
     spawn_deck: Int,
     spawn_tile: #(Int, Int),
   )
+}
+
+/// The console kind a center glyph denotes, or `Error(Nil)` if the glyph is
+/// not a console (plain floor/void/stairs/spawn). Extensible legend.
+pub fn console_kind(glyph: String) -> Result(String, Nil) {
+  case glyph {
+    "h" -> Ok("helm")
+    "c" -> Ok("cargo")
+    "b" -> Ok("broker")
+    "Q" -> Ok("dock")
+    _ -> Error(Nil)
+  }
+}
+
+/// The center glyph for a console kind (inverse of `console_kind`), for
+/// re-serialising an authored grid. Empty string if the kind has no glyph.
+pub fn console_glyph(kind: String) -> String {
+  case kind {
+    "helm" -> "h"
+    "cargo" -> "c"
+    "broker" -> "b"
+    "dock" -> "Q"
+    _ -> ""
+  }
 }
 
 // ---------------------------------------------------------------- parse --
@@ -338,17 +360,12 @@ pub fn tile_center(x: Int, y: Int) -> #(Float, Float) {
 // ------------------------------------------------------------- validate --
 
 /// Geometry validation shared by every deck-plan host: at least one deck,
-/// every console and room sits on a valid deck index with the console on a
-/// walkable tile, and the spawn deck/tile is walkable. Host-specific console
-/// requirements (a ship needs a helm, a trading concourse a broker) live
-/// with the host document.
+/// every console sits on a valid deck index on a walkable tile, and the spawn
+/// deck/tile is walkable. Host-specific console requirements (a ship needs a
+/// helm, a trading concourse a broker) live with the host document.
 pub fn validate(plan: DeckPlan) -> Result(DeckPlan, String) {
   let deck_count = list.length(plan.decks)
   use <- guard(deck_count > 0, "deck plan has no decks")
-  use <- guard(
-    !list.any(plan.rooms, fn(r) { r.deck < 0 || r.deck >= deck_count }),
-    "a room references an out-of-range deck",
-  )
   use _ <- try_each(plan.consoles, fn(c) {
     case deck_at(plan, c.deck) {
       Error(Nil) -> Error("a console references an out-of-range deck")
@@ -394,26 +411,160 @@ fn try_each(
 
 // -------------------------------------------------------- decode/encode --
 
-/// Decode the deck-plan fields (`decks`/`rooms`/`consoles`/`spawn`) from the
-/// current JSON object — ship class docs carry them at their top level,
-/// station concourses as a nested object; the same decoder serves both.
+/// Decode the deck-plan fields from the current JSON object — ship class docs
+/// carry them at their top level, station concourses as a nested object.
+///
+/// Consoles and the spawn/mooring tile are AUTHORED as center glyphs in the
+/// deck grids (`h`/`c`/`b` consoles, `Q` docking ports; `s` a bare spawn tile)
+/// and derived at parse time. The wire form (encode) instead carries the
+/// derived, namespaced `consoles` + `spawn` explicitly — the composite needs
+/// namespaced ids that glyphs can't express — so when those fields are present
+/// they win; otherwise they are derived from the glyphs.
 pub fn decoder() -> decode.Decoder(DeckPlan) {
-  use decks <- decode.field("decks", decode.list(deck_grid_decoder()))
-  use rooms <- decode.optional_field("rooms", [], decode.list(room_decoder()))
-  use consoles <- decode.optional_field(
+  use entries <- decode.field("decks", decode.list(deck_entry_decoder()))
+  use consoles_override <- decode.optional_field(
     "consoles",
     [],
     decode.list(console_decoder()),
   )
-  use spawn <- decode.field("spawn", spawn_decoder())
-  let #(spawn_deck, spawn_tile) = spawn
+  use spawn_override <- decode.optional_field(
+    "spawn",
+    None,
+    decode.optional(spawn_decoder()),
+  )
+  let decks = list.map(entries, fn(e) { e.0 })
+  let #(derived_consoles, derived_spawn) = derive_markers(entries)
+  let consoles = case consoles_override {
+    [] -> derived_consoles
+    _ -> consoles_override
+  }
+  let #(spawn_deck, spawn_tile) = case spawn_override {
+    Some(s) -> s
+    None -> derived_spawn
+  }
   decode.success(DeckPlan(
     decks: decks,
-    rooms: rooms,
     consoles: consoles,
     spawn_deck: spawn_deck,
     spawn_tile: spawn_tile,
   ))
+}
+
+/// Derive the console list (auto-generated ids) and the spawn/mooring tile
+/// from the authored center glyphs across every deck. The mooring tile is the
+/// docking port (`Q`) whose outer door faces void on the port (west) side;
+/// failing that, any `s` spawn tile, or the first docking port.
+fn derive_markers(
+  entries: List(#(DeckGrid, List(String))),
+) -> #(List(Console), #(Int, #(Int, Int))) {
+  let scanned =
+    list.index_map(entries, fn(entry, deck) { scan_markers(entry.1, deck) })
+  let raw_consoles = list.flat_map(scanned, fn(s) { s.0 })
+  let spawn_glyphs = list.flat_map(scanned, fn(s) { s.1 })
+  let consoles = assign_console_ids(raw_consoles)
+  let spawn = derive_spawn(entries, consoles, spawn_glyphs)
+  #(consoles, spawn)
+}
+
+/// Scan one deck's rows for console markers `#(kind, deck, x, y)` and bare
+/// spawn tiles `#(deck, x, y)`, in row-major order.
+fn scan_markers(
+  rows: List(String),
+  deck: Int,
+) -> #(List(#(String, Int, Int, Int)), List(#(Int, Int, Int))) {
+  let width = case list.first(rows) {
+    Ok(r) -> string.length(r) / 3
+    Error(Nil) -> 0
+  }
+  let height = list.length(rows) / 3
+  let cells = list.map(rows, string.to_graphemes)
+  list.fold(range(0, height), #([], []), fn(acc, y) {
+    list.fold(range(0, width), acc, fn(inner, x) {
+      let #(cs, sp) = inner
+      let ch = cell_at(cells, 3 * y + 1, 3 * x + 1)
+      case console_kind(ch) {
+        Ok(kind) -> #(list.append(cs, [#(kind, deck, x, y)]), sp)
+        Error(Nil) ->
+          case ch {
+            "s" -> #(cs, list.append(sp, [#(deck, x, y)]))
+            _ -> inner
+          }
+      }
+    })
+  })
+}
+
+/// Assign each raw console marker an id: its kind when unique on the plan
+/// (`helm`, `cargo`), or `kind` + running index when repeated (`broker0`,
+/// `dock1`).
+fn assign_console_ids(
+  markers: List(#(String, Int, Int, Int)),
+) -> List(Console) {
+  let totals =
+    list.fold(markers, dict.new(), fn(d, m) {
+      dict.insert(d, m.0, count_of(d, m.0) + 1)
+    })
+  let #(out, _) =
+    list.fold(markers, #([], dict.new()), fn(acc, m) {
+      let #(built, seen) = acc
+      let #(kind, deck, x, y) = m
+      let i = count_of(seen, kind)
+      let id = case count_of(totals, kind) > 1 {
+        True -> kind <> int.to_string(i)
+        False -> kind
+      }
+      #(
+        [Console(id: id, kind: kind, deck: deck, x: x, y: y), ..built],
+        dict.insert(seen, kind, i + 1),
+      )
+    })
+  list.reverse(out)
+}
+
+fn count_of(d: dict.Dict(String, Int), key: String) -> Int {
+  case dict.get(d, key) {
+    Ok(n) -> n
+    Error(Nil) -> 0
+  }
+}
+
+fn derive_spawn(
+  entries: List(#(DeckGrid, List(String))),
+  consoles: List(Console),
+  spawn_glyphs: List(#(Int, Int, Int)),
+) -> #(Int, #(Int, Int)) {
+  let docks = list.filter(consoles, fn(c) { c.kind == "dock" })
+  let mooring =
+    list.find(docks, fn(c) {
+      case grid_of(entries, c.deck) {
+        Ok(g) ->
+          edge_in(g, c.x, c.y, W) == Door && tile_at(g, c.x - 1, c.y) == Void
+        Error(Nil) -> False
+      }
+    })
+  case mooring {
+    Ok(c) -> #(c.deck, #(c.x, c.y))
+    Error(Nil) ->
+      case spawn_glyphs, docks {
+        [#(d, x, y), ..], _ -> #(d, #(x, y))
+        [], [c, ..] -> #(c.deck, #(c.x, c.y))
+        [], [] -> #(0, #(0, 0))
+      }
+  }
+}
+
+fn grid_of(
+  entries: List(#(DeckGrid, List(String))),
+  deck: Int,
+) -> Result(DeckGrid, Nil) {
+  case deck >= 0 {
+    False -> Error(Nil)
+    True ->
+      case list.drop(entries, deck) |> list.first {
+        Ok(entry) -> Ok(entry.0)
+        Error(Nil) -> Error(Nil)
+      }
+  }
 }
 
 /// The deck-plan fields as a key/value list, for hosts that embed them at
@@ -422,7 +573,6 @@ pub fn decoder() -> decode.Decoder(DeckPlan) {
 pub fn encode_fields(plan: DeckPlan) -> List(#(String, Json)) {
   [
     #("decks", json.array(plan.decks, encode_deck)),
-    #("rooms", json.array(plan.rooms, encode_room)),
     #("consoles", json.array(plan.consoles, encode_console)),
     #("spawn", encode_spawn(plan.spawn_deck, plan.spawn_tile)),
   ]
@@ -433,28 +583,20 @@ pub fn encode(plan: DeckPlan) -> Json {
   json.object(encode_fields(plan))
 }
 
-fn deck_grid_decoder() -> decode.Decoder(DeckGrid) {
+/// Decode one deck object into its parsed grid AND its raw rows (the rows are
+/// re-scanned for console/spawn glyphs by `derive_markers`).
+fn deck_entry_decoder() -> decode.Decoder(#(DeckGrid, List(String))) {
   use name <- decode.field("name", decode.string)
   use grid <- decode.field("grid", decode.list(decode.string))
   case parse_deck(name, grid) {
-    Ok(g) -> decode.success(g)
-    Error(e) -> decode.failure(empty_grid(name), "valid deck grid: " <> e)
+    Ok(g) -> decode.success(#(g, grid))
+    Error(e) ->
+      decode.failure(#(empty_grid(name), []), "valid deck grid: " <> e)
   }
 }
 
 fn empty_grid(name: String) -> DeckGrid {
   DeckGrid(name: name, width: 0, height: 0, tiles: [], edges: [])
-}
-
-fn room_decoder() -> decode.Decoder(Room) {
-  use id <- decode.field("id", decode.string)
-  use name <- decode.field("name", decode.string)
-  use deck <- decode.optional_field("deck", 0, decode.int)
-  use x <- decode.field("x", decode.int)
-  use y <- decode.field("y", decode.int)
-  use w <- decode.field("w", decode.int)
-  use h <- decode.field("h", decode.int)
-  decode.success(Room(id: id, name: name, deck: deck, x: x, y: y, w: w, h: h))
 }
 
 fn console_decoder() -> decode.Decoder(Console) {
@@ -530,18 +672,6 @@ fn corner(a: Edge, b: Edge) -> String {
     True -> "#"
     False -> " "
   }
-}
-
-fn encode_room(room: Room) -> Json {
-  json.object([
-    #("id", json.string(room.id)),
-    #("name", json.string(room.name)),
-    #("deck", json.int(room.deck)),
-    #("x", json.int(room.x)),
-    #("y", json.int(room.y)),
-    #("w", json.int(room.w)),
-    #("h", json.int(room.h)),
-  ])
 }
 
 fn encode_console(console: Console) -> Json {

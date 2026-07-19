@@ -16,7 +16,7 @@
 
 import dh_server/deckplan.{
   type DeckGrid, type DeckPlan, type Edge, type Tile, Console, DeckGrid,
-  DeckPlan, Floor, Open, Room, Void,
+  DeckPlan, Floor, Open, Void,
 }
 import gleam/int
 import gleam/list
@@ -284,17 +284,13 @@ pub fn build(
     })
   let decks = [deck0, ..extra_decks]
 
-  let rooms = compose_rooms(concourse, placed, moorings, shift_x, shift_y)
   let consoles = compose_consoles(concourse, placed, moorings, shift_x, shift_y)
   let #(spawn_x, spawn_y) = concourse.spawn_tile
   let plan =
-    DeckPlan(
-      decks: decks,
-      rooms: rooms,
-      consoles: consoles,
-      spawn_deck: 0,
-      spawn_tile: #(spawn_x + shift_x, spawn_y + shift_y),
-    )
+    DeckPlan(decks: decks, consoles: consoles, spawn_deck: 0, spawn_tile: #(
+      spawn_x + shift_x,
+      spawn_y + shift_y,
+    ))
   case deckplan.validate(plan) {
     Error(e) -> Error("invalid composite: " <> e)
     Ok(plan) ->
@@ -488,38 +484,6 @@ fn lift_deck(
   grid_from_cells(src.name, width, height, cells)
 }
 
-fn compose_rooms(
-  concourse: DeckPlan,
-  placed: List(Placed),
-  moorings: List(Mooring),
-  shift_x: Int,
-  shift_y: Int,
-) -> List(deckplan.Room) {
-  let concourse_rooms =
-    list.map(concourse.rooms, fn(r) {
-      Room(..r, deck: 0, x: r.x + shift_x, y: r.y + shift_y)
-    })
-  let ship_rooms =
-    list.flat_map(placed, fn(p) {
-      let sw = plan_width(p.ship.plan)
-      let mooring = mooring_for(moorings, p.ship.ship_id)
-      list.map(p.ship.plan.rooms, fn(r) {
-        // Rotate the room rect, then translate into the composite frame.
-        let #(rx, ry, rw, rh) = rotate_rect(r.x, r.y, r.w, r.h, sw)
-        Room(
-          id: namespace_id(p.ship.ship_id, r.id),
-          name: r.name,
-          deck: composite_deck_of(mooring, r.deck),
-          x: rx + p.dx + shift_x,
-          y: ry + p.dy + shift_y,
-          w: rw,
-          h: rh,
-        )
-      })
-    })
-  list.append(concourse_rooms, ship_rooms)
-}
-
 fn compose_consoles(
   concourse: DeckPlan,
   placed: List(Placed),
@@ -582,18 +546,6 @@ fn rotate_ccw_grid(g: DeckGrid) -> DeckGrid {
 /// Rotate a point `(x, y)` in a width-`w` grid 90° CCW: `(y, w-1-x)`.
 fn rotate_point(x: Int, y: Int, w: Int) -> #(Int, Int) {
   #(y, w - 1 - x)
-}
-
-/// Rotate a rectangle 90° CCW in a width-`w` grid (matches `rotate_point` on
-/// the top-left corner; width/height swap).
-fn rotate_rect(
-  x: Int,
-  y: Int,
-  rw: Int,
-  rh: Int,
-  w: Int,
-) -> #(Int, Int, Int, Int) {
-  #(y, w - x - rw, rh, rw)
 }
 
 // -------------------------------------------------------------- cells --
