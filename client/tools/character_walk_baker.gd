@@ -136,6 +136,8 @@ func _build_frames(src: Image, cfg: Dictionary, poses: Array) -> Array:
 	var arm_R := Image.new()
 	if cut_arms:
 		# Carry the arms as their own pieces so they swing; leave the shoulders.
+		# Their vacated slot is the body's outer edge — showing through to
+		# nothing there is correct.
 		arm_L = src.get_region(arm_l)
 		arm_R = src.get_region(arm_r)
 		_erase(body, arm_l)
@@ -144,6 +146,8 @@ func _build_frames(src: Image, cfg: Dictionary, poses: Array) -> Array:
 	for p in poses:
 		var cell := Image.create(cell_w, cell_h, false, Image.FORMAT_RGBA8)
 		var origin := Vector2i(PAD_X, PAD_TOP)
+		# Body (arm-less when cut) first; legs over the pelvis seam; arms over
+		# the shoulders. Arms inherit the body's shift so they stay attached.
 		cell.blend_rect(body, Rect2i(Vector2i.ZERO, body_rect.size), origin + p.body)
 		cell.blend_rect(src, legL_rect, origin + legL_rect.position + p.legL)
 		cell.blend_rect(src, legR_rect, origin + legR_rect.position + p.legR)
