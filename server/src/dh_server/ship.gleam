@@ -84,20 +84,23 @@ fn sin(x: Float) -> Float
 
 /// A new ship, docked at `world.spawn_station`, pinned to that station's
 /// position and velocity at sim time `t`, holding the given berth index.
-/// `ship_port` is the docking ship class's own `dock_port_orientation`, used
-/// to derive the moored heading (#14).
+/// `ship_port` is the docking ship class's own `dock_port_orientation` (moored
+/// heading, #14); `standoff` is its `dock_standoff` (moored position, #31).
 pub fn spawn_docked(
   id: Int,
   world: World,
   t: Float,
   berth: Int,
   ship_port: Float,
+  standoff: Float,
 ) -> Ship {
   let station_id = world.spawn_station
-  // Moored at the berth's pose (station centre + its world anchor), holding
-  // the orientation-derived moored heading — not pinned at the bare centre,
-  // so the exterior hull sits at its berth and undocks in place (#13/#14).
-  let #(x, y, vx, vy) = world.moored_position(world, station_id, berth, t)
+  // Moored at the berth's pose (station centre + berth offset + standoff),
+  // holding the orientation-derived moored heading — not pinned at the bare
+  // centre, so the exterior hull sits at its berth and undocks in place
+  // (#13/#14/#31).
+  let #(x, y, vx, vy) =
+    world.moored_position(world, station_id, berth, standoff, t)
   Ship(
     id: id,
     x: x,
@@ -128,14 +131,15 @@ pub fn set_controls(ship: Ship, rotate: Float, thrust: Float) -> Ship {
 /// of this tick, used to evaluate rails and gravity). A docked ship is
 /// pinned to its station's analytic position/velocity and ignores its
 /// controls; a flying ship integrates thrust + gravity.
-pub fn step(ship: Ship, world: World, t: Float) -> Ship {
+pub fn step(ship: Ship, world: World, t: Float, standoff: Float) -> Ship {
   case ship.dock {
     Docked(station_id, berth) -> {
-      // Pinned to the berth's moored pose (station centre + world anchor,
-      // riding the station's rail velocity). Heading is left untouched: it
-      // was set to the moored heading at dock/spawn and a docked hull never
-      // rotates, so it persists across every pinned tick.
-      let #(x, y, vx, vy) = world.moored_position(world, station_id, berth, t)
+      // Pinned to the berth's moored pose (station centre + berth offset +
+      // standoff, riding the station's rail velocity). Heading is left
+      // untouched: it was set to the moored heading at dock/spawn and a docked
+      // hull never rotates, so it persists across every pinned tick.
+      let #(x, y, vx, vy) =
+        world.moored_position(world, station_id, berth, standoff, t)
       Ship(..ship, x: x, y: y, vx: vx, vy: vy)
     }
     Flying -> {
@@ -165,6 +169,7 @@ pub fn try_dock(
   t: Float,
   claim_berth: fn(String) -> Result(Int, String),
   ship_port: Float,
+  standoff: Float,
 ) -> Result(Ship, String) {
   case ship.dock {
     Docked(_, _) -> Error("already_docked")
@@ -186,7 +191,7 @@ pub fn try_dock(
                 // heading read correctly the moment the dock lands.
                 Ok(berth) -> {
                   let #(mx, my, mvx, mvy) =
-                    world.moored_position(world, station_id, berth, t)
+                    world.moored_position(world, station_id, berth, standoff, t)
                   Ok(
                     Ship(
                       ..ship,
@@ -217,12 +222,18 @@ pub fn try_dock(
 /// + the berth's world anchor) on the station's rail velocity, heading
 /// unchanged — and set flying. No teleport toward the station centre (#13):
 /// the hull leaves from its berth and drifts out on the station's velocity.
-pub fn undock(ship: Ship, world: World, t: Float) -> Result(Ship, String) {
+pub fn undock(
+  ship: Ship,
+  world: World,
+  t: Float,
+  standoff: Float,
+) -> Result(Ship, String) {
   case ship.dock {
     Flying -> Error("not_docked")
     Docked(_, _) if ship.transfers != [] -> Error("transfer_in_progress")
     Docked(station_id, berth) -> {
-      let #(x, y, vx, vy) = world.moored_position(world, station_id, berth, t)
+      let #(x, y, vx, vy) =
+        world.moored_position(world, station_id, berth, standoff, t)
       Ok(Ship(..ship, x: x, y: y, vx: vx, vy: vy, dock: Flying))
     }
   }

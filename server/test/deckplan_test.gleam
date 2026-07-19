@@ -1,5 +1,36 @@
 import dh_server/deckplan.{Console, DeckPlan}
 
+// ------------------------------------------------- docking ports (#31) --
+
+pub fn docking_ports_north_facing_test() {
+  // A dock tile at (0,1): its north edge is a door, and the tile to its
+  // north (0,0) is void — so its outward normal is N (the station berth case).
+  let rows = ["   ", " . ", "   ", " = ", "   ", "   "]
+  let assert Ok(g) = deckplan.parse_deck("d", rows)
+  let plan =
+    DeckPlan(
+      decks: [g],
+      consoles: [Console("dock", "dock", 0, 0, 1)],
+      spawn_deck: 0,
+      spawn_tile: #(0, 1),
+    )
+  assert deckplan.docking_ports(plan) == Ok([#(0, 0, 1, deckplan.N)])
+}
+
+pub fn docking_ports_errors_on_port_with_no_void_facing_door_test() {
+  // A 1x1 dock tile with no void-facing door violates the format — it is an
+  // authoring error, not a berth to silently skip.
+  let assert Ok(g) = deckplan.parse_deck("d", ["   ", "   ", "   "])
+  let plan =
+    DeckPlan(
+      decks: [g],
+      consoles: [Console("dock", "dock", 0, 0, 0)],
+      spawn_deck: 0,
+      spawn_tile: #(0, 0),
+    )
+  let assert Error(_) = deckplan.docking_ports(plan)
+}
+
 // ------------------------------------------------------------- parsing --
 
 pub fn parse_deck_two_rooms_test() {
@@ -110,6 +141,40 @@ pub fn stairs_target_rejects_non_stairs_test() {
       },
       stairs_grid(),
     ])
+  assert deckplan.stairs_target(plan, 0, 0, 0) == Error(Nil)
+}
+
+pub fn stairs_target_skips_void_intermediate_deck_test() {
+  // deck 0 stairs, deck 1 VOID at the column, deck 2 stairs: the shaft bypasses
+  // the empty middle level (the Mockingbird forward-stairs-past-mezz case).
+  let void_grid = {
+    let assert Ok(g) = deckplan.parse_deck("v", ["   ", " . ", "   "])
+    g
+  }
+  let plan =
+    DeckPlan(
+      decks: [stairs_grid(), void_grid, stairs_grid()],
+      consoles: [],
+      spawn_deck: 0,
+      spawn_tile: #(0, 0),
+    )
+  assert deckplan.stairs_target(plan, 0, 0, 0) == Ok(2)
+  assert deckplan.stairs_target(plan, 2, 0, 0) == Ok(0)
+}
+
+pub fn stairs_target_floor_blocks_shaft_test() {
+  // A solid floor on the intermediate level blocks the shaft — no connection.
+  let floor_grid = {
+    let assert Ok(g) = deckplan.parse_deck("f", ["   ", "   ", "   "])
+    g
+  }
+  let plan =
+    DeckPlan(
+      decks: [stairs_grid(), floor_grid, stairs_grid()],
+      consoles: [],
+      spawn_deck: 0,
+      spawn_tile: #(0, 0),
+    )
   assert deckplan.stairs_target(plan, 0, 0, 0) == Error(Nil)
 }
 

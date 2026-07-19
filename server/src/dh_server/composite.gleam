@@ -31,19 +31,20 @@ import gleam/string
 /// Mockingbird's fins off the bar apron with a little room for bigger hulls.
 pub const tube_length = 4
 
-/// An authored docking port on a concourse: the walkable stub tile a ship
-/// moors onto (`x`, `y`, composite frame, deck 0) PLUS the exterior mooring
-/// pose. `orientation` is the port's outward normal in world radians (y-up,
-/// 0 = +x/east); `anchor_x`/`anchor_y` place the mooring point as a
-/// world-unit offset from the station centre (issue #13/#14). The interior
-/// stitch (`build`) reads only x/y — orientation/anchor drive the space-side
-/// pose only.
+/// A docking port on a concourse: the walkable stub tile a ship moors onto
+/// (`x`, `y`, composite frame, deck 0) and the port's outward normal
+/// `orientation` in world radians (y-up, 0 = +x/east). Derived from a `Q`
+/// glyph in the concourse (issue #31): its tile is the berth, and the edge
+/// whose door faces void gives the orientation. The interior stitch (`build`)
+/// reads only x/y; `orientation` drives the moored space-side pose. The moored
+/// world position is computed from the tile + the docking ship's `dock_standoff`
+/// (`world.moored_position`), so there is no per-berth anchor here.
 pub type Berth {
-  Berth(x: Int, y: Int, orientation: Float, anchor_x: Float, anchor_y: Float)
+  Berth(x: Int, y: Int, orientation: Float)
 }
 
 /// The side-on default port normal: north (+y), i.e. pi/2 radians. Callers
-/// that only have a tile (legacy `[x, y]` berths, tests) default here.
+/// that only have a tile (tests, unknown berths) default here.
 pub const default_orientation = 1.5707963267948966
 
 /// One docked ship to moor: its id, claimed berth index, and (unrotated,

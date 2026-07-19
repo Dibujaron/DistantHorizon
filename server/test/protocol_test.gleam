@@ -1,6 +1,7 @@
 import dh_server/character
 import dh_server/composite
 import dh_server/deckplan
+import dh_server/glyphs
 import dh_server/market
 import dh_server/protocol
 import dh_server/ship
@@ -14,7 +15,7 @@ import gleam/option.{None, Some}
 import gleam/string
 
 fn test_class() -> shipclass.ShipClass {
-  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
+  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
   c
 }
 
@@ -106,7 +107,7 @@ pub fn parse_garbage_test() {
 
 pub fn encode_welcome_contains_world_name_and_stations_test() {
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  let text = protocol.encode_welcome(0, 1, 1, w, test_class())
+  let text = protocol.encode_welcome(0, 1, 1, w, test_class(), glyphs.default())
   assert string.contains(text, "\"type\":\"welcome\"")
   assert string.contains(text, "\"account_id\":0")
   assert string.contains(text, "\"ship_id\":1")
@@ -117,7 +118,8 @@ pub fn encode_welcome_contains_world_name_and_stations_test() {
 
 pub fn encode_welcome_contains_character_id_and_ship_class_test() {
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  let text = protocol.encode_welcome(0, 1, 42, w, test_class())
+  let text =
+    protocol.encode_welcome(0, 1, 42, w, test_class(), glyphs.default())
   assert string.contains(text, "\"character_id\":42")
   assert string.contains(text, "\"ship_class\":")
   assert string.contains(text, "\"id\":\"mockingbird\"")
@@ -125,6 +127,15 @@ pub fn encode_welcome_contains_character_id_and_ship_class_test() {
   assert string.contains(text, "\"spawn\":")
   assert string.contains(text, "\"consoles\":")
   assert string.contains(text, "helm")
+}
+
+pub fn encode_welcome_contains_glyph_registry_test() {
+  let assert Ok(w) = world.load("worlds/m1_system.json")
+  let text = protocol.encode_welcome(0, 1, 1, w, test_class(), glyphs.default())
+  // The client builds its id/kind -> sprite map from this (issue #32).
+  assert string.contains(text, "\"glyphs\":")
+  assert string.contains(text, "\"docking_port\"")
+  assert string.contains(text, "\"picto_airlock\"")
 }
 
 pub fn encode_error_test() {
@@ -386,7 +397,14 @@ pub fn encode_market_test() {
 pub fn encode_cargo_sorts_hold_and_lists_transfers_test() {
   let assert Ok(w) = world.load("worlds/m1_system.json")
   let s =
-    ship.spawn_docked(7, w, 0.0, 0, shipclass.default_dock_port_orientation)
+    ship.spawn_docked(
+      7,
+      w,
+      0.0,
+      0,
+      shipclass.default_dock_port_orientation,
+      shipclass.default_dock_standoff,
+    )
   let s =
     ship.Ship(
       ..s,

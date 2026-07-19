@@ -1,13 +1,14 @@
 //// Ship class documents (schema 3): a hull's multi-deck plan (per-deck 3x3
 //// tile grids, `docs/deckplan-format.md`) plus the cargo characteristics M3
 //// trading needs (DESIGN.md "content is data"). One class exists
-//// (`server/classes/mockingbird.json`, path overridable via
+//// (`server/shipclasses/mockingbird.json`, path overridable via
 //// `DH_SHIP_CLASS`); every ship in the sim is spawned from the same loaded
 //// `ShipClass`. The whole document is sent verbatim to clients as
 //// `ship_class` in the `welcome` message, so `encode` round-trips exactly
 //// what was loaded.
 
 import dh_server/deckplan.{type Console, type DeckPlan}
+import dh_server/glyphs.{type Registry}
 import gleam/dynamic/decode
 import gleam/json.{type Json}
 import gleam/list
@@ -29,6 +30,13 @@ pub type Handling {
 /// class that doesn't author its own `dock_port_orientation`.
 pub const default_dock_port_orientation = 1.5707963267948966
 
+/// The default moored standoff, in tiles (= metres): how far this hull's centre
+/// sits off the berth's mooring line, along the berth's outward normal. There
+/// is no good universal constant — a tiny shuttle and a wide-winged freighter
+/// stand off differently — so it is authored per class; this default is the
+/// Mockingbird's side-on standoff so an unspecified hull still moors sensibly.
+pub const default_dock_standoff = 20.0
+
 pub type ShipClass {
   ShipClass(
     schema: Int,
@@ -44,25 +52,45 @@ pub type ShipClass {
     /// hull can dock side-on (pi/2, the default — port flank to the gangway),
     /// nose-in (0), etc., instead of the old hardcoded side-on (issue #14).
     dock_port_orientation: Float,
+    /// How far this hull's centre stands off the berth mooring line, in tiles
+    /// (= metres), along the berth's outward normal — the per-ship half of the
+    /// moored sim pose (`world.moored_position`, issue #31). Wide hulls stand
+    /// off further than narrow ones; there is no good constant, so it is
+    /// authored per class.
+    dock_standoff: Float,
   )
 }
 
-/// Read and decode a ship class document from a file. `path` is resolved
-/// relative to the process's working directory.
+/// Read and decode a ship class document from a file, using the built-in glyph
+/// legend. `path` is resolved relative to the process's working directory.
 pub fn load(path: String) -> Result(ShipClass, String) {
+  load_with(glyphs.default(), path)
+}
+
+/// `load`, but interpreting the deck grids with an explicit glyph registry —
+/// the runtime path threads the loaded `glyphs.json` here.
+pub fn load_with(reg: Registry, path: String) -> Result(ShipClass, String) {
   use text <- result.try(
     simplifile.read(path)
     |> result.map_error(fn(err) {
       "failed to read ship class file " <> path <> ": " <> string.inspect(err)
     }),
   )
-  decode(text)
+  decode_with(reg, text)
 }
 
-/// Decode a ship class document from a JSON string, validating the deck
+/// Decode a ship class document (built-in glyph legend), validating the deck
 /// plan's geometry and that the class has a helm console.
 pub fn decode(json_text: String) -> Result(ShipClass, String) {
-  case json.parse(json_text, ship_class_decoder()) {
+  decode_with(glyphs.default(), json_text)
+}
+
+/// `decode`, but interpreting the deck grids with an explicit glyph registry.
+pub fn decode_with(
+  reg: Registry,
+  json_text: String,
+) -> Result(ShipClass, String) {
+  case json.parse(json_text, ship_class_decoder(reg)) {
     Ok(class) -> validate(class)
     Error(err) -> Error("invalid ship class document: " <> string.inspect(err))
   }
@@ -82,6 +110,7 @@ pub fn encode(class: ShipClass) -> Json {
     |> list.append([
       #("cargo", encode_cargo(class)),
       #("dock_port_orientation", json.float(class.dock_port_orientation)),
+      #("dock_standoff", json.float(class.dock_standoff)),
     ]),
   )
 }
@@ -93,6 +122,7 @@ pub fn helm_console(class: ShipClass) -> Result(Console, Nil) {
 
 fn validate(class: ShipClass) -> Result(ShipClass, String) {
   use _ <- result.try(deckplan.validate(class.plan))
+  use _ <- result.try(deckplan.validate_docking_ports(class.plan))
   case helm_console(class) {
     Error(Nil) -> Error("no console of kind \"helm\"")
     Ok(_) ->
@@ -118,15 +148,20 @@ fn cargo_decoder() -> decode.Decoder(#(Int, Handling)) {
   decode.success(#(capacity, handling))
 }
 
-fn ship_class_decoder() -> decode.Decoder(ShipClass) {
+fn ship_class_decoder(reg: Registry) -> decode.Decoder(ShipClass) {
   use schema <- decode.field("schema", decode.int)
   use id <- decode.field("id", decode.string)
   use name <- decode.field("name", decode.string)
-  use plan <- decode.then(deckplan.decoder())
+  use plan <- decode.then(deckplan.decoder(reg))
   use cargo <- decode.field("cargo", cargo_decoder())
   use dock_port_orientation <- decode.optional_field(
     "dock_port_orientation",
     default_dock_port_orientation,
+    decode.float,
+  )
+  use dock_standoff <- decode.optional_field(
+    "dock_standoff",
+    default_dock_standoff,
     decode.float,
   )
   let #(capacity, handling) = cargo
@@ -138,6 +173,7 @@ fn ship_class_decoder() -> decode.Decoder(ShipClass) {
     cargo_capacity: capacity,
     handling: handling,
     dock_port_orientation: dock_port_orientation,
+    dock_standoff: dock_standoff,
   ))
 }
 

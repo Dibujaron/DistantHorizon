@@ -366,6 +366,7 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
                   t,
                   berth,
                   state.class.dock_port_orientation,
+                  state.class.dock_standoff,
                 )
               // Rebuild the spawn station's composite with the new mooring
               // before placing the character in the composite frame.
@@ -477,6 +478,7 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
                 t,
                 free_berth(state, found.id, _),
                 state.class.dock_port_orientation,
+                state.class.dock_standoff,
               )
             {
               Error(reason) -> {
@@ -821,7 +823,7 @@ fn handle_undock_split(
   reply: Subject(Result(Nil, String)),
 ) -> actor.Next(State, Msg) {
   let t = int.to_float(state.tick) *. ship.dt
-  case ship.undock(target, state.world, t) {
+  case ship.undock(target, state.world, t, state.class.dock_standoff) {
     Error(reason) -> {
       process.send(reply, Error(reason))
       actor.continue(state)
@@ -1173,7 +1175,7 @@ fn initial_spaces(world: World) -> List(StationSpace) {
     case station.concourse {
       None -> Error(Nil)
       Some(concourse) ->
-        case composite.build(concourse, station.berths, []) {
+        case composite.build(concourse, world.station_berths(station), []) {
           Ok(built) ->
             Ok(StationSpace(station_id: station.id, epoch: 0, composite: built))
           Error(_) -> Error(Nil)
@@ -1222,7 +1224,7 @@ fn free_berth(
   case world.get_station(state.world, station_id) {
     Error(Nil) -> Error("no_berths")
     Ok(station) ->
-      case station.berths {
+      case world.station_berths(station) {
         [] -> Error("no_berths")
         berths -> {
           let taken =
@@ -1283,7 +1285,7 @@ fn rebuild_space(state: State, station_id: String) -> State {
           let assert Ok(built) =
             composite.build(
               concourse,
-              station.berths,
+              world.station_berths(station),
               docked_ships_at(state, station_id),
             )
           let old_composite = case find_space(state.spaces, station_id) {
@@ -1442,7 +1444,10 @@ fn run_tick(state: State) -> actor.Next(State, Msg) {
   // 1. Advance the world and every character.
   let tick = state.tick + 1
   let t = int.to_float(tick) *. ship.dt
-  let ships = list.map(state.ships, fn(s) { ship.step(s, state.world, t) })
+  let ships =
+    list.map(state.ships, fn(s) {
+      ship.step(s, state.world, t, state.class.dock_standoff)
+    })
   let characters =
     list.map(state.characters, fn(c) {
       case plan_for(state, c) {

@@ -7,9 +7,11 @@
 
 import dh_server/accounts
 import dh_server/auth
+import dh_server/glyphs
 import dh_server/server
 import dh_server/shipclass
 import dh_server/sim
+import dh_server/stationclass
 import dh_server/world
 import envoy
 import gleam/erlang/process
@@ -19,7 +21,9 @@ import gleam/string
 
 const default_world_path = "worlds/m1_system.json"
 
-const default_ship_class_path = "classes/mockingbird.json"
+const default_ship_class_path = "shipclasses/mockingbird.json"
+
+const default_glyphs_path = "glyphs.json"
 
 const default_database_url = "postgres://postgres@127.0.0.1:5432/dh_dev"
 
@@ -50,11 +54,54 @@ fn build_authenticator() -> auth.Authenticator {
 }
 
 pub fn main() -> Nil {
+  // The glyph registry is loaded first: it is how every deck grid (ship
+  // classes, station concourses) is interpreted. A missing/broken file falls
+  // back to the built-in legend so the server still boots in dev.
+  let glyphs_path = case envoy.get("DH_GLYPHS") {
+    Ok(path) -> path
+    Error(Nil) -> default_glyphs_path
+  }
+  let registry = case glyphs.load(glyphs_path) {
+    Ok(reg) -> {
+      io.println("loaded glyph registry " <> glyphs_path)
+      reg
+    }
+    Error(err) -> {
+      io.println(
+        "WARNING: glyphs: could not load "
+        <> glyphs_path
+        <> " ("
+        <> err
+        <> "); falling back to the built-in legend",
+      )
+      glyphs.default()
+    }
+  }
+
+  // Station classes are loaded next, with the active registry, then keyed by
+  // id; the world resolves each station's `class` reference against them.
+  let station_classes_dir = case envoy.get("DH_STATION_CLASSES") {
+    Ok(dir) -> dir
+    Error(Nil) -> world.default_station_classes_dir
+  }
+  let station_classes = case
+    stationclass.load_dir_with(registry, station_classes_dir)
+  {
+    Ok(cs) -> cs
+    Error(err) ->
+      panic as {
+        "failed to load station classes from "
+        <> station_classes_dir
+        <> ": "
+        <> err
+      }
+  }
+
   let world_path = case envoy.get("DH_WORLD") {
     Ok(path) -> path
     Error(Nil) -> default_world_path
   }
-  let world = case world.load(world_path) {
+  let world = case world.load_with(station_classes, world_path) {
     Ok(w) -> w
     Error(err) ->
       panic as { "failed to load world " <> world_path <> ": " <> err }
@@ -64,7 +111,7 @@ pub fn main() -> Nil {
     Ok(path) -> path
     Error(Nil) -> default_ship_class_path
   }
-  let class = case shipclass.load(ship_class_path) {
+  let class = case shipclass.load_with(registry, ship_class_path) {
     Ok(c) -> c
     Error(err) ->
       panic as {
@@ -79,7 +126,7 @@ pub fn main() -> Nil {
     Error(e) -> io.println("failed to start sim: " <> string.inspect(e))
     Ok(sim_started) -> {
       let sim_subject = sim_started.data
-      case server.start(sim_subject, world, class, authenticator) {
+      case server.start(sim_subject, world, class, registry, authenticator) {
         Ok(_) -> {
           io.println(
             "dh_server listening on ws://"

@@ -1,7 +1,8 @@
 import dh_server/composite
+import dh_server/stationclass.{type StationClass}
 import dh_server/world.{type World, Body, Orbit, Station, World}
+import gleam/dict.{type Dict}
 import gleam/float
-import gleam/int
 import gleam/json
 import gleam/list
 import gleam/option.{None}
@@ -74,7 +75,6 @@ fn station_only_world() -> World {
         crane: False,
         concourse: None,
         market: [],
-        berths: [],
       ),
     ],
     spawn_station: "s1",
@@ -89,24 +89,26 @@ pub fn load_bundled_world_test() {
   assert w.spawn_station == "meridian_highport"
 }
 
-pub fn decode_encode_round_trips_test() {
+pub fn encode_emits_resolved_stations_for_the_wire_test() {
+  // encode is intentionally asymmetric with decode: the on-disk world
+  // references station classes, but the welcome wire carries fully RESOLVED
+  // stations (concourse + derived berths inlined) so the client needs no
+  // class resolution. The `class` indirection never reaches the wire.
   let assert Ok(w) = world.load("worlds/m1_system.json")
   let text = world.encode(w) |> json.to_string
-  let assert Ok(w2) = world.decode(text)
-  assert w == w2
+  assert string.contains(text, "\"concourse\"")
+  assert string.contains(text, "\"berths\"")
+  assert !string.contains(text, "\"class\"")
 }
 
 pub fn decode_rejects_unknown_spawn_station_test() {
-  let bad_json =
-    "{\"schema\":1,\"name\":\"bad\",\"seed\":1,\"bodies\":["
-    <> "{\"id\":\"star\",\"name\":\"Star\",\"kind\":\"star\",\"parent\":null,"
-    <> "\"orbit\":null,\"radius\":500.0,\"mu\":1.0}],"
-    <> "\"stations\":["
-    <> "{\"id\":\"dock\",\"name\":\"Dock\",\"parent\":\"star\","
-    <> "\"orbit\":{\"radius\":10.0,\"period_s\":10.0,\"phase\":0.0},"
-    <> "\"dock_radius\":5.0}],"
-    <> "\"spawn_station\":\"nonexistent\"}"
-  assert world.decode(bad_json) |> is_error
+  let bad = one_station_world("bare", "[]", "nonexistent")
+  assert world.decode_with(station_classes(), bad) |> is_error
+}
+
+pub fn decode_rejects_unknown_class_id_test() {
+  let bad = one_station_world("no_such_class", "[]", "stn")
+  assert world.decode_with(station_classes(), bad) |> is_error
 }
 
 fn is_error(result: Result(a, b)) -> Bool {
@@ -114,6 +116,57 @@ fn is_error(result: Result(a, b)) -> Bool {
     Error(_) -> True
     Ok(_) -> False
   }
+}
+
+// -------------------------------------------------- station-class fixtures --
+
+/// A 3x2 all-floor concourse deck grid with a broker `b` at tile (1, 0) — its
+/// centre is column 4 (3*1+1), so the row is 4 spaces, `b`, 4 spaces.
+const broker_concourse_grid = "[\"         \",\"    b    \",\"         \",\"         \",\"         \",\"         \"]"
+
+/// The same, with no broker console at all.
+const bare_concourse_grid = "[\"         \",\"         \",\"         \",\"         \",\"         \",\"         \"]"
+
+/// Test station classes: "trader" has a broker console, "bare" has none.
+fn station_classes() -> Dict(String, StationClass) {
+  dict.from_list([
+    #("trader", class_with_grid("trader", broker_concourse_grid)),
+    #("bare", class_with_grid("bare", bare_concourse_grid)),
+  ])
+}
+
+fn class_with_grid(id: String, grid: String) -> StationClass {
+  let doc =
+    "{\"schema\":1,\"id\":\""
+    <> id
+    <> "\",\"name\":\"C\",\"dock_radius\":10.0,"
+    <> "\"decks\":[{\"name\":\"c\",\"grid\":"
+    <> grid
+    <> "}]}"
+  let assert Ok(sc) = stationclass.decode(doc)
+  sc
+}
+
+/// A one-station world referencing class `class_id`, with `market_json` and
+/// `spawn` (the spawn_station id).
+fn one_station_world(
+  class_id: String,
+  market_json: String,
+  spawn: String,
+) -> String {
+  "{\"schema\":2,\"name\":\"T\",\"seed\":1,"
+  <> "\"commodities\":[{\"id\":\"water\",\"name\":\"Water\"}],"
+  <> "\"bodies\":[{\"id\":\"star\",\"name\":\"S\",\"kind\":\"star\","
+  <> "\"parent\":null,\"orbit\":null,\"radius\":10.0,\"mu\":0.0}],"
+  <> "\"stations\":[{\"id\":\"stn\",\"name\":\"Stn\",\"class\":\""
+  <> class_id
+  <> "\",\"parent\":\"star\","
+  <> "\"orbit\":{\"radius\":50.0,\"period_s\":60.0,\"phase\":0.0},"
+  <> "\"market\":"
+  <> market_json
+  <> "}],\"spawn_station\":\""
+  <> spawn
+  <> "\"}"
 }
 
 pub fn star_position_is_origin_at_any_t_test() {
@@ -214,145 +267,72 @@ pub fn load_reads_trade_fields_test() {
   assert solis.crane == False
 }
 
-pub fn decode_defaults_trade_fields_when_absent_test() {
-  // A schema-1 station (no crane/concourse/market keys) must still load.
+pub fn decode_defaults_market_to_empty_when_absent_test() {
+  // A station with a class ref but no market key loads with an empty market;
+  // crane/concourse come from the (resolved) class.
   let doc =
-    "{\"schema\":1,\"name\":\"T\",\"seed\":1,"
+    "{\"schema\":2,\"name\":\"T\",\"seed\":1,"
     <> "\"bodies\":[{\"id\":\"star\",\"name\":\"S\",\"kind\":\"star\","
     <> "\"parent\":null,\"orbit\":null,\"radius\":10.0,\"mu\":0.0}],"
-    <> "\"stations\":[{\"id\":\"stn\",\"name\":\"Stn\",\"parent\":\"star\","
-    <> "\"orbit\":{\"radius\":50.0,\"period_s\":60.0,\"phase\":0.0},"
-    <> "\"dock_radius\":10.0}],"
+    <> "\"stations\":[{\"id\":\"stn\",\"name\":\"Stn\",\"class\":\"bare\","
+    <> "\"parent\":\"star\","
+    <> "\"orbit\":{\"radius\":50.0,\"period_s\":60.0,\"phase\":0.0}}],"
     <> "\"spawn_station\":\"stn\"}"
-  let assert Ok(w) = world.decode(doc)
+  let assert Ok(w) = world.decode_with(station_classes(), doc)
   let assert Ok(stn) = world.get_station(w, "stn")
   assert stn.crane == False
-  assert stn.concourse == option.None
   assert stn.market == []
-  assert w.commodities == []
+  let assert option.Some(_) = stn.concourse
 }
 
 pub fn decode_rejects_market_with_unknown_commodity_test() {
   let doc =
-    tiny_world_with_market(
+    one_station_world(
+      "trader",
       "[{\"commodity\":\"unobtainium\",\"initial\":5,\"price\":10,\"elasticity\":1}]",
+      "stn",
     )
-  let assert Error(_) = world.decode(doc)
-}
-
-pub fn decode_rejects_market_without_concourse_test() {
-  // Market present, but no concourse at all.
-  let doc =
-    "{\"schema\":2,\"name\":\"T\",\"seed\":1,"
-    <> "\"commodities\":[{\"id\":\"water\",\"name\":\"Water\"}],"
-    <> "\"bodies\":[{\"id\":\"star\",\"name\":\"S\",\"kind\":\"star\","
-    <> "\"parent\":null,\"orbit\":null,\"radius\":10.0,\"mu\":0.0}],"
-    <> "\"stations\":[{\"id\":\"stn\",\"name\":\"Stn\",\"parent\":\"star\","
-    <> "\"orbit\":{\"radius\":50.0,\"period_s\":60.0,\"phase\":0.0},"
-    <> "\"dock_radius\":10.0,"
-    <> "\"market\":[{\"commodity\":\"water\",\"initial\":5,\"price\":10,\"elasticity\":1}]}],"
-    <> "\"spawn_station\":\"stn\"}"
-  let assert Error(_) = world.decode(doc)
+  let assert Error(_) = world.decode_with(station_classes(), doc)
 }
 
 pub fn decode_rejects_market_without_broker_console_test() {
-  // Concourse exists but has no broker-kind console.
-  let doc = tiny_world_with_concourse_consoles("[]")
-  let assert Error(_) = world.decode(doc)
+  // The "bare" class concourse has no broker-kind console.
+  let doc =
+    one_station_world(
+      "bare",
+      "[{\"commodity\":\"water\",\"initial\":5,\"price\":10,\"elasticity\":1}]",
+      "stn",
+    )
+  let assert Error(_) = world.decode_with(station_classes(), doc)
 }
 
 pub fn decode_accepts_market_with_broker_console_test() {
+  // The "trader" class concourse has a broker (`b` glyph).
   let doc =
-    tiny_world_with_concourse_consoles(
-      "[{\"id\":\"broker_main\",\"kind\":\"broker\",\"x\":1,\"y\":0}]",
+    one_station_world(
+      "trader",
+      "[{\"commodity\":\"water\",\"initial\":5,\"price\":10,\"elasticity\":1}]",
+      "stn",
     )
-  let assert Ok(_) = world.decode(doc)
+  let assert Ok(_) = world.decode_with(station_classes(), doc)
 }
 
-/// A 3x2 all-floor concourse deck grid (v3, all-open edges) as a JSON array
-/// literal — enough for the market/broker validation tests.
-const tiny_concourse_grid = "[\"         \",\"         \",\"         \",\"         \",\"         \",\"         \"]"
-
-/// Tiny valid world with one station whose market is `market_json` and
-/// whose concourse has a broker console.
-fn tiny_world_with_market(market_json: String) -> String {
-  "{\"schema\":2,\"name\":\"T\",\"seed\":1,"
-  <> "\"commodities\":[{\"id\":\"water\",\"name\":\"Water\"}],"
-  <> "\"bodies\":[{\"id\":\"star\",\"name\":\"S\",\"kind\":\"star\","
-  <> "\"parent\":null,\"orbit\":null,\"radius\":10.0,\"mu\":0.0}],"
-  <> "\"stations\":[{\"id\":\"stn\",\"name\":\"Stn\",\"parent\":\"star\","
-  <> "\"orbit\":{\"radius\":50.0,\"period_s\":60.0,\"phase\":0.0},"
-  <> "\"dock_radius\":10.0,"
-  <> "\"concourse\":{\"decks\":[{\"name\":\"c\",\"grid\":"
-  <> tiny_concourse_grid
-  <> "}],\"rooms\":[],"
-  <> "\"consoles\":[{\"id\":\"broker_main\",\"kind\":\"broker\",\"x\":1,\"y\":0}],"
-  <> "\"spawn\":{\"deck\":0,\"tile\":[1,1]}},"
-  <> "\"market\":"
-  <> market_json
-  <> "}],"
-  <> "\"spawn_station\":\"stn\"}"
-}
-
-/// Same tiny world, market fixed to water, concourse consoles swappable.
-fn tiny_world_with_concourse_consoles(consoles_json: String) -> String {
-  "{\"schema\":2,\"name\":\"T\",\"seed\":1,"
-  <> "\"commodities\":[{\"id\":\"water\",\"name\":\"Water\"}],"
-  <> "\"bodies\":[{\"id\":\"star\",\"name\":\"S\",\"kind\":\"star\","
-  <> "\"parent\":null,\"orbit\":null,\"radius\":10.0,\"mu\":0.0}],"
-  <> "\"stations\":[{\"id\":\"stn\",\"name\":\"Stn\",\"parent\":\"star\","
-  <> "\"orbit\":{\"radius\":50.0,\"period_s\":60.0,\"phase\":0.0},"
-  <> "\"dock_radius\":10.0,"
-  <> "\"concourse\":{\"decks\":[{\"name\":\"c\",\"grid\":"
-  <> tiny_concourse_grid
-  <> "}],\"rooms\":[],"
-  <> "\"consoles\":"
-  <> consoles_json
-  <> ","
-  <> "\"spawn\":{\"deck\":0,\"tile\":[1,1]}},"
-  <> "\"market\":[{\"commodity\":\"water\",\"initial\":5,\"price\":10,\"elasticity\":1}]}],"
-  <> "\"spawn_station\":\"stn\"}"
-}
-
-pub fn berths_decode_test() {
+pub fn station_berths_derive_from_q_glyphs_test() {
+  // Berths are the concourse's `Q` docking ports (issue #31): the glyph tile is
+  // the berth, its north-facing void door gives the side-on orientation. No
+  // authored anchor.
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  let assert Ok(meridian) = world.get_station(w, "meridian_highport")
   let o = composite.default_orientation
-  assert meridian.berths
+  let assert Ok(meridian) = world.get_station(w, "meridian_highport")
+  assert world.station_berths(meridian)
     == [
-      composite.Berth(
-        x: 22,
-        y: 1,
-        orientation: o,
-        anchor_x: -32.6,
-        anchor_y: 26.8,
-      ),
-      composite.Berth(
-        x: 54,
-        y: 1,
-        orientation: o,
-        anchor_x: 5.7,
-        anchor_y: 26.8,
-      ),
-      composite.Berth(
-        x: 86,
-        y: 1,
-        orientation: o,
-        anchor_x: 44.0,
-        anchor_y: 26.8,
-      ),
+      composite.Berth(x: 22, y: 1, orientation: o),
+      composite.Berth(x: 54, y: 1, orientation: o),
+      composite.Berth(x: 86, y: 1, orientation: o),
     ]
   let assert Ok(solis) = world.get_station(w, "solis_ring")
-  assert solis.berths
-    == [
-      composite.Berth(
-        x: 5,
-        y: 1,
-        orientation: o,
-        anchor_x: -3.9,
-        anchor_y: 17.8,
-      ),
-    ]
+  assert world.station_berths(solis)
+    == [composite.Berth(x: 5, y: 1, orientation: o)]
 }
 
 pub fn moored_heading_uses_ship_port_test() {
@@ -364,46 +344,4 @@ pub fn moored_heading_uses_ship_port_test() {
     world.moored_heading(w, "meridian_highport", 0, 1.5707963267948966)
   let nose_in = world.moored_heading(w, "meridian_highport", 0, 0.0)
   assert side_on != nose_in
-}
-
-pub fn berth_on_non_walkable_tile_is_invalid_test() {
-  // Minimal world JSON with a berth pointing at a void tile.
-  let assert Error(e) = world.decode(world_json_with_berth(0, 0))
-  assert string.contains(e, "berth")
-}
-
-pub fn berth_with_walkable_north_neighbor_is_invalid_test() {
-  // Berth at (2,2) inside the floor: the tile north of it is walkable,
-  // so a moored airlock would overlap the concourse.
-  let assert Error(e) = world.decode(world_json_with_berth(2, 2))
-  assert string.contains(e, "berth")
-}
-
-/// A 6x5 concourse (v3, all-open edges): void row 0, a walkable berth stub at
-/// (2,1), a floor block at rows 2-3, matching the old footprint. Berth
-/// validation reads only tile walkability, so edges are left open.
-const berth_concourse_grid = "[\"                  \",\" .  .  .  .  .  . \",\"                  \",\"                  \",\" .  .     .  .  . \",\"                  \",\"                  \",\" .              . \",\"                  \",\"                  \",\" .              . \",\"                  \",\"                  \",\" .  .  .  .  .  . \",\"                  \"]"
-
-/// A compact single-station world with one substitutable berth, for
-/// exercising berth validation in isolation. The embedded concourse has a
-/// walkable spawn_tile at [2,2].
-fn world_json_with_berth(x: Int, y: Int) -> String {
-  "{\"schema\":2,\"name\":\"t\",\"seed\":1,"
-  <> "\"bodies\":[{\"id\":\"star\",\"name\":\"star\",\"kind\":\"star\","
-  <> "\"parent\":null,\"orbit\":null,\"radius\":1.0,\"mu\":0.0}],"
-  <> "\"stations\":[{\"id\":\"st\",\"name\":\"st\",\"parent\":\"star\","
-  <> "\"orbit\":{\"radius\":10.0,\"period_s\":10.0,\"phase\":0.0},"
-  <> "\"dock_radius\":5.0,"
-  <> "\"concourse\":{\"decks\":[{\"name\":\"c\",\"grid\":"
-  <> berth_concourse_grid
-  <> "}],"
-  <> "\"rooms\":[],"
-  <> "\"consoles\":[],"
-  <> "\"spawn\":{\"deck\":0,\"tile\":[2,2]}},"
-  <> "\"berths\":[["
-  <> int.to_string(x)
-  <> ","
-  <> int.to_string(y)
-  <> "]]}],"
-  <> "\"spawn_station\":\"st\"}"
 }

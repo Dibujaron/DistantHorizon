@@ -24,7 +24,7 @@ import gleam/option.{type Option, Some}
 
 fn start_sim() -> process.Subject(sim.Msg) {
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
+  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
   let assert Ok(started) = sim.start(w, c)
   started.data
 }
@@ -461,7 +461,7 @@ fn composite_helm_position(
   let assert Ok(station) = world.get_station(w, station_id)
   let assert Some(concourse) = station.concourse
   let assert Ok(built) =
-    composite.build(concourse, station.berths, [
+    composite.build(concourse, world.station_berths(station), [
       composite.DockedShip(ship_id: ship_id, berth: berth, plan: class.plan),
     ])
   let assert Ok(_mooring) = composite.find_mooring(built, ship_id)
@@ -491,14 +491,14 @@ pub fn login_lands_in_the_station_space_seated_at_own_helm_test() {
   // (rather than assume berth 0) so this stays correct if the seed or the
   // hash ever changes which berth ship 1 lands on.
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  let assert Ok(class) = shipclass.load("classes/mockingbird.json")
+  let assert Ok(class) = shipclass.load("shipclasses/mockingbird.json")
   let assert Ok(station) = world.get_station(w, "meridian_highport")
   let berth =
     expected_berth(
       w.seed,
       "meridian_highport",
       ship_id,
-      list.length(station.berths),
+      list.length(world.station_berths(station)),
     )
   let #(expected_x, expected_y) =
     composite_helm_position(w, class, ship_id, "meridian_highport", berth)
@@ -667,9 +667,9 @@ pub fn undock_frees_the_berth_test() {
 pub fn free_berth_is_seed_random_among_free_berths_test() {
   let s = start_sim()
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  let assert Ok(class) = shipclass.load("classes/mockingbird.json")
+  let assert Ok(class) = shipclass.load("shipclasses/mockingbird.json")
   let assert Ok(station) = world.get_station(w, "meridian_highport")
-  let free_count = list.length(station.berths)
+  let free_count = list.length(world.station_berths(station))
 
   // Undocking before the next login puts every berth free again, so each
   // of these three logins hits free_berth's "all free" case: pick =

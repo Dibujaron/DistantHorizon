@@ -476,17 +476,22 @@ func _berth_stubs() -> Array[Vector2i]:
 
 # -------------------------------------------------------------- consoles --
 func _draw_consoles(origin: Vector2) -> void:
+	# Sprite ids come from the server's glyph registry (issue #32), not a
+	# hardcoded "console_<kind>" convention — so art is keyed on the console
+	# kind/id, decoupled from the single-char map encoding.
+	var reg: GlyphRegistry = NetworkClient.glyphs
 	for console in ship_class.consoles:
 		if console.deck != view_deck:
 			continue  # a console on another deck is under/over this floor
 		var center := _tile_to_screen(console.tile_center(), origin)
+		var sprite_id := "" if reg == null else reg.sprite_for_console(console.kind)
 		# A docking port is an airlock hatch, not a console desk.
 		if console.kind == "dock":
-			var picto := _lib.interior("picto_airlock")
+			var picto: Texture2D = _lib.interior(sprite_id) if sprite_id != "" else null
 			if picto != null:
 				draw_texture(picto, center - Vector2(20, 20), Color(1, 1, 1, 0.65))
 			continue
-		var tex := _lib.interior("console_" + console.kind)
+		var tex: Texture2D = _lib.interior(sprite_id) if sprite_id != "" else null
 		if tex != null:
 			draw_texture(tex, center - Vector2(22, 22))
 			continue

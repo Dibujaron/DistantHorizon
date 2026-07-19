@@ -42,7 +42,6 @@ fn test_world() -> World {
         crane: False,
         concourse: None,
         market: [],
-        berths: [],
       ),
     ],
     spawn_station: "s1",
@@ -79,7 +78,6 @@ fn stationary_dock_world() -> World {
         crane: False,
         concourse: None,
         market: [],
-        berths: [],
       ),
     ],
     spawn_station: "s1",
@@ -142,7 +140,14 @@ pub fn set_controls_clamps_test() {
 pub fn spawn_docked_pins_to_spawn_station_test() {
   let w = test_world()
   let ship =
-    ship.spawn_docked(1, w, 0.0, 0, shipclass.default_dock_port_orientation)
+    ship.spawn_docked(
+      1,
+      w,
+      0.0,
+      0,
+      shipclass.default_dock_port_orientation,
+      shipclass.default_dock_standoff,
+    )
   let #(sx, sy) = world.station_position(w, "s1", 0.0)
   assert close(ship.x, sx, epsilon)
   assert close(ship.y, sy, epsilon)
@@ -152,7 +157,14 @@ pub fn spawn_docked_pins_to_spawn_station_test() {
 pub fn docked_ship_stays_pinned_while_station_moves_test() {
   let w = test_world()
   let ship =
-    ship.spawn_docked(1, w, 0.0, 0, shipclass.default_dock_port_orientation)
+    ship.spawn_docked(
+      1,
+      w,
+      0.0,
+      0,
+      shipclass.default_dock_port_orientation,
+      shipclass.default_dock_standoff,
+    )
   let final_t = 100.0 *. ship.dt
   let after = run_ticks(ship, w, 100)
   let #(sx, sy) = world.station_position(w, "s1", final_t)
@@ -173,6 +185,7 @@ pub fn try_dock_succeeds_in_range_at_low_speed_test() {
       0.0,
       fn(_) { Ok(0) },
       shipclass.default_dock_port_orientation,
+      shipclass.default_dock_standoff,
     )
   assert docked.dock == Docked("s1", 0)
 }
@@ -192,6 +205,7 @@ pub fn try_dock_zeroes_controls_test() {
       0.0,
       fn(_) { Ok(0) },
       shipclass.default_dock_port_orientation,
+      shipclass.default_dock_standoff,
     )
   assert docked.controls == Controls(rotate: 0.0, thrust: 0.0)
 }
@@ -205,6 +219,7 @@ pub fn try_dock_fails_out_of_range_test() {
       0.0,
       fn(_) { Ok(0) },
       shipclass.default_dock_port_orientation,
+      shipclass.default_dock_standoff,
     )
     == Error("out_of_range")
 }
@@ -218,6 +233,7 @@ pub fn try_dock_fails_too_fast_test() {
       0.0,
       fn(_) { Ok(0) },
       shipclass.default_dock_port_orientation,
+      shipclass.default_dock_standoff,
     )
     == Error("too_fast")
 }
@@ -225,13 +241,21 @@ pub fn try_dock_fails_too_fast_test() {
 pub fn try_dock_fails_already_docked_test() {
   let w = stationary_dock_world()
   let ship =
-    ship.spawn_docked(1, w, 0.0, 0, shipclass.default_dock_port_orientation)
+    ship.spawn_docked(
+      1,
+      w,
+      0.0,
+      0,
+      shipclass.default_dock_port_orientation,
+      shipclass.default_dock_standoff,
+    )
   assert ship.try_dock(
       ship,
       w,
       0.0,
       fn(_) { Ok(0) },
       shipclass.default_dock_port_orientation,
+      shipclass.default_dock_standoff,
     )
     == Error("already_docked")
 }
@@ -246,6 +270,7 @@ pub fn try_dock_forwards_berth_refusal_test() {
       0.0,
       fn(_) { Error("berths_full") },
       shipclass.default_dock_port_orientation,
+      shipclass.default_dock_standoff,
     )
     == Error("berths_full")
 }
@@ -260,6 +285,7 @@ pub fn try_dock_records_claimed_berth_test() {
       0.0,
       fn(_) { Ok(2) },
       shipclass.default_dock_port_orientation,
+      shipclass.default_dock_standoff,
     )
   let assert Docked(_, berth) = docked.dock
   assert berth == 2
@@ -270,10 +296,18 @@ pub fn undock_releases_ship_in_place_test() {
   let t = 42.0
   let docked =
     Ship(
-      ..ship.spawn_docked(1, w, 0.0, 0, shipclass.default_dock_port_orientation),
+      ..ship.spawn_docked(
+        1,
+        w,
+        0.0,
+        0,
+        shipclass.default_dock_port_orientation,
+        shipclass.default_dock_standoff,
+      ),
       heading: 1.5,
     )
-  let assert Ok(after) = ship.undock(docked, w, t)
+  let assert Ok(after) =
+    ship.undock(docked, w, t, shipclass.default_dock_standoff)
   let #(sx, sy) = world.station_position(w, "s1", t)
   let #(svx, svy) = world.station_velocity(w, "s1", t)
   // No teleport: released exactly at the station, on its rail velocity,
@@ -289,13 +323,21 @@ pub fn undock_releases_ship_in_place_test() {
 pub fn undock_while_flying_errors_test() {
   let w = test_world()
   let ship = flying_ship(0.0, 0.0, 0.0, 0.0)
-  assert ship.undock(ship, w, 0.0) == Error("not_docked")
+  assert ship.undock(ship, w, 0.0, shipclass.default_dock_standoff)
+    == Error("not_docked")
 }
 
 pub fn spawn_docked_has_starting_wallet_and_empty_hold_test() {
   let assert Ok(w) = world.load("worlds/m1_system.json")
   let s =
-    ship.spawn_docked(1, w, 0.0, 0, shipclass.default_dock_port_orientation)
+    ship.spawn_docked(
+      1,
+      w,
+      0.0,
+      0,
+      shipclass.default_dock_port_orientation,
+      shipclass.default_dock_standoff,
+    )
   assert s.wallet == ship.starting_wallet
   assert s.hold == dict.new()
   assert s.transfers == []
@@ -304,7 +346,14 @@ pub fn spawn_docked_has_starting_wallet_and_empty_hold_test() {
 pub fn undock_blocked_mid_transfer_test() {
   let assert Ok(w) = world.load("worlds/m1_system.json")
   let s =
-    ship.spawn_docked(1, w, 0.0, 0, shipclass.default_dock_port_orientation)
+    ship.spawn_docked(
+      1,
+      w,
+      0.0,
+      0,
+      shipclass.default_dock_port_orientation,
+      shipclass.default_dock_standoff,
+    )
   let busy =
     ship.Ship(..s, transfers: [
       ship.Transfer(
@@ -316,8 +365,9 @@ pub fn undock_blocked_mid_transfer_test() {
         rate: 1.0,
       ),
     ])
-  assert ship.undock(busy, w, 0.0) == Error("transfer_in_progress")
-  let assert Ok(_) = ship.undock(s, w, 0.0)
+  assert ship.undock(busy, w, 0.0, shipclass.default_dock_standoff)
+    == Error("transfer_in_progress")
+  let assert Ok(_) = ship.undock(s, w, 0.0, shipclass.default_dock_standoff)
 }
 
 fn run_ticks(ship: Ship, w: World, n: Int) -> Ship {
@@ -329,7 +379,12 @@ fn run_ticks_loop(ship: Ship, w: World, tick: Int, n: Int) -> Ship {
     True -> ship
     False -> {
       let t = int.to_float(tick + 1) *. ship.dt
-      run_ticks_loop(ship.step(ship, w, t), w, tick + 1, n)
+      run_ticks_loop(
+        ship.step(ship, w, t, shipclass.default_dock_standoff),
+        w,
+        tick + 1,
+        n,
+      )
     }
   }
 }
