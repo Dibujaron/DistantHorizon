@@ -1,19 +1,22 @@
-//// Stitched interiors (M3.1, reworked M3.5 iteration 4): build one
-//// combined deck plan from a station concourse plus every docked ship's
-//// plan moored at a berth. Ships moor SIDE-ON: each docked plan is
-//// rotated 90° CCW (nose west, port flank south) so the docking
-//// corridor's port END faces the station, and a `tube_length`-tile
-//// docking tube of generated walkable tiles bridges the gap between the
-//// dormer and the berth stub — the hull floats clear of the bar. Tube
-//// tiles belong to the STATION (a body mid-tube stays ashore on undock).
-//// All tiles are then translated into one positive frame (bounding-box
-//// normalization); ship room/console ids are namespaced "s{ship_id}:{id}"
-//// so several moorings never collide. This is level generation, not
-//// coordinate gymnastics: the output is an ordinary DeckPlan the
-//// character sim and the client walk unchanged.
+//// Stitched interiors (M3.1, reworked for deck-plan v3): build one combined
+//// multi-deck plan from a station concourse plus every docked ship's plan
+//// moored at a berth. Ships moor SIDE-ON: each docked deck is rotated 90°
+//// CCW (nose west, port flank south) so the docking corridor's port END
+//// faces the station, and a `tube_length`-tile docking tube of generated
+//// walkable tiles bridges the gap between the dormer and the berth stub.
+////
+//// v3 is multi-deck (Option B): composite **deck 0** is the concourse plane
+//// with every docked ship's MOORING deck (its `spawn_deck`) merged in and
+//// tube-connected. Each ship's other decks become their own composite decks,
+//// placed at the same rotated offset so the `x` stairs line up vertically
+//// and resolve positionally. Tube tiles belong to the STATION (a body
+//// mid-tube stays ashore on undock). Ship room/console ids are namespaced
+//// "s{ship_id}:{id}" and their `deck` is remapped to the composite index.
+//// The output is an ordinary DeckPlan the character sim and client walk.
 
 import dh_server/deckplan.{
-  type Console, type DeckPlan, type Room, Console, DeckPlan, Grid, Room,
+  type DeckGrid, type DeckPlan, type Edge, type Tile, Console, DeckGrid,
+  DeckPlan, Floor, Open, Room, Void,
 }
 import gleam/int
 import gleam/list
@@ -22,47 +25,47 @@ import gleam/string
 
 /// Docking-tube length, tiles: the walkable gap generated between a moored
 /// ship's port dormer and its berth stub. Four tiles clears the
-/// Mockingbird's fins off the bar apron with a little room for bigger
-/// hulls (round 11 note: fin overlap "will be a problem for bigger ships").
+/// Mockingbird's fins off the bar apron with a little room for bigger hulls.
 pub const tube_length = 4
 
 /// An authored docking port on a concourse: the walkable stub tile a ship
-/// moors onto (`x`, `y`, interior/composite frame) PLUS the exterior mooring
+/// moors onto (`x`, `y`, composite frame, deck 0) PLUS the exterior mooring
 /// pose. `orientation` is the port's outward normal in world radians (y-up,
-/// 0 = +x/east) — the direction a moored hull sits from, and departs toward,
-/// the station centre. `anchor_x`/`anchor_y` place that mooring point as a
-/// world-unit offset from the station centre (the exterior pose a docked hull
-/// holds and is released at on undock — issue #13). The default orientation
-/// (`default_orientation`, north) with a zero anchor reproduces M3.5's
-/// side-on mooring pinned at the station centre; real stations author an
-/// anchor out on the ring so hulls sit at their berth (see
-/// `world.moored_position`). NB: the interior stitch (`build`) reads only
-/// x/y — orientation/anchor drive the SPACE-side pose only, keeping the two
-/// concerns cleanly separate (issue #14).
+/// 0 = +x/east); `anchor_x`/`anchor_y` place the mooring point as a
+/// world-unit offset from the station centre (issue #13/#14). The interior
+/// stitch (`build`) reads only x/y — orientation/anchor drive the space-side
+/// pose only.
 pub type Berth {
   Berth(x: Int, y: Int, orientation: Float, anchor_x: Float, anchor_y: Float)
 }
 
-/// The side-on default port normal: north (+y), i.e. pi/2 radians. A hull
-/// moored against a north-facing berth sits north of the station and departs
-/// northward — M3.5's authored look. Callers that only have a tile (legacy
-/// `[x, y]` berths, tests) default a berth's orientation to this.
+/// The side-on default port normal: north (+y), i.e. pi/2 radians. Callers
+/// that only have a tile (legacy `[x, y]` berths, tests) default here.
 pub const default_orientation = 1.5707963267948966
 
-/// One docked ship to moor: its id, claimed berth index, and deck plan.
+/// One docked ship to moor: its id, claimed berth index, and (unrotated,
+/// multi-deck) deck plan.
 pub type DockedShip {
   DockedShip(ship_id: Int, berth: Int, plan: DeckPlan)
 }
 
 /// Where one ship's tiles landed in the composite frame: ship-local tile
-/// (x, y) maps to composite tile (x + dx, y + dy).
+/// `(x, y)` on ship deck `sd` maps to composite tile `(x + dx, y + dy)` on
+/// composite deck `deck_map[sd]`. `ship_width` is the ship plan's (unrotated)
+/// deck width, needed to invert the moor rotation.
 pub type Mooring {
-  Mooring(ship_id: Int, dx: Int, dy: Int)
+  Mooring(
+    ship_id: Int,
+    dx: Int,
+    dy: Int,
+    deck_map: List(#(Int, Int)),
+    ship_width: Int,
+  )
 }
 
 /// The stitched plan. `concourse_dx/dy` is the translation applied to
 /// concourse tiles (grows when a mooring extends past the concourse's
-/// top/left edge); moorings carry each ship's translation.
+/// top/left edge); moorings carry each ship's translation + deck mapping.
 pub type Composite {
   Composite(
     plan: DeckPlan,
@@ -102,251 +105,544 @@ pub fn find_mooring(
   list.find(composite.moorings, fn(g) { g.ship_id == ship_id })
 }
 
-/// Whether composite-frame position (x, y) stands on a walkable tile of
-/// this mooring — the undock split test: bodies on ship tiles leave with
-/// the ship, bodies on station tiles (including the docking tube) stay.
-/// `ship_plan` is the UNROTATED class plan; the mooring frame is rotated.
+/// The composite deck index a ship-local deck maps to (mooring deck -> 0).
+/// Unmapped ship decks default to 0.
+pub fn composite_deck_of(mooring: Mooring, ship_deck: Int) -> Int {
+  case list.find(mooring.deck_map, fn(p) { p.0 == ship_deck }) {
+    Ok(#(_, cd)) -> cd
+    Error(Nil) -> 0
+  }
+}
+
+/// The ship-local deck a composite deck maps back to for this mooring, or
+/// `Error(Nil)` if that composite deck is not this ship's.
+pub fn ship_deck_of(mooring: Mooring, composite_deck: Int) -> Result(Int, Nil) {
+  case list.find(mooring.deck_map, fn(p) { p.1 == composite_deck }) {
+    Ok(#(sd, _)) -> Ok(sd)
+    Error(Nil) -> Error(Nil)
+  }
+}
+
+/// Remap a composite deck index from one composite to another (across a
+/// rebuild). Deck 0 (the shared concourse+mooring plane) is always deck 0.
+/// A ship's non-mooring deck is found by which ship + ship-deck it was in
+/// `from`, then re-looked-up in `to` — because deck indices shift as ships
+/// dock/undock and reorder. If the ship is gone from `to` (undocked/
+/// despawned), the old index is returned unchanged; the caller's
+/// walkability check then re-floors the stranded body.
+pub fn remap_deck(from: Composite, to: Composite, deck: Int) -> Int {
+  case deck == 0 {
+    True -> 0
+    False ->
+      case find_ship_deck(from.moorings, deck) {
+        Error(Nil) -> deck
+        Ok(#(ship_id, ship_deck)) ->
+          case find_mooring(to, ship_id) {
+            Ok(m) -> composite_deck_of(m, ship_deck)
+            Error(Nil) -> deck
+          }
+      }
+  }
+}
+
+/// The #(ship_id, ship_deck) whose composite deck index is `comp_deck` in
+/// these moorings, if any.
+fn find_ship_deck(
+  moorings: List(Mooring),
+  comp_deck: Int,
+) -> Result(#(Int, Int), Nil) {
+  list.fold(moorings, Error(Nil), fn(acc, m) {
+    case acc {
+      Ok(_) -> acc
+      Error(Nil) ->
+        case list.find(m.deck_map, fn(p) { p.1 == comp_deck }) {
+          Ok(#(sd, _)) -> Ok(#(m.ship_id, sd))
+          Error(Nil) -> Error(Nil)
+        }
+    }
+  })
+}
+
+/// Whether composite-frame position `(x, y)` on composite deck `deck` stands
+/// on a walkable tile of this mooring — the undock split test: bodies on ship
+/// tiles leave with the ship, bodies on station tiles (concourse + docking
+/// tube) stay. `ship_plan` is the UNROTATED class plan.
 pub fn tile_on_mooring(
   mooring: Mooring,
   ship_plan: DeckPlan,
+  deck: Int,
   x: Float,
   y: Float,
 ) -> Bool {
-  let tx = float_floor(x) - mooring.dx
-  let ty = float_floor(y) - mooring.dy
-  deckplan.is_walkable(deckplan.rotate_ccw(ship_plan), tx, ty)
+  case ship_deck_of(mooring, deck) {
+    Error(Nil) -> False
+    Ok(sd) ->
+      case deckplan.deck_at(ship_plan, sd) {
+        Error(Nil) -> False
+        Ok(grid) -> {
+          let tx = float_floor(x) - mooring.dx
+          let ty = float_floor(y) - mooring.dy
+          deckplan.is_walkable(rotate_ccw_grid(grid), tx, ty)
+        }
+      }
+  }
 }
 
-/// Map a body's composite-frame position into the UNROTATED ship frame
-/// (the undock transform). Inverse of the CCW moor rotation: ship-frame
-/// (x, y) = (width - ry, rx) for mooring-local (rx, ry).
-pub fn to_ship_frame(
-  mooring: Mooring,
-  ship_plan: DeckPlan,
-  x: Float,
-  y: Float,
-) -> #(Float, Float) {
+/// Map a body's composite-frame position into the UNROTATED ship frame (the
+/// undock transform, planar). Inverse of the CCW moor rotation:
+/// ship-frame `(x, y) = (width - ry, rx)` for mooring-local `(rx, ry)`.
+pub fn to_ship_frame(mooring: Mooring, x: Float, y: Float) -> #(Float, Float) {
   let rx = x -. int.to_float(mooring.dx)
   let ry = y -. int.to_float(mooring.dy)
-  #(int.to_float(ship_plan.grid.width) -. ry, rx)
+  #(int.to_float(mooring.ship_width) -. ry, rx)
 }
 
-/// Map a ship-frame position into mooring-local (rotated) coordinates —
-/// the dock-join transform (add the mooring's dx/dy afterwards).
-pub fn from_ship_frame(
-  ship_plan: DeckPlan,
-  x: Float,
-  y: Float,
-) -> #(Float, Float) {
-  #(y, int.to_float(ship_plan.grid.width) -. x)
+/// Map a ship-frame position into mooring-local (rotated) coordinates — the
+/// dock-join transform (add the mooring's dx/dy afterwards). `ship_width` is
+/// the ship plan's (unrotated) deck width.
+pub fn from_ship_frame(ship_width: Int, x: Float, y: Float) -> #(Float, Float) {
+  #(y, int.to_float(ship_width) -. x)
 }
 
-/// A ship's raw (pre-normalization, concourse-frame) offset: rotate the
-/// plan side-on, then place its spawn/port-dormer tile `tube_length + 1`
-/// tiles north of its berth tile (the tube bridges the gap).
-fn raw_offset(berth: Berth, rotated: DeckPlan) -> #(Int, Int) {
-  let #(sx, sy) = rotated.spawn_tile
-  #(berth.x - sx, berth.y - 1 - tube_length - sy)
+/// The ship plan's (unrotated) deck width — decks are authored uniform, so
+/// deck 0's width serves the whole ship. 0 if the plan has no decks.
+pub fn plan_width(plan: DeckPlan) -> Int {
+  case deckplan.deck_at(plan, 0) {
+    Ok(g) -> g.width
+    Error(Nil) -> 0
+  }
+}
+
+// -------------------------------------------------------------- build --
+
+/// A ship resolved for placement: its input, berth, rotated decks, mooring
+/// deck index, and raw (pre-normalization) concourse-frame offset.
+type Placed {
+  Placed(
+    ship: DockedShip,
+    rotated: List(DeckGrid),
+    mooring_index: Int,
+    dx: Int,
+    dy: Int,
+  )
 }
 
 /// Build the composite plan. Errors: "unknown_berth" (berth index out of
-/// range) and "berth_blocked" (two walkable tiles land on the same
-/// composite tile — authored berth spacing must prevent this).
+/// range), "no_concourse_deck", and "berth_blocked" (two walkable tiles land
+/// on the same composite tile — authored berth spacing must prevent this).
 pub fn build(
   concourse: DeckPlan,
   berths: List(Berth),
   docked: List(DockedShip),
 ) -> Result(Composite, String) {
-  // Rotate each ship side-on, resolve its berth and raw offset.
-  let placed =
-    list.try_map(docked, fn(ship) {
-      case berth_at(berths, ship.berth) {
-        Error(Nil) -> Error("unknown_berth")
-        Ok(berth) -> {
-          let moored = DockedShip(..ship, plan: deckplan.rotate_ccw(ship.plan))
-          let #(dx, dy) = raw_offset(berth, moored.plan)
-          Ok(#(moored, berth, dx, dy))
-        }
-      }
-    })
-  case placed {
-    Error(e) -> Error(e)
-    Ok(placed) -> {
-      // Bounding box over the concourse rect and every ship rect.
-      let #(min_x, min_y, max_x, max_y) =
-        list.fold(
-          placed,
-          #(0, 0, concourse.grid.width, concourse.grid.height),
-          fn(acc, entry) {
-            let #(mnx, mny, mxx, mxy) = acc
-            let #(ship, _berth, dx, dy) = entry
-            #(
-              int.min(mnx, dx),
-              int.min(mny, dy),
-              int.max(mxx, dx + ship.plan.grid.width),
-              int.max(mxy, dy + ship.plan.grid.height),
-            )
-          },
+  use concourse_grid <- result.try(
+    deckplan.deck_at(concourse, 0)
+    |> result.replace_error("no_concourse_deck"),
+  )
+  use placed <- result.try(place_ships(berths, docked))
+
+  // Bounding box over the concourse rect and every ship's rotated footprint.
+  let #(min_x, min_y, max_x, max_y) =
+    list.fold(
+      placed,
+      #(0, 0, concourse_grid.width, concourse_grid.height),
+      fn(acc, p) {
+        let #(mnx, mny, mxx, mxy) = acc
+        let g = mooring_grid(p)
+        #(
+          int.min(mnx, p.dx),
+          int.min(mny, p.dy),
+          int.max(mxx, p.dx + g.width),
+          int.max(mxy, p.dy + g.height),
         )
-      let shift_x = -min_x
-      let shift_y = -min_y
-      let width = max_x - min_x
-      let height = max_y - min_y
-      let moorings =
-        list.map(placed, fn(entry) {
-          let #(ship, _berth, dx, dy) = entry
-          Mooring(ship_id: ship.ship_id, dx: dx + shift_x, dy: dy + shift_y)
-        })
-      case
-        compose_walkable(concourse, placed, shift_x, shift_y, width, height)
-        |> result.try(carve_tubes(_, placed, shift_x, shift_y))
-      {
-        Error(e) -> Error(e)
-        Ok(walkable) -> {
-          let rooms =
-            list.map(concourse.rooms, translate_room(_, shift_x, shift_y))
-            |> list.append(
-              list.flat_map(placed, fn(entry) {
-                let #(ship, _berth, dx, dy) = entry
-                list.map(ship.plan.rooms, fn(room) {
-                  let translated =
-                    translate_room(room, dx + shift_x, dy + shift_y)
-                  Room(..translated, id: namespace_id(ship.ship_id, room.id))
-                })
-              }),
-            )
-          let consoles =
-            list.map(concourse.consoles, translate_console(_, shift_x, shift_y))
-            |> list.append(
-              list.flat_map(placed, fn(entry) {
-                let #(ship, _berth, dx, dy) = entry
-                list.map(ship.plan.consoles, fn(console) {
-                  let translated =
-                    translate_console(console, dx + shift_x, dy + shift_y)
-                  Console(
-                    id: namespace_id(ship.ship_id, console.id),
-                    kind: translated.kind,
-                    x: translated.x,
-                    y: translated.y,
-                  )
-                })
-              }),
-            )
-          let #(spawn_x, spawn_y) = concourse.spawn_tile
-          let plan =
-            DeckPlan(
-              grid: Grid(width: width, height: height),
-              walkable: walkable,
-              rooms: rooms,
-              consoles: consoles,
-              spawn_tile: #(spawn_x + shift_x, spawn_y + shift_y),
-            )
-          case deckplan.validate(plan) {
-            Error(e) -> Error("invalid composite: " <> e)
-            Ok(plan) ->
-              Ok(Composite(
-                plan: plan,
-                concourse_dx: shift_x,
-                concourse_dy: shift_y,
-                moorings: moorings,
-              ))
-          }
-        }
-      }
-    }
+      },
+    )
+  let shift_x = -min_x
+  let shift_y = -min_y
+  let width = max_x - min_x
+  let height = max_y - min_y
+
+  // Assign composite deck indices: deck 0 is the shared plane; each ship's
+  // non-mooring decks get sequential indices, ordered outward from the
+  // mooring so vertically-adjacent decks stay index-adjacent (stairs).
+  let #(moorings, extra_specs) = assign_decks(placed, shift_x, shift_y)
+
+  // Deck 0: concourse + each ship's rotated mooring deck, then carve tubes.
+  use deck0 <- result.try(compose_deck0(
+    concourse_grid,
+    placed,
+    berths,
+    shift_x,
+    shift_y,
+    width,
+    height,
+  ))
+  // Extra decks: each a full WxH grid, void except one ship deck's footprint.
+  let extra_decks =
+    list.map(extra_specs, fn(spec) {
+      lift_deck(spec.grid, spec.dx + shift_x, spec.dy + shift_y, width, height)
+    })
+  let decks = [deck0, ..extra_decks]
+
+  let rooms = compose_rooms(concourse, placed, moorings, shift_x, shift_y)
+  let consoles = compose_consoles(concourse, placed, moorings, shift_x, shift_y)
+  let #(spawn_x, spawn_y) = concourse.spawn_tile
+  let plan =
+    DeckPlan(
+      decks: decks,
+      rooms: rooms,
+      consoles: consoles,
+      spawn_deck: 0,
+      spawn_tile: #(spawn_x + shift_x, spawn_y + shift_y),
+    )
+  case deckplan.validate(plan) {
+    Error(e) -> Error("invalid composite: " <> e)
+    Ok(plan) ->
+      Ok(Composite(
+        plan: plan,
+        concourse_dx: shift_x,
+        concourse_dy: shift_y,
+        moorings: moorings,
+      ))
   }
 }
 
-/// Row strings for the composite: each tile is walkable in exactly zero or
-/// one source plan. Two sources claiming one tile is "berth_blocked". The
-/// claiming source's walkable char is carried through unchanged so
-/// split-level ship plans keep their deck alphabet in the composite.
-fn compose_walkable(
-  concourse: DeckPlan,
-  placed: List(#(DockedShip, Berth, Int, Int)),
+fn place_ships(
+  berths: List(Berth),
+  docked: List(DockedShip),
+) -> Result(List(Placed), String) {
+  list.try_map(docked, fn(ship) {
+    case berth_at(berths, ship.berth) {
+      Error(Nil) -> Error("unknown_berth")
+      Ok(berth) -> {
+        let rotated = list.map(ship.plan.decks, rotate_ccw_grid)
+        let mooring_index = ship.plan.spawn_deck
+        let sw = plan_width(ship.plan)
+        let #(sx, sy) = ship.plan.spawn_tile
+        // Rotated spawn position (point rotation in a width-sw grid).
+        let #(rsx, rsy) = rotate_point(sx, sy, sw)
+        let dx = berth.x - rsx
+        let dy = berth.y - 1 - tube_length - rsy
+        Ok(Placed(
+          ship: ship,
+          rotated: rotated,
+          mooring_index: mooring_index,
+          dx: dx,
+          dy: dy,
+        ))
+      }
+    }
+  })
+}
+
+/// The rotated mooring deck for a placed ship (falls back to an empty grid
+/// if the mooring index is somehow out of range — validation prevents it).
+fn mooring_grid(p: Placed) -> DeckGrid {
+  case list.drop(p.rotated, p.mooring_index) |> list.first {
+    Ok(g) -> g
+    Error(Nil) -> DeckGrid(name: "", width: 0, height: 0, tiles: [], edges: [])
+  }
+}
+
+/// One ship's non-mooring deck to place as its own composite deck.
+type ExtraSpec {
+  ExtraSpec(grid: DeckGrid, dx: Int, dy: Int)
+}
+
+/// Assign composite deck indices and build the per-ship moorings. Deck 0 is
+/// shared; each ship's non-mooring decks are ordered by distance from the
+/// mooring (nearest first) so index-adjacency matches physical adjacency.
+fn assign_decks(
+  placed: List(Placed),
+  shift_x: Int,
+  shift_y: Int,
+) -> #(List(Mooring), List(ExtraSpec)) {
+  let #(moorings, specs, _next) =
+    list.fold(placed, #([], [], 1), fn(acc, p) {
+      let #(ms, ss, next) = acc
+      let sw = plan_width(p.ship.plan)
+      // Non-mooring ship-deck indices, ordered by distance from the mooring.
+      let others =
+        range(0, list.length(p.rotated))
+        |> list.filter(fn(sd) { sd != p.mooring_index })
+        |> list.sort(fn(a, b) {
+          int.compare(
+            int.absolute_value(a - p.mooring_index),
+            int.absolute_value(b - p.mooring_index),
+          )
+        })
+      // Map each to the next global composite index.
+      let #(pairs_rev, new_next) =
+        list.fold(others, #([], next), fn(inner, sd) {
+          let #(prs, n) = inner
+          #([#(sd, n), ..prs], n + 1)
+        })
+      let deck_map = [#(p.mooring_index, 0), ..list.reverse(pairs_rev)]
+      let mooring =
+        Mooring(
+          ship_id: p.ship.ship_id,
+          dx: p.dx + shift_x,
+          dy: p.dy + shift_y,
+          deck_map: deck_map,
+          ship_width: sw,
+        )
+      // Build extra specs for this ship's non-mooring decks (index order
+      // matches the assigned composite indices).
+      let ship_specs =
+        list.filter_map(list.reverse(pairs_rev), fn(pair) {
+          let #(sd, _cd) = pair
+          case list.drop(p.rotated, sd) |> list.first {
+            Ok(g) -> Ok(ExtraSpec(grid: g, dx: p.dx, dy: p.dy))
+            Error(Nil) -> Error(Nil)
+          }
+        })
+      #([mooring, ..ms], list.append(ss, ship_specs), new_next)
+    })
+  #(list.reverse(moorings), specs)
+}
+
+/// Compose composite deck 0: the concourse merged with every ship's rotated
+/// mooring deck, then the docking tubes carved north of each berth.
+fn compose_deck0(
+  concourse: DeckGrid,
+  placed: List(Placed),
+  berths: List(Berth),
   shift_x: Int,
   shift_y: Int,
   width: Int,
   height: Int,
-) -> Result(List(String), String) {
-  list.try_map(range(0, height), fn(y) {
-    list.try_map(range(0, width), fn(x) {
-      let ship_chars =
-        list.filter_map(placed, fn(entry) {
-          let #(ship, _berth, dx, dy) = entry
-          case deckplan.char_at(ship.plan, x - dx - shift_x, y - dy - shift_y) {
-            "." -> Error(Nil)
-            ch -> Ok(ch)
-          }
-        })
-      let claims = case deckplan.char_at(concourse, x - shift_x, y - shift_y) {
-        "." -> ship_chars
-        ch -> [ch, ..ship_chars]
-      }
-      case claims {
-        [] -> Ok(".")
-        [ch] -> Ok(ch)
-        _ -> Error("berth_blocked")
-      }
-    })
-    |> result_map_concat
-  })
+) -> Result(DeckGrid, String) {
+  use tiles_edges <- result.try(
+    list.try_map(range(0, height), fn(y) {
+      list.try_map(range(0, width), fn(x) {
+        // Sources claiming this tile: the concourse, then each ship's
+        // mooring deck. Exactly one non-void source may claim it.
+        let sources =
+          [cell(concourse, x - shift_x, y - shift_y)]
+          |> list.append(
+            list.map(placed, fn(p) {
+              cell(mooring_grid(p), x - p.dx - shift_x, y - p.dy - shift_y)
+            }),
+          )
+          |> list.filter(fn(c) { c.0 != Void })
+        case sources {
+          [] -> Ok(#(Void, open_edges()))
+          [one] -> Ok(one)
+          _ -> Error("berth_blocked")
+        }
+      })
+    }),
+  )
+  let g = grid_from_cells("concourse", width, height, tiles_edges)
+  carve_tubes(g, placed, berths, shift_x, shift_y)
 }
 
 /// Overwrite the `tube_length` void tiles directly north of each occupied
-/// berth with generated '#' docking-tube floor. Anything but '.' there
-/// means an authoring/spacing bug: "berth_blocked".
+/// berth with generated walkable floor. Anything but void there is a
+/// spacing/authoring bug: "berth_blocked".
 fn carve_tubes(
-  walkable: List(String),
-  placed: List(#(DockedShip, Berth, Int, Int)),
+  g: DeckGrid,
+  placed: List(Placed),
+  berths: List(Berth),
   shift_x: Int,
   shift_y: Int,
-) -> Result(List(String), String) {
-  list.fold(placed, Ok(walkable), fn(acc, entry) {
-    let #(_ship, berth, _dx, _dy) = entry
-    list.fold(range(1, tube_length + 1), acc, fn(acc2, k) {
-      case acc2 {
-        Error(e) -> Error(e)
-        Ok(rows) -> carve_tile(rows, berth.x + shift_x, berth.y - k + shift_y)
-      }
-    })
+) -> Result(DeckGrid, String) {
+  list.fold(placed, Ok(g), fn(acc, p) {
+    case acc {
+      Error(e) -> Error(e)
+      Ok(g) ->
+        case berth_at(berths, p.ship.berth) {
+          Error(Nil) -> Error("unknown_berth")
+          Ok(berth) ->
+            list.fold(range(1, tube_length + 1), Ok(g), fn(acc2, k) {
+              case acc2 {
+                Error(e) -> Error(e)
+                Ok(g) -> carve_tile(g, berth.x + shift_x, berth.y - k + shift_y)
+              }
+            })
+        }
+    }
   })
 }
 
-fn carve_tile(
-  rows: List(String),
-  x: Int,
-  y: Int,
-) -> Result(List(String), String) {
-  let out =
-    list.index_map(rows, fn(row, i) {
-      case i == y {
-        False -> row
-        True ->
-          string.slice(row, 0, x)
-          <> "#"
-          <> string.slice(row, x + 1, string.length(row))
-      }
-    })
-  // The carved tile must have been void ('.'): anything else means the
-  // tube would punch through a hull or floor.
-  let was = case list.drop(rows, y) |> list.first {
-    Ok(row) -> string.slice(row, x, 1)
-    Error(Nil) -> ""
-  }
-  case was {
-    "." -> Ok(out)
+fn carve_tile(g: DeckGrid, x: Int, y: Int) -> Result(DeckGrid, String) {
+  case deckplan.tile_at(g, x, y) {
+    Void -> Ok(DeckGrid(..g, tiles: set_2d(g.tiles, x, y, Floor)))
     _ -> Error("berth_blocked")
   }
 }
 
-fn result_map_concat(
-  cells: Result(List(String), String),
-) -> Result(String, String) {
-  case cells {
-    Error(e) -> Error(e)
-    Ok(cells) -> Ok(string.concat(cells))
+/// Lift one ship deck into a full width x height composite grid at
+/// `(dx, dy)`, void everywhere else.
+fn lift_deck(
+  src: DeckGrid,
+  dx: Int,
+  dy: Int,
+  width: Int,
+  height: Int,
+) -> DeckGrid {
+  let cells =
+    list.map(range(0, height), fn(y) {
+      list.map(range(0, width), fn(x) { cell(src, x - dx, y - dy) })
+    })
+  grid_from_cells(src.name, width, height, cells)
+}
+
+fn compose_rooms(
+  concourse: DeckPlan,
+  placed: List(Placed),
+  moorings: List(Mooring),
+  shift_x: Int,
+  shift_y: Int,
+) -> List(deckplan.Room) {
+  let concourse_rooms =
+    list.map(concourse.rooms, fn(r) {
+      Room(..r, deck: 0, x: r.x + shift_x, y: r.y + shift_y)
+    })
+  let ship_rooms =
+    list.flat_map(placed, fn(p) {
+      let sw = plan_width(p.ship.plan)
+      let mooring = mooring_for(moorings, p.ship.ship_id)
+      list.map(p.ship.plan.rooms, fn(r) {
+        // Rotate the room rect, then translate into the composite frame.
+        let #(rx, ry, rw, rh) = rotate_rect(r.x, r.y, r.w, r.h, sw)
+        Room(
+          id: namespace_id(p.ship.ship_id, r.id),
+          name: r.name,
+          deck: composite_deck_of(mooring, r.deck),
+          x: rx + p.dx + shift_x,
+          y: ry + p.dy + shift_y,
+          w: rw,
+          h: rh,
+        )
+      })
+    })
+  list.append(concourse_rooms, ship_rooms)
+}
+
+fn compose_consoles(
+  concourse: DeckPlan,
+  placed: List(Placed),
+  moorings: List(Mooring),
+  shift_x: Int,
+  shift_y: Int,
+) -> List(deckplan.Console) {
+  let concourse_consoles =
+    list.map(concourse.consoles, fn(c) {
+      Console(..c, deck: 0, x: c.x + shift_x, y: c.y + shift_y)
+    })
+  let ship_consoles =
+    list.flat_map(placed, fn(p) {
+      let sw = plan_width(p.ship.plan)
+      let mooring = mooring_for(moorings, p.ship.ship_id)
+      list.map(p.ship.plan.consoles, fn(c) {
+        let #(rx, ry) = rotate_point(c.x, c.y, sw)
+        Console(
+          id: namespace_id(p.ship.ship_id, c.id),
+          kind: c.kind,
+          deck: composite_deck_of(mooring, c.deck),
+          x: rx + p.dx + shift_x,
+          y: ry + p.dy + shift_y,
+        )
+      })
+    })
+  list.append(concourse_consoles, ship_consoles)
+}
+
+fn mooring_for(moorings: List(Mooring), ship_id: Int) -> Mooring {
+  case list.find(moorings, fn(m) { m.ship_id == ship_id }) {
+    Ok(m) -> m
+    Error(Nil) -> Mooring(ship_id, 0, 0, [], 0)
   }
+}
+
+// ------------------------------------------------------------ rotation --
+
+/// Rotate a deck grid 90° CCW: a nose-up ship lies nose-WEST, port side
+/// SOUTH. Rotated tile `(x', y')` = original `(width-1-y', x')`; each tile's
+/// edges rotate `(n, e, s, w) -> (e, s, w, n)`.
+fn rotate_ccw_grid(g: DeckGrid) -> DeckGrid {
+  let new_w = g.height
+  let new_h = g.width
+  let cells =
+    list.map(range(0, new_h), fn(y) {
+      list.map(range(0, new_w), fn(x) {
+        let ox = g.width - 1 - y
+        let oy = x
+        let #(n, e, s, w) = case deckplan.edges_at(g, ox, oy) {
+          Ok(edges) -> edges
+          Error(Nil) -> open_edges()
+        }
+        #(deckplan.tile_at(g, ox, oy), #(e, s, w, n))
+      })
+    })
+  grid_from_cells(g.name, new_w, new_h, cells)
+}
+
+/// Rotate a point `(x, y)` in a width-`w` grid 90° CCW: `(y, w-1-x)`.
+fn rotate_point(x: Int, y: Int, w: Int) -> #(Int, Int) {
+  #(y, w - 1 - x)
+}
+
+/// Rotate a rectangle 90° CCW in a width-`w` grid (matches `rotate_point` on
+/// the top-left corner; width/height swap).
+fn rotate_rect(
+  x: Int,
+  y: Int,
+  rw: Int,
+  rh: Int,
+  w: Int,
+) -> #(Int, Int, Int, Int) {
+  #(y, w - x - rw, rh, rw)
+}
+
+// -------------------------------------------------------------- cells --
+
+/// A tile plus its four edges — the unit `compose`/`lift` shuffle around.
+type Cell =
+  #(Tile, #(Edge, Edge, Edge, Edge))
+
+fn open_edges() -> #(Edge, Edge, Edge, Edge) {
+  #(Open, Open, Open, Open)
+}
+
+/// The cell at `(x, y)` on `g`; void + open edges out of bounds.
+fn cell(g: DeckGrid, x: Int, y: Int) -> Cell {
+  case deckplan.edges_at(g, x, y) {
+    Ok(edges) -> #(deckplan.tile_at(g, x, y), edges)
+    Error(Nil) -> #(Void, open_edges())
+  }
+}
+
+fn grid_from_cells(
+  name: String,
+  width: Int,
+  height: Int,
+  cells: List(List(Cell)),
+) -> DeckGrid {
+  DeckGrid(
+    name: name,
+    width: width,
+    height: height,
+    tiles: list.map(cells, fn(row) { list.map(row, fn(c) { c.0 }) }),
+    edges: list.map(cells, fn(row) { list.map(row, fn(c) { c.1 }) }),
+  )
+}
+
+/// Replace the value at `(x, y)` in a `[y][x]` 2D list, leaving others.
+fn set_2d(rows: List(List(a)), x: Int, y: Int, value: a) -> List(List(a)) {
+  list.index_map(rows, fn(row, ry) {
+    case ry == y {
+      False -> row
+      True ->
+        list.index_map(row, fn(cellv, rx) {
+          case rx == x {
+            False -> cellv
+            True -> value
+          }
+        })
+    }
+  })
 }
 
 fn berth_at(berths: List(Berth), index: Int) -> Result(Berth, Nil) {
@@ -356,17 +652,7 @@ fn berth_at(berths: List(Berth), index: Int) -> Result(Berth, Nil) {
   }
 }
 
-fn translate_room(room: Room, dx: Int, dy: Int) -> Room {
-  Room(..room, x: room.x + dx, y: room.y + dy)
-}
-
-fn translate_console(console: Console, dx: Int, dy: Int) -> Console {
-  Console(..console, x: console.x + dx, y: console.y + dy)
-}
-
-/// [from, to) as a list of ints, e.g. `range(0, 3) == [0, 1, 2]`. The pinned
-/// gleam_stdlib (1.0.3) has no `list.range`; matches the local helper idiom
-/// used in test/noise_test.gleam.
+/// [from, to) as a list of ints.
 fn range(from: Int, to: Int) -> List(Int) {
   case from >= to {
     True -> []

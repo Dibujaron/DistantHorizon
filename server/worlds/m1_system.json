@@ -3,88 +3,333 @@
   "name": "Krasny Sector (M1 pinned system)",
   "seed": 20260712,
   "commodities": [
-    {"id": "water", "name": "Water"},
-    {"id": "food", "name": "Foodstuffs"},
-    {"id": "machinery", "name": "Machinery"},
-    {"id": "luxuries", "name": "Luxuries"}
+    {
+      "id": "water",
+      "name": "Water"
+    },
+    {
+      "id": "food",
+      "name": "Foodstuffs"
+    },
+    {
+      "id": "machinery",
+      "name": "Machinery"
+    },
+    {
+      "id": "luxuries",
+      "name": "Luxuries"
+    }
   ],
   "bodies": [
-    {"id": "krasny", "name": "Krasny", "kind": "star", "parent": null,
-     "orbit": null, "radius": 800.0, "mu": 20000000.0},
-    {"id": "meridian", "name": "Meridian", "kind": "planet", "parent": "krasny",
-     "orbit": {"radius": 4000.0, "period_s": 900.0, "phase": 0.0},
-     "radius": 600.0, "mu": 250000.0},
-    {"id": "tefiti", "name": "Te Fiti", "kind": "planet", "parent": "krasny",
-     "orbit": {"radius": 8000.0, "period_s": 2400.0, "phase": 0.35},
-     "radius": 750.0, "mu": 400000.0}
+    {
+      "id": "krasny",
+      "name": "Krasny",
+      "kind": "star",
+      "parent": null,
+      "orbit": null,
+      "radius": 800.0,
+      "mu": 20000000.0
+    },
+    {
+      "id": "meridian",
+      "name": "Meridian",
+      "kind": "planet",
+      "parent": "krasny",
+      "orbit": {
+        "radius": 4000.0,
+        "period_s": 900.0,
+        "phase": 0.0
+      },
+      "radius": 600.0,
+      "mu": 250000.0
+    },
+    {
+      "id": "tefiti",
+      "name": "Te Fiti",
+      "kind": "planet",
+      "parent": "krasny",
+      "orbit": {
+        "radius": 8000.0,
+        "period_s": 2400.0,
+        "phase": 0.35
+      },
+      "radius": 750.0,
+      "mu": 400000.0
+    }
   ],
   "stations": [
-    {"id": "meridian_highport", "name": "Meridian Highport", "parent": "meridian",
-     "orbit": {"radius": 850.0, "period_s": 180.0, "phase": 0.0}, "dock_radius": 150.0,
-     "crane": true,
-     "concourse": {
-       "grid": {"width": 94, "height": 6},
-       "walkable": [
-         "..............................................................................................",
-         "......................#...............................#...............................#.......",
-         ".############################################################################################.",
-         ".############################################################################################.",
-         ".############################################################################################.",
-         ".............................................................................................."
-       ],
-       "rooms": [
-         {"id": "concourse", "name": "Concourse", "x": 1, "y": 2, "w": 92, "h": 3},
-         {"id": "berth_1", "name": "Berth 1", "x": 22, "y": 1, "w": 1, "h": 1},
-         {"id": "berth_2", "name": "Berth 2", "x": 54, "y": 1, "w": 1, "h": 1},
-         {"id": "berth_3", "name": "Berth 3", "x": 86, "y": 1, "w": 1, "h": 1}
-       ],
-       "consoles": [
-         {"id": "broker_main", "kind": "broker", "x": 10, "y": 3},
-         {"id": "broker_east", "kind": "broker", "x": 60, "y": 3}
-       ],
-       "spawn_tile": [47, 3]
-     },
-     "berths": [
-       {"tile": [22, 1], "orientation": 1.5707963267948966, "anchor": [-32.6, 26.8]},
-       {"tile": [54, 1], "orientation": 1.5707963267948966, "anchor": [5.7, 26.8]},
-       {"tile": [86, 1], "orientation": 1.5707963267948966, "anchor": [44.0, 26.8]}
-     ],
-     "market": [
-       {"commodity": "water",     "initial": 120, "price": 4,  "elasticity": 1},
-       {"commodity": "food",      "initial": 80,  "price": 10, "elasticity": 2},
-       {"commodity": "machinery", "initial": 60,  "price": 55, "elasticity": 4},
-       {"commodity": "luxuries",  "initial": 20,  "price": 78, "elasticity": 5}
-     ]},
-    {"id": "solis_ring", "name": "Solis Ring", "parent": "krasny",
-     "orbit": {"radius": 2000.0, "period_s": 500.0, "phase": 0.6}, "dock_radius": 150.0,
-     "crane": false,
-     "concourse": {
-       "grid": {"width": 12, "height": 5},
-       "walkable": [
-         "............",
-         ".....#......",
-         ".##########.",
-         ".##########.",
-         "............"
-       ],
-       "rooms": [
-         {"id": "concourse", "name": "Concourse", "x": 1, "y": 2, "w": 10, "h": 2},
-         {"id": "berth_1", "name": "Berth 1", "x": 5, "y": 1, "w": 1, "h": 1}
-       ],
-       "consoles": [
-         {"id": "broker_main", "kind": "broker", "x": 5, "y": 3}
-       ],
-       "spawn_tile": [5, 2]
-     },
-     "berths": [
-       {"tile": [5, 1], "orientation": 1.5707963267948966, "anchor": [-3.9, 17.8]}
-     ],
-     "market": [
-       {"commodity": "water",     "initial": 100, "price": 3,  "elasticity": 1},
-       {"commodity": "food",      "initial": 50,  "price": 14, "elasticity": 2},
-       {"commodity": "machinery", "initial": 30,  "price": 75, "elasticity": 6},
-       {"commodity": "luxuries",  "initial": 40,  "price": 60, "elasticity": 6}
-     ]}
+    {
+      "id": "meridian_highport",
+      "name": "Meridian Highport",
+      "parent": "meridian",
+      "orbit": {
+        "radius": 850.0,
+        "period_s": 180.0,
+        "phase": 0.0
+      },
+      "dock_radius": 150.0,
+      "crane": true,
+      "concourse": {
+        "decks": [
+          {
+            "name": "Concourse",
+            "grid": [
+              "                                                                                                                                                                                                                                                                                          ",
+              " .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . ",
+              "                                                                                                                                                                                                                                                                                          ",
+              "                                                                  # #                                                                                             # #                                                                                             # #                     ",
+              " .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . # # .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . # # .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . # # .  .  .  .  .  .  . ",
+              "                                                                  # #                                                                                             # #                                                                                             # #                     ",
+              "   ###############################################################   #############################################################################################   #############################################################################################   ##################   ",
+              " . #                                                                                                                                                                                                                                                                                  # . ",
+              "   #                                                                                                                                                                                                                                                                                  #   ",
+              "   #                                                                                                                                                                                                                                                                                  #   ",
+              " . #                                                                                                                                                                                                                                                                                  # . ",
+              "   #                                                                                                                                                                                                                                                                                  #   ",
+              "   #                                                                                                                                                                                                                                                                                  #   ",
+              " . #                                                                                                                                                                                                                                                                                  # . ",
+              "   ####################################################################################################################################################################################################################################################################################   ",
+              "                                                                                                                                                                                                                                                                                          ",
+              " .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . ",
+              "                                                                                                                                                                                                                                                                                          "
+            ]
+          }
+        ],
+        "rooms": [
+          {
+            "id": "concourse",
+            "name": "Concourse",
+            "x": 1,
+            "y": 2,
+            "w": 92,
+            "h": 3,
+            "deck": 0
+          },
+          {
+            "id": "berth_1",
+            "name": "Berth 1",
+            "x": 22,
+            "y": 1,
+            "w": 1,
+            "h": 1,
+            "deck": 0
+          },
+          {
+            "id": "berth_2",
+            "name": "Berth 2",
+            "x": 54,
+            "y": 1,
+            "w": 1,
+            "h": 1,
+            "deck": 0
+          },
+          {
+            "id": "berth_3",
+            "name": "Berth 3",
+            "x": 86,
+            "y": 1,
+            "w": 1,
+            "h": 1,
+            "deck": 0
+          }
+        ],
+        "consoles": [
+          {
+            "id": "broker_main",
+            "kind": "broker",
+            "x": 10,
+            "y": 3,
+            "deck": 0
+          },
+          {
+            "id": "broker_east",
+            "kind": "broker",
+            "x": 60,
+            "y": 3,
+            "deck": 0
+          }
+        ],
+        "spawn": {
+          "deck": 0,
+          "tile": [
+            47,
+            3
+          ]
+        }
+      },
+      "berths": [
+        {
+          "tile": [
+            22,
+            1
+          ],
+          "orientation": 1.5707963267948966,
+          "anchor": [
+            -32.6,
+            26.8
+          ]
+        },
+        {
+          "tile": [
+            54,
+            1
+          ],
+          "orientation": 1.5707963267948966,
+          "anchor": [
+            5.7,
+            26.8
+          ]
+        },
+        {
+          "tile": [
+            86,
+            1
+          ],
+          "orientation": 1.5707963267948966,
+          "anchor": [
+            44.0,
+            26.8
+          ]
+        }
+      ],
+      "market": [
+        {
+          "commodity": "water",
+          "initial": 120,
+          "price": 4,
+          "elasticity": 1
+        },
+        {
+          "commodity": "food",
+          "initial": 80,
+          "price": 10,
+          "elasticity": 2
+        },
+        {
+          "commodity": "machinery",
+          "initial": 60,
+          "price": 55,
+          "elasticity": 4
+        },
+        {
+          "commodity": "luxuries",
+          "initial": 20,
+          "price": 78,
+          "elasticity": 5
+        }
+      ]
+    },
+    {
+      "id": "solis_ring",
+      "name": "Solis Ring",
+      "parent": "krasny",
+      "orbit": {
+        "radius": 2000.0,
+        "period_s": 500.0,
+        "phase": 0.6
+      },
+      "dock_radius": 150.0,
+      "crane": false,
+      "concourse": {
+        "decks": [
+          {
+            "name": "Concourse",
+            "grid": [
+              "                                    ",
+              " .  .  .  .  .  .  .  .  .  .  .  . ",
+              "                                    ",
+              "               # #                  ",
+              " .  .  .  .  . # # .  .  .  .  .  . ",
+              "               # #                  ",
+              "   ############   ###############   ",
+              " . #                            # . ",
+              "   #                            #   ",
+              "   #                            #   ",
+              " . #                            # . ",
+              "   ##############################   ",
+              "                                    ",
+              " .  .  .  .  .  .  .  .  .  .  .  . ",
+              "                                    "
+            ]
+          }
+        ],
+        "rooms": [
+          {
+            "id": "concourse",
+            "name": "Concourse",
+            "x": 1,
+            "y": 2,
+            "w": 10,
+            "h": 2,
+            "deck": 0
+          },
+          {
+            "id": "berth_1",
+            "name": "Berth 1",
+            "x": 5,
+            "y": 1,
+            "w": 1,
+            "h": 1,
+            "deck": 0
+          }
+        ],
+        "consoles": [
+          {
+            "id": "broker_main",
+            "kind": "broker",
+            "x": 5,
+            "y": 3,
+            "deck": 0
+          }
+        ],
+        "spawn": {
+          "deck": 0,
+          "tile": [
+            5,
+            2
+          ]
+        }
+      },
+      "berths": [
+        {
+          "tile": [
+            5,
+            1
+          ],
+          "orientation": 1.5707963267948966,
+          "anchor": [
+            -3.9,
+            17.8
+          ]
+        }
+      ],
+      "market": [
+        {
+          "commodity": "water",
+          "initial": 100,
+          "price": 3,
+          "elasticity": 1
+        },
+        {
+          "commodity": "food",
+          "initial": 50,
+          "price": 14,
+          "elasticity": 2
+        },
+        {
+          "commodity": "machinery",
+          "initial": 30,
+          "price": 75,
+          "elasticity": 6
+        },
+        {
+          "commodity": "luxuries",
+          "initial": 40,
+          "price": 60,
+          "elasticity": 6
+        }
+      ]
+    }
   ],
   "spawn_station": "meridian_highport"
 }

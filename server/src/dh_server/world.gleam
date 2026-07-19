@@ -408,12 +408,17 @@ fn validate_berths(world: World) -> Result(World, String) {
             <> ","
             <> int.to_string(berth.y)
             <> ")"
-          case deckplan.is_walkable(plan, berth.x, berth.y) {
-            False -> Error(label <> " is not walkable")
-            True ->
-              case deckplan.is_walkable(plan, berth.x, berth.y - 1) {
-                True -> Error(label <> " has a walkable north neighbor")
-                False -> Ok(world)
+          // Concourses are single-deck (index 0); berths land on that plane.
+          case deckplan.deck_at(plan, 0) {
+            Error(Nil) -> Error(label <> ": concourse has no decks")
+            Ok(g) ->
+              case deckplan.is_walkable(g, berth.x, berth.y) {
+                False -> Error(label <> " is not walkable")
+                True ->
+                  case deckplan.is_walkable(g, berth.x, berth.y - 1) {
+                    True -> Error(label <> " has a walkable north neighbor")
+                    False -> Ok(world)
+                  }
               }
           }
         })

@@ -1,6 +1,7 @@
-//// Ship class documents (schema 2): a hull's deck plan plus the cargo
-//// characteristics M3 trading needs (DESIGN.md "content is data"). One
-//// class exists (`server/classes/sparrow.json`, path overridable via
+//// Ship class documents (schema 3): a hull's multi-deck plan (per-deck 3x3
+//// tile grids, `docs/deckplan-format.md`) plus the cargo characteristics M3
+//// trading needs (DESIGN.md "content is data"). One class exists
+//// (`server/classes/mockingbird.json`, path overridable via
 //// `DH_SHIP_CLASS`); every ship in the sim is spawned from the same loaded
 //// `ShipClass`. The whole document is sent verbatim to clients as
 //// `ship_class` in the `welcome` message, so `encode` round-trips exactly
