@@ -532,14 +532,8 @@ fn open_edges() -> #(Edge, Edge, Edge, Edge) {
 
 /// The cell at `(x, y)` on `g`; void + open edges out of bounds.
 fn cell(g: DeckGrid, x: Int, y: Int) -> deckplan.Cell {
-  case deckplan.edges_at(g, x, y) {
-    Ok(edges) ->
-      Cell(
-        tile: deckplan.tile_at(g, x, y),
-        edges: edges,
-        decor: None,
-        color: None,
-      )
+  case deckplan.cell_at_xy(g, x, y) {
+    Ok(c) -> c
     Error(Nil) ->
       Cell(tile: Void, edges: open_edges(), decor: None, color: None)
   }

@@ -7,6 +7,7 @@ import dh_server/composite.{Berth, DockedShip, Mooring}
 import dh_server/deckplan.{type DeckPlan, Console, DeckPlan}
 import gleam/int
 import gleam/list
+import gleam/option.{Some}
 
 // A tiny two-deck ship, uniform 2x2 tiles per deck. Deck 0 "upper" carries
 // the helm and a stairs at (1,1); deck 1 "lower" is the MOORING deck
@@ -174,6 +175,36 @@ pub fn tile_on_mooring_splits_ship_from_station_test() {
   assert !composite.tile_on_mooring(m, plan, 1, 2.5, 7.5)
   // A tube tile belongs to the station.
   assert !composite.tile_on_mooring(m, plan, 1, 2.5, 3.5)
+}
+
+// A single-deck ship (its one deck IS the mooring deck, so it merges
+// straight into the concourse's level 0) with a coloured decor tile at
+// ship-local (0,1) — a bed ("d") coloured hex "a" (10).
+fn decor_ship_plan() -> DeckPlan {
+  let assert Ok(deck) = deckplan.parse_deck("cabin", decor_deck_rows())
+  DeckPlan(decks: [deck], consoles: [], spawn_deck: 0, spawn_tile: #(0, 0))
+}
+
+// 2x2 tiles; tile (0,1)'s NE corner carries colour "a", centre carries the
+// bed decor glyph "d".
+fn decor_deck_rows() -> List(String) {
+  ["      ", "      ", "      ", "  a   ", " d    ", "      "]
+}
+
+// Regression for the review finding: composite.cell() used to hardcode
+// decor/color to None, stripping them from every docked ship (and the
+// concourse) in the composite. Ship-local (0,1) rotates 90 CCW to (1,1) in
+// the moored frame, landing at composite (3,1) — one tile east of the
+// moored gangway tile (2,1) (see tile_on_mooring_splits_ship_from_station_test).
+pub fn composite_carries_decor_and_color_through_rotation_test() {
+  let assert Ok(c) =
+    composite.build(concourse(), berths(), [
+      DockedShip(ship_id: 1, berth: 0, plan: decor_ship_plan()),
+    ])
+  let assert Ok(deck) = deckplan.deck_at(c.plan, 0)
+  let assert Ok(cell) = deckplan.cell_at_xy(deck, 3, 1)
+  assert cell.decor == Some("d")
+  assert cell.color == Some(10)
 }
 
 pub fn ship_frame_round_trip_test() {

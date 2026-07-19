@@ -276,3 +276,17 @@ pub fn blank_ne_corner_is_uncolored_test() {
   assert c.color == option.None
   assert c.decor == option.Some("r")
 }
+
+pub fn hash_ne_corner_is_uncolored_test() {
+  let rows = ["#=#", " d ", "###"]
+  let assert Ok(g) = deckplan.parse_deck("t", rows)
+  let assert Ok(c) = deckplan.cell_at_xy(g, 0, 0)
+  assert c.color == option.None
+}
+
+pub fn junk_letter_ne_corner_is_uncolored_test() {
+  let rows = ["#=g", " d ", "###"]
+  let assert Ok(g) = deckplan.parse_deck("t", rows)
+  let assert Ok(c) = deckplan.cell_at_xy(g, 0, 0)
+  assert c.color == option.None
+}

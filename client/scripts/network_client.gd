@@ -231,11 +231,14 @@ func _handle_welcome(message: Dictionary) -> void:
 	character_id = int(message.get("character_id", -1))
 	station_id = ""
 	space = null
+	# glyphs/palette must be set before parsing ship_class: Deck.from_grid ->
+	# _parse_decor reads NetworkClient.glyphs to resolve decor tiles, so
+	# parsing ship_class first would leave the aboard ship's decor unresolved.
+	glyphs = GlyphRegistry.from_dict(message.get("glyphs"))
+	palette = Palette.from_dict(message.get("palette", []))
 	var class_doc: Variant = message.get("ship_class")
 	if class_doc is Dictionary:
 		ship_class = ShipClassData.from_dict(class_doc)
-	glyphs = GlyphRegistry.from_dict(message.get("glyphs"))
-	palette = Palette.from_dict(message.get("palette", []))
 	logged_in = true
 	print("[net] welcome: ship_id=%d account_id=%d character_id=%d" % [ship_id, account_id, character_id])
 	welcome_received.emit(ship_id, world)
