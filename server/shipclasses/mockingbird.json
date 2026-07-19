@@ -230,5 +230,6 @@
     "capacity": 40,
     "handling": "breakbulk"
   },
-  "dock_port_orientation": 1.5707963267948966
+  "dock_port_orientation": 1.5707963267948966,
+  "dock_standoff": 20.0
 }

@@ -24,7 +24,7 @@ import gleam/option.{type Option, Some}
 
 fn start_sim() -> process.Subject(sim.Msg) {
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
+  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
   let assert Ok(started) = sim.start(w, c)
   started.data
 }
@@ -491,7 +491,7 @@ pub fn login_lands_in_the_station_space_seated_at_own_helm_test() {
   // (rather than assume berth 0) so this stays correct if the seed or the
   // hash ever changes which berth ship 1 lands on.
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  let assert Ok(class) = shipclass.load("classes/mockingbird.json")
+  let assert Ok(class) = shipclass.load("shipclasses/mockingbird.json")
   let assert Ok(station) = world.get_station(w, "meridian_highport")
   let berth =
     expected_berth(
@@ -667,7 +667,7 @@ pub fn undock_frees_the_berth_test() {
 pub fn free_berth_is_seed_random_among_free_berths_test() {
   let s = start_sim()
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  let assert Ok(class) = shipclass.load("classes/mockingbird.json")
+  let assert Ok(class) = shipclass.load("shipclasses/mockingbird.json")
   let assert Ok(station) = world.get_station(w, "meridian_highport")
   let free_count = list.length(station.berths)
 

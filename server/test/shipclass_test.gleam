@@ -4,7 +4,7 @@ import gleam/json
 import gleam/list
 
 pub fn load_bundled_mockingbird_test() {
-  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
+  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
   assert c.schema == 3
   assert c.id == "mockingbird"
   // Three decks: Upper, Mezzanine, Lower.
@@ -15,26 +15,26 @@ pub fn load_bundled_mockingbird_test() {
 }
 
 pub fn decode_encode_round_trips_test() {
-  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
+  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
   let text = shipclass.encode(c) |> json.to_string
   let assert Ok(c2) = shipclass.decode(text)
   assert c == c2
 }
 
 pub fn helm_console_is_helm_main_test() {
-  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
+  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
   let assert Ok(console) = shipclass.helm_console(c)
   assert console.id == "helm"
   assert console.kind == "helm"
 }
 
 pub fn find_console_unknown_is_error_test() {
-  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
+  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
   assert deckplan.find_console(c.plan, "nope") == Error(Nil)
 }
 
 pub fn spawn_tile_is_walkable_test() {
-  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
+  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
   let assert Ok(g) = deckplan.deck_at(c.plan, c.plan.spawn_deck)
   let #(sx, sy) = c.plan.spawn_tile
   assert deckplan.is_walkable(g, sx, sy)
@@ -123,9 +123,18 @@ pub fn decode_rejects_garbage_test() {
 }
 
 pub fn decode_reads_cargo_block_test() {
-  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
+  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
   assert c.cargo_capacity == 40
   assert c.handling == shipclass.BreakBulk
+}
+
+pub fn dock_standoff_reads_and_defaults_test() {
+  // The bundled hull authors its standoff.
+  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
+  assert c.dock_standoff == 20.0
+  // A class that omits dock_standoff falls back to the default.
+  let assert Ok(d) = shipclass.decode(valid_doc())
+  assert d.dock_standoff == shipclass.default_dock_standoff
 }
 
 pub fn decode_rejects_unknown_handling_test() {

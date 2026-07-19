@@ -20,7 +20,7 @@ import gleam/string
 
 const default_world_path = "worlds/m1_system.json"
 
-const default_ship_class_path = "classes/mockingbird.json"
+const default_ship_class_path = "shipclasses/mockingbird.json"
 
 const default_glyphs_path = "glyphs.json"
 

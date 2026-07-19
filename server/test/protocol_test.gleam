@@ -14,7 +14,7 @@ import gleam/option.{None, Some}
 import gleam/string
 
 fn test_class() -> shipclass.ShipClass {
-  let assert Ok(c) = shipclass.load("classes/mockingbird.json")
+  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
   c
 }
 

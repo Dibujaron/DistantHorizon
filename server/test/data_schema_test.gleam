@@ -22,7 +22,7 @@ const glyphs_path = "glyphs.json"
 
 const worlds_dir = "worlds"
 
-const classes_dir = "classes"
+const classes_dir = "shipclasses"
 
 fn read_json(path: String) -> Dynamic {
   let assert Ok(text) = simplifile.read(path)

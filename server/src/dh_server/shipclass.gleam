@@ -1,7 +1,7 @@
 //// Ship class documents (schema 3): a hull's multi-deck plan (per-deck 3x3
 //// tile grids, `docs/deckplan-format.md`) plus the cargo characteristics M3
 //// trading needs (DESIGN.md "content is data"). One class exists
-//// (`server/classes/mockingbird.json`, path overridable via
+//// (`server/shipclasses/mockingbird.json`, path overridable via
 //// `DH_SHIP_CLASS`); every ship in the sim is spawned from the same loaded
 //// `ShipClass`. The whole document is sent verbatim to clients as
 //// `ship_class` in the `welcome` message, so `encode` round-trips exactly
@@ -30,6 +30,13 @@ pub type Handling {
 /// class that doesn't author its own `dock_port_orientation`.
 pub const default_dock_port_orientation = 1.5707963267948966
 
+/// The default moored standoff, in tiles (= metres): how far this hull's centre
+/// sits off the berth's mooring line, along the berth's outward normal. There
+/// is no good universal constant — a tiny shuttle and a wide-winged freighter
+/// stand off differently — so it is authored per class; this default is the
+/// Mockingbird's side-on standoff so an unspecified hull still moors sensibly.
+pub const default_dock_standoff = 20.0
+
 pub type ShipClass {
   ShipClass(
     schema: Int,
@@ -45,6 +52,12 @@ pub type ShipClass {
     /// hull can dock side-on (pi/2, the default — port flank to the gangway),
     /// nose-in (0), etc., instead of the old hardcoded side-on (issue #14).
     dock_port_orientation: Float,
+    /// How far this hull's centre stands off the berth mooring line, in tiles
+    /// (= metres), along the berth's outward normal — the per-ship half of the
+    /// moored sim pose (`world.moored_position`, issue #31). Wide hulls stand
+    /// off further than narrow ones; there is no good constant, so it is
+    /// authored per class.
+    dock_standoff: Float,
   )
 }
 
@@ -97,6 +110,7 @@ pub fn encode(class: ShipClass) -> Json {
     |> list.append([
       #("cargo", encode_cargo(class)),
       #("dock_port_orientation", json.float(class.dock_port_orientation)),
+      #("dock_standoff", json.float(class.dock_standoff)),
     ]),
   )
 }
@@ -145,6 +159,11 @@ fn ship_class_decoder(reg: Registry) -> decode.Decoder(ShipClass) {
     default_dock_port_orientation,
     decode.float,
   )
+  use dock_standoff <- decode.optional_field(
+    "dock_standoff",
+    default_dock_standoff,
+    decode.float,
+  )
   let #(capacity, handling) = cargo
   decode.success(ShipClass(
     schema: schema,
@@ -154,6 +173,7 @@ fn ship_class_decoder(reg: Registry) -> decode.Decoder(ShipClass) {
     cargo_capacity: capacity,
     handling: handling,
     dock_port_orientation: dock_port_orientation,
+    dock_standoff: dock_standoff,
   ))
 }
 
