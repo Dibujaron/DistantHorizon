@@ -165,12 +165,20 @@ fn ship_class_decoder(reg: Registry) -> decode.Decoder(ShipClass) {
     decode.float,
   )
   let #(capacity, handling) = cargo
+  // Breakbulk hold capacity derives from cargo-pallet tiles on the deck
+  // plan ("the map is the single source of truth", as with consoles/berths)
+  // — falling back to the authored capacity for hulls with no pallets.
+  let derived = deckplan.pallet_count(plan, reg)
+  let effective_capacity = case derived > 0 {
+    True -> derived
+    False -> capacity
+  }
   decode.success(ShipClass(
     schema: schema,
     id: id,
     name: name,
     plan: plan,
-    cargo_capacity: capacity,
+    cargo_capacity: effective_capacity,
     handling: handling,
     dock_port_orientation: dock_port_orientation,
     dock_standoff: dock_standoff,

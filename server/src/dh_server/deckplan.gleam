@@ -419,6 +419,26 @@ fn outward_dir(g: DeckGrid, x: Int, y: Int) -> Result(Dir, Nil) {
   })
 }
 
+/// Count of cargo-pallet tiles across every deck — the derived breakbulk
+/// hold capacity ("the map is the single source of truth"). A pallet is a
+/// cell whose decor glyph maps to the `cargo_pallet` id in the registry.
+pub fn pallet_count(plan: DeckPlan, reg: glyphs.Registry) -> Int {
+  list.fold(plan.decks, 0, fn(total, g) {
+    list.fold(g.cells, total, fn(t, row) {
+      list.fold(row, t, fn(n, c) {
+        case c.decor {
+          Some(glyph) ->
+            case glyphs.center(reg, glyph).id == "cargo_pallet" {
+              True -> n + 1
+              False -> n
+            }
+          None -> n
+        }
+      })
+    })
+  })
+}
+
 /// Centre of tile (x, y) in tile units.
 pub fn tile_center(x: Int, y: Int) -> #(Float, Float) {
   #(int.to_float(x) +. 0.5, int.to_float(y) +. 0.5)

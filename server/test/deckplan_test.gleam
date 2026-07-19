@@ -1,5 +1,16 @@
 import dh_server/deckplan.{Console, DeckPlan}
+import dh_server/glyphs
 import gleam/option
+
+// ---------------------------------------------------------- cargo tiles --
+
+pub fn pallet_count_test() {
+  let rows = ["######", " p  p ", "######"]
+  let assert Ok(g) = deckplan.parse_deck("hold", rows)
+  let plan =
+    DeckPlan(decks: [g], consoles: [], spawn_deck: 0, spawn_tile: #(0, 0))
+  assert deckplan.pallet_count(plan, glyphs.default()) == 2
+}
 
 // ------------------------------------------------- docking ports (#31) --
 
