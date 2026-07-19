@@ -5,14 +5,17 @@
 //// faces the station, and a `tube_length`-tile docking tube of generated
 //// walkable tiles bridges the gap between the dormer and the berth stub.
 ////
-//// v3 is multi-deck (Option B): composite **deck 0** is the concourse plane
-//// with every docked ship's MOORING deck (its `spawn_deck`) merged in and
-//// tube-connected. Each ship's other decks become their own composite decks,
-//// placed at the same rotated offset so the `x` stairs line up vertically
-//// and resolve positionally. Tube tiles belong to the STATION (a body
-//// mid-tube stays ashore on undock). Ship room/console ids are namespaced
-//// "s{ship_id}:{id}" and their `deck` is remapped to the composite index.
-//// The output is an ordinary DeckPlan the character sim and client walk.
+//// v3 is multi-deck (Option B): composite decks are indexed by LEVEL relative
+//// to the concourse plane. A docked ship's deck is at level
+//// `ship_deck - mooring_index`, so its MOORING deck (its `spawn_deck`) sits at
+//// level 0 — the same plane as the concourse, merged in and tube-connected —
+//// and its other decks land one level above/below. This keeps
+//// physically-adjacent decks index-adjacent so `deck±1` stairs survive docking
+//// whatever the mooring deck's spot in the ship's stack. Every level hosts all
+//// docked ships' decks at that relative level (at their berths). Tube tiles
+//// belong to the STATION (a body mid-tube stays ashore on undock). Ship
+//// console ids are namespaced "s{ship_id}:{id}", `deck` remapped to the
+//// composite index. The output is an ordinary DeckPlan the sim and client walk.
 
 import dh_server/deckplan.{
   type DeckGrid, type DeckPlan, type Edge, type Tile, Console, DeckGrid,
@@ -65,12 +68,15 @@ pub type Mooring {
 
 /// The stitched plan. `concourse_dx/dy` is the translation applied to
 /// concourse tiles (grows when a mooring extends past the concourse's
-/// top/left edge); moorings carry each ship's translation + deck mapping.
+/// top/left edge); `base_level` is the concourse-relative level of composite
+/// deck 0 (composite decks are indexed by level, so `level = deck + base_level`
+/// — see `build`); moorings carry each ship's translation + deck mapping.
 pub type Composite {
   Composite(
     plan: DeckPlan,
     concourse_dx: Int,
     concourse_dy: Int,
+    base_level: Int,
     moorings: List(Mooring),
   )
 }
@@ -105,8 +111,8 @@ pub fn find_mooring(
   list.find(composite.moorings, fn(g) { g.ship_id == ship_id })
 }
 
-/// The composite deck index a ship-local deck maps to (mooring deck -> 0).
-/// Unmapped ship decks default to 0.
+/// The composite deck index a ship-local deck maps to (its concourse-relative
+/// level, offset into the composite's deck list). Unmapped ship decks -> 0.
 pub fn composite_deck_of(mooring: Mooring, ship_deck: Int) -> Int {
   case list.find(mooring.deck_map, fn(p) { p.0 == ship_deck }) {
     Ok(#(_, cd)) -> cd
@@ -123,44 +129,15 @@ pub fn ship_deck_of(mooring: Mooring, composite_deck: Int) -> Result(Int, Nil) {
   }
 }
 
-/// Remap a composite deck index from one composite to another (across a
-/// rebuild). Deck 0 (the shared concourse+mooring plane) is always deck 0.
-/// A ship's non-mooring deck is found by which ship + ship-deck it was in
-/// `from`, then re-looked-up in `to` — because deck indices shift as ships
-/// dock/undock and reorder. If the ship is gone from `to` (undocked/
-/// despawned), the old index is returned unchanged; the caller's
-/// walkability check then re-floors the stranded body.
+/// Remap a composite deck index from one composite to another across a
+/// rebuild. Composite decks are indexed by concourse-relative LEVEL, and a
+/// body's level is preserved even as the index base shifts (a taller ship
+/// docking/undocking changes how many decks sit above the concourse). So the
+/// remap is a pure shift by the difference of the two bases; a body whose ship
+/// then vanished lands where its tiles used to be and the caller's walkability
+/// check re-floors it.
 pub fn remap_deck(from: Composite, to: Composite, deck: Int) -> Int {
-  case deck == 0 {
-    True -> 0
-    False ->
-      case find_ship_deck(from.moorings, deck) {
-        Error(Nil) -> deck
-        Ok(#(ship_id, ship_deck)) ->
-          case find_mooring(to, ship_id) {
-            Ok(m) -> composite_deck_of(m, ship_deck)
-            Error(Nil) -> deck
-          }
-      }
-  }
-}
-
-/// The #(ship_id, ship_deck) whose composite deck index is `comp_deck` in
-/// these moorings, if any.
-fn find_ship_deck(
-  moorings: List(Mooring),
-  comp_deck: Int,
-) -> Result(#(Int, Int), Nil) {
-  list.fold(moorings, Error(Nil), fn(acc, m) {
-    case acc {
-      Ok(_) -> acc
-      Error(Nil) ->
-        case list.find(m.deck_map, fn(p) { p.1 == comp_deck }) {
-          Ok(#(sd, _)) -> Ok(#(m.ship_id, sd))
-          Error(Nil) -> Error(Nil)
-        }
-    }
-  })
+  deck + from.base_level - to.base_level
 }
 
 /// Whether composite-frame position `(x, y)` on composite deck `deck` stands
@@ -262,35 +239,53 @@ pub fn build(
   let width = max_x - min_x
   let height = max_y - min_y
 
-  // Assign composite deck indices: deck 0 is the shared plane; each ship's
-  // non-mooring decks get sequential indices, ordered outward from the
-  // mooring so vertically-adjacent decks stay index-adjacent (stairs).
-  let #(moorings, extra_specs) = assign_decks(placed, shift_x, shift_y)
-
-  // Deck 0: concourse + each ship's rotated mooring deck, then carve tubes.
-  use deck0 <- result.try(compose_deck0(
-    concourse_grid,
-    placed,
-    berths,
-    shift_x,
-    shift_y,
-    width,
-    height,
-  ))
-  // Extra decks: each a full WxH grid, void except one ship deck's footprint.
-  let extra_decks =
-    list.map(extra_specs, fn(spec) {
-      lift_deck(spec.grid, spec.dx + shift_x, spec.dy + shift_y, width, height)
+  // Index composite decks by LEVEL relative to the concourse plane: a ship
+  // deck's level is `ship_deck - mooring_index` (the mooring deck -> level 0,
+  // the plane it merges into). This keeps physically-adjacent decks
+  // index-adjacent so `deck±1` stairs work after docking, wherever the mooring
+  // deck sits in the ship's own stack. Level 0 also hosts the concourse; other
+  // levels host every ship's deck at that relative level (at their berths).
+  let levels =
+    list.flat_map(placed, fn(p) {
+      list.map(range(0, list.length(p.rotated)), fn(sd) { sd - p.mooring_index })
     })
-  let decks = [deck0, ..extra_decks]
+  let min_level = list.fold(levels, 0, int.min)
+  let max_level = list.fold(levels, 0, int.max)
+  let concourse_index = -min_level
 
-  let consoles = compose_consoles(concourse, placed, moorings, shift_x, shift_y)
+  use decks <- result.try(
+    list.try_map(range(min_level, max_level + 1), fn(level) {
+      compose_level(
+        concourse_grid,
+        placed,
+        berths,
+        level,
+        shift_x,
+        shift_y,
+        width,
+        height,
+      )
+    }),
+  )
+  let moorings = build_moorings(placed, min_level, shift_x, shift_y)
+
+  let consoles =
+    compose_consoles(
+      concourse,
+      placed,
+      moorings,
+      concourse_index,
+      shift_x,
+      shift_y,
+    )
   let #(spawn_x, spawn_y) = concourse.spawn_tile
   let plan =
-    DeckPlan(decks: decks, consoles: consoles, spawn_deck: 0, spawn_tile: #(
-      spawn_x + shift_x,
-      spawn_y + shift_y,
-    ))
+    DeckPlan(
+      decks: decks,
+      consoles: consoles,
+      spawn_deck: concourse_index,
+      spawn_tile: #(spawn_x + shift_x, spawn_y + shift_y),
+    )
   case deckplan.validate(plan) {
     Error(e) -> Error("invalid composite: " <> e)
     Ok(plan) ->
@@ -298,6 +293,7 @@ pub fn build(
         plan: plan,
         concourse_dx: shift_x,
         concourse_dy: shift_y,
+        base_level: min_level,
         moorings: moorings,
       ))
   }
@@ -340,69 +336,49 @@ fn mooring_grid(p: Placed) -> DeckGrid {
   }
 }
 
-/// One ship's non-mooring deck to place as its own composite deck.
-type ExtraSpec {
-  ExtraSpec(grid: DeckGrid, dx: Int, dy: Int)
-}
-
-/// Assign composite deck indices and build the per-ship moorings. Deck 0 is
-/// shared; each ship's non-mooring decks are ordered by distance from the
-/// mooring (nearest first) so index-adjacency matches physical adjacency.
-fn assign_decks(
+/// Build each ship's mooring: its translation, ship_width, and the deck_map
+/// from ship deck index to composite deck index. A ship deck's composite index
+/// is its level minus `min_level`, where level = `ship_deck - mooring_index`.
+fn build_moorings(
   placed: List(Placed),
+  min_level: Int,
   shift_x: Int,
   shift_y: Int,
-) -> #(List(Mooring), List(ExtraSpec)) {
-  let #(moorings, specs, _next) =
-    list.fold(placed, #([], [], 1), fn(acc, p) {
-      let #(ms, ss, next) = acc
-      let sw = plan_width(p.ship.plan)
-      // Non-mooring ship-deck indices, ordered by distance from the mooring.
-      let others =
-        range(0, list.length(p.rotated))
-        |> list.filter(fn(sd) { sd != p.mooring_index })
-        |> list.sort(fn(a, b) {
-          int.compare(
-            int.absolute_value(a - p.mooring_index),
-            int.absolute_value(b - p.mooring_index),
-          )
-        })
-      // Map each to the next global composite index.
-      let #(pairs_rev, new_next) =
-        list.fold(others, #([], next), fn(inner, sd) {
-          let #(prs, n) = inner
-          #([#(sd, n), ..prs], n + 1)
-        })
-      let deck_map = [#(p.mooring_index, 0), ..list.reverse(pairs_rev)]
-      let mooring =
-        Mooring(
-          ship_id: p.ship.ship_id,
-          dx: p.dx + shift_x,
-          dy: p.dy + shift_y,
-          deck_map: deck_map,
-          ship_width: sw,
-        )
-      // Build extra specs for this ship's non-mooring decks (index order
-      // matches the assigned composite indices).
-      let ship_specs =
-        list.filter_map(list.reverse(pairs_rev), fn(pair) {
-          let #(sd, _cd) = pair
-          case list.drop(p.rotated, sd) |> list.first {
-            Ok(g) -> Ok(ExtraSpec(grid: g, dx: p.dx, dy: p.dy))
-            Error(Nil) -> Error(Nil)
-          }
-        })
-      #([mooring, ..ms], list.append(ss, ship_specs), new_next)
-    })
-  #(list.reverse(moorings), specs)
+) -> List(Mooring) {
+  list.map(placed, fn(p) {
+    let deck_map =
+      list.map(range(0, list.length(p.rotated)), fn(sd) {
+        #(sd, sd - p.mooring_index - min_level)
+      })
+    Mooring(
+      ship_id: p.ship.ship_id,
+      dx: p.dx + shift_x,
+      dy: p.dy + shift_y,
+      deck_map: deck_map,
+      ship_width: plan_width(p.ship.plan),
+    )
+  })
 }
 
-/// Compose composite deck 0: the concourse merged with every ship's rotated
-/// mooring deck, then the docking tubes carved north of each berth.
-fn compose_deck0(
+/// The rotated ship deck that sits at composite `level` for a placed ship
+/// (`ship_deck = level + mooring_index`), or Error if the ship has no deck
+/// there.
+fn deck_at_level(p: Placed, level: Int) -> Result(DeckGrid, Nil) {
+  case level + p.mooring_index >= 0 {
+    False -> Error(Nil)
+    True -> list.drop(p.rotated, level + p.mooring_index) |> list.first
+  }
+}
+
+/// Compose the composite deck at `level`: the concourse (only at level 0)
+/// merged with every ship's rotated deck sitting at that relative level, then
+/// — at level 0 — the docking tubes carved north of each berth. Exactly one
+/// non-void source may claim each tile (else "berth_blocked").
+fn compose_level(
   concourse: DeckGrid,
   placed: List(Placed),
   berths: List(Berth),
+  level: Int,
   shift_x: Int,
   shift_y: Int,
   width: Int,
@@ -411,15 +387,19 @@ fn compose_deck0(
   use tiles_edges <- result.try(
     list.try_map(range(0, height), fn(y) {
       list.try_map(range(0, width), fn(x) {
-        // Sources claiming this tile: the concourse, then each ship's
-        // mooring deck. Exactly one non-void source may claim it.
+        let concourse_cells = case level == 0 {
+          True -> [cell(concourse, x - shift_x, y - shift_y)]
+          False -> []
+        }
+        let ship_cells =
+          list.filter_map(placed, fn(p) {
+            case deck_at_level(p, level) {
+              Ok(g) -> Ok(cell(g, x - p.dx - shift_x, y - p.dy - shift_y))
+              Error(Nil) -> Error(Nil)
+            }
+          })
         let sources =
-          [cell(concourse, x - shift_x, y - shift_y)]
-          |> list.append(
-            list.map(placed, fn(p) {
-              cell(mooring_grid(p), x - p.dx - shift_x, y - p.dy - shift_y)
-            }),
-          )
+          list.append(concourse_cells, ship_cells)
           |> list.filter(fn(c) { c.0 != Void })
         case sources {
           [] -> Ok(#(Void, open_edges()))
@@ -429,8 +409,15 @@ fn compose_deck0(
       })
     }),
   )
-  let g = grid_from_cells("concourse", width, height, tiles_edges)
-  carve_tubes(g, placed, berths, shift_x, shift_y)
+  let name = case level == 0 {
+    True -> "concourse"
+    False -> "deck"
+  }
+  let g = grid_from_cells(name, width, height, tiles_edges)
+  case level == 0 {
+    True -> carve_tubes(g, placed, berths, shift_x, shift_y)
+    False -> Ok(g)
+  }
 }
 
 /// Overwrite the `tube_length` void tiles directly north of each occupied
@@ -468,32 +455,17 @@ fn carve_tile(g: DeckGrid, x: Int, y: Int) -> Result(DeckGrid, String) {
   }
 }
 
-/// Lift one ship deck into a full width x height composite grid at
-/// `(dx, dy)`, void everywhere else.
-fn lift_deck(
-  src: DeckGrid,
-  dx: Int,
-  dy: Int,
-  width: Int,
-  height: Int,
-) -> DeckGrid {
-  let cells =
-    list.map(range(0, height), fn(y) {
-      list.map(range(0, width), fn(x) { cell(src, x - dx, y - dy) })
-    })
-  grid_from_cells(src.name, width, height, cells)
-}
-
 fn compose_consoles(
   concourse: DeckPlan,
   placed: List(Placed),
   moorings: List(Mooring),
+  concourse_index: Int,
   shift_x: Int,
   shift_y: Int,
 ) -> List(deckplan.Console) {
   let concourse_consoles =
     list.map(concourse.consoles, fn(c) {
-      Console(..c, deck: 0, x: c.x + shift_x, y: c.y + shift_y)
+      Console(..c, deck: concourse_index, x: c.x + shift_x, y: c.y + shift_y)
     })
   let ship_consoles =
     list.flat_map(placed, fn(p) {

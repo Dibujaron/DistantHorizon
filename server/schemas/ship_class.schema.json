@@ -55,7 +55,7 @@
         "name": { "type": "string" },
         "grid": {
           "type": "array",
-          "description": "3*height rows of 3*width chars: each tile is a 3x3 block (centre = floor/void/stairs; N/E/S/W edge-mids = wall/door/fixture). See docs/deckplan-format.md. Row count and each row's length must be multiples of 3 and consistent (enforced by the Gleam decoder, not by this schema).",
+          "description": "3*height rows of 3*width chars: each tile is a 3x3 block. Centre glyph = ' ' floor, '.' void, 'x' stairs, 's' spawn, or a console (h=helm, c=cargo, b=broker, Q=docking port) — consoles/spawn are DERIVED from these glyphs. N/E/S/W edge-mids = ' ' open, '#' wall, '=' door, letter fixture. See docs/deckplan-format.md. Row count and each row's length must be multiples of 3 and consistent (enforced by the Gleam decoder, not by this schema).",
           "items": { "type": "string" }
         }
       }

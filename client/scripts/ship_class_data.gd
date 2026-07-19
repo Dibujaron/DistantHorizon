@@ -230,8 +230,9 @@ func edge_at(deck: int, tx: int, ty: int, dir: int) -> int:
 
 
 ## The adjacent deck index a Stairs tile at (tx, ty) on `deck` connects to
-## (deck+1 preferred, then deck-1), or -1. Mirrors stairs_target in
-## deckplan.gleam.
+## (deck+1, then deck-1), or -1. Strict deck±1 so ladder columns can repeat
+## across decks; the composite indexes docked decks by concourse-relative
+## level to keep adjacency. Mirrors stairs_target in deckplan.gleam.
 func stairs_target(deck: int, tx: int, ty: int) -> int:
 	var g := get_deck(deck)
 	if g == null or g.tile_at(tx, ty) != Tile.STAIRS:

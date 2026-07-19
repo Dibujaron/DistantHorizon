@@ -431,6 +431,10 @@ func _nearest_console_in_range(own_char: CharacterState) -> ShipClassData.Consol
 	var nearest: ShipClassData.Console = null
 	var nearest_dist := SIT_RANGE_TILES
 	for console in plan.consoles:
+		# Only consoles on the same deck are reachable, and a docking port is
+		# an airlock, not a seat — skip both (the server rejects them anyway).
+		if console.deck != own_char.deck or console.kind == "dock":
+			continue
 		var dist := pos.distance_to(console.tile_center())
 		if dist <= nearest_dist:
 			nearest_dist = dist

@@ -1335,6 +1335,9 @@ fn rebuild_space(state: State, station_id: String) -> State {
                         ..moved,
                         x: spawn_x,
                         y: spawn_y,
+                        // Re-floor onto the concourse plane, whatever index it
+                        // landed at for this composite.
+                        deck: built.plan.spawn_deck,
                         seat: None,
                         move_dx: 0.0,
                         move_dy: 0.0,

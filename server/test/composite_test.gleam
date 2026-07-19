@@ -94,17 +94,19 @@ pub fn one_ship_adds_its_non_mooring_deck_test() {
   assert m.ship_width == 2
 }
 
-pub fn deck_map_maps_mooring_to_zero_test() {
+pub fn deck_map_indexes_by_level_test() {
   let assert Ok(c) =
     composite.build(concourse(), berths(), [
       DockedShip(ship_id: 1, berth: 0, plan: ship_plan()),
     ])
   let assert Ok(m) = composite.find_mooring(c, 1)
-  // Ship deck 1 (mooring) -> composite deck 0; ship deck 0 -> composite 1.
-  assert composite.composite_deck_of(m, 1) == 0
-  assert composite.composite_deck_of(m, 0) == 1
-  assert composite.ship_deck_of(m, 0) == Ok(1)
-  assert composite.ship_deck_of(m, 1) == Ok(0)
+  // Decks are indexed by concourse-relative level: the mooring deck (ship
+  // deck 1) is level 0 -> composite deck 1; the upper deck (ship deck 0, one
+  // above) is level -1 -> composite deck 0.
+  assert composite.composite_deck_of(m, 1) == 1
+  assert composite.composite_deck_of(m, 0) == 0
+  assert composite.ship_deck_of(m, 0) == Ok(0)
+  assert composite.ship_deck_of(m, 1) == Ok(1)
   assert composite.ship_deck_of(m, 9) == Error(Nil)
 }
 
@@ -113,15 +115,17 @@ pub fn tube_is_carved_north_of_the_berth_test() {
     composite.build(concourse(), berths(), [
       DockedShip(ship_id: 1, berth: 0, plan: ship_plan()),
     ])
-  let assert Ok(deck0) = deckplan.deck_at(c.plan, 0)
+  // The concourse plane is composite deck 1 (level 0): the ship's one deck
+  // above it makes level 0 the second entry.
+  let assert Ok(plane) = deckplan.deck_at(c.plan, 1)
   // Berth (2,1) shifts to (2,6); four tube tiles are carved at y=2..5.
-  assert deckplan.is_walkable(deck0, 2, 5)
-  assert deckplan.is_walkable(deck0, 2, 4)
-  assert deckplan.is_walkable(deck0, 2, 3)
-  assert deckplan.is_walkable(deck0, 2, 2)
+  assert deckplan.is_walkable(plane, 2, 5)
+  assert deckplan.is_walkable(plane, 2, 4)
+  assert deckplan.is_walkable(plane, 2, 3)
+  assert deckplan.is_walkable(plane, 2, 2)
   // Beside the tube stays void — the hull floats clear.
-  assert !deckplan.is_walkable(deck0, 1, 3)
-  assert !deckplan.is_walkable(deck0, 3, 3)
+  assert !deckplan.is_walkable(plane, 1, 3)
+  assert !deckplan.is_walkable(plane, 3, 3)
 }
 
 pub fn ship_console_ids_are_namespaced_and_deck_remapped_test() {
@@ -129,16 +133,16 @@ pub fn ship_console_ids_are_namespaced_and_deck_remapped_test() {
     composite.build(concourse(), berths(), [
       DockedShip(ship_id: 3, berth: 0, plan: ship_plan()),
     ])
-  // Helm was on ship deck 0 -> composite deck 1.
+  // Helm was on ship deck 0 (upper, level -1) -> composite deck 0.
   let assert Ok(helm) = deckplan.find_console(c.plan, "s3:helm_main")
   assert helm.kind == "helm"
-  assert helm.deck == 1
-  // Cargo was on the mooring deck (1) -> composite deck 0.
+  assert helm.deck == 0
+  // Cargo was on the mooring deck (ship deck 1, level 0) -> composite deck 1.
   let assert Ok(cargo) = deckplan.find_console(c.plan, "s3:cargo_main")
-  assert cargo.deck == 0
-  // Concourse consoles keep their plain ids on deck 0.
+  assert cargo.deck == 1
+  // Concourse consoles keep their plain ids on the concourse plane (deck 1).
   let assert Ok(broker) = deckplan.find_console(c.plan, "broker_main")
-  assert broker.deck == 0
+  assert broker.deck == 1
 }
 
 pub fn unknown_berth_index_is_an_error_test() {
@@ -170,12 +174,12 @@ pub fn tile_on_mooring_splits_ship_from_station_test() {
       DockedShip(ship_id: 1, berth: 0, plan: plan),
     ])
   let assert Ok(m) = composite.find_mooring(c, 1)
-  // The moored dormer (composite deck 0, tile (2,1)) is a ship tile.
-  assert composite.tile_on_mooring(m, plan, 0, 2.5, 1.5)
-  // A concourse floor tile (deck 0, (2,7)) is not.
-  assert !composite.tile_on_mooring(m, plan, 0, 2.5, 7.5)
+  // The moored dormer is on the mooring plane (composite deck 1), tile (2,1).
+  assert composite.tile_on_mooring(m, plan, 1, 2.5, 1.5)
+  // A concourse floor tile (deck 1, (2,7)) is not a ship tile.
+  assert !composite.tile_on_mooring(m, plan, 1, 2.5, 7.5)
   // A tube tile belongs to the station.
-  assert !composite.tile_on_mooring(m, plan, 0, 2.5, 3.5)
+  assert !composite.tile_on_mooring(m, plan, 1, 2.5, 3.5)
 }
 
 pub fn ship_frame_round_trip_test() {

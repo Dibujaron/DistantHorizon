@@ -256,11 +256,13 @@ pub fn edge_blocks(g: DeckGrid, x: Int, y: Int, dir: Dir) -> Bool {
 }
 
 /// The adjacent deck index a `Stairs` tile at `(x, y)` on `deck` connects to:
-/// the nearer deck (`deck-1` or `deck+1`) that also has a `Stairs` tile at
-/// the same `(x, y)`. `Error(Nil)` if `(x, y)` is not stairs, or no aligned
-/// adjacent stairs exists. Authored layouts keep the two stair columns of a
-/// three-deck ship at distinct `(x, y)` so this is unambiguous; if both
-/// neighbours qualify, `deck+1` (downward) wins.
+/// the neighbouring deck (`deck+1`, then `deck-1`) that also has a `Stairs`
+/// tile at the same `(x, y)`. `Error(Nil)` if `(x, y)` is not stairs or no
+/// aligned neighbour exists. Stairs connect STRICTLY `deck±1` so a ladder
+/// column can be reused across many decks without ambiguity; the composite
+/// preserves this by indexing docked decks by their level relative to the
+/// concourse (see composite.build), so physically-adjacent decks stay
+/// index-adjacent. `deck+1` (downward) wins a tie.
 pub fn stairs_target(
   plan: DeckPlan,
   deck: Int,
