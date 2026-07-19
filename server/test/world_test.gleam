@@ -349,6 +349,17 @@ pub fn berths_decode_test() {
     ]
 }
 
+pub fn moored_heading_uses_ship_port_test() {
+  let assert Ok(w) = world.load("worlds/m1_system.json")
+  // The moored heading derives from the docking ship's own dock-port
+  // orientation: a nose-forward port (0.0) must NOT yield the same heading as
+  // the side-on default (pi/2), or the ship-port argument is being ignored.
+  let side_on =
+    world.moored_heading(w, "meridian_highport", 0, 1.5707963267948966)
+  let nose_in = world.moored_heading(w, "meridian_highport", 0, 0.0)
+  assert side_on != nose_in
+}
+
 pub fn berth_on_non_walkable_tile_is_invalid_test() {
   // Minimal world JSON with a berth pointing at a void tile.
   let assert Error(e) = world.decode(world_json_with_berth(0, 0))

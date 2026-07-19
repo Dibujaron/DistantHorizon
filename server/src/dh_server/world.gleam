@@ -34,15 +34,6 @@ const two_pi = 6.283185307179586
 
 const pi = 3.141592653589793
 
-/// The single-hull ship's docking-port normal in its OWN frame (ship-local
-/// radians, 0 = nose/+x). pi/2 = the port flank: the Mockingbird moors
-/// side-on. This mirrors the ship class's `dock_port_orientation` (schema 2);
-/// under the single-hull assumption the two are equal, so the server's moored
-/// heading reads this constant rather than threading the class through
-/// `ship.step`. M4 (multi-class refit) should replace this with the docking
-/// ship's own `dock_port_orientation`.
-const default_ship_port_orientation = 1.5707963267948966
-
 pub type Orbit {
   Orbit(radius: Float, period_s: Float, phase: Float)
 }
@@ -239,22 +230,25 @@ pub fn moored_position(
 
 /// The world heading a ship holds while moored in `berth_index` at
 /// `station_id`: derived so the ship's docking port faces back into the
-/// station. From the berth's outward normal and the (single-hull) ship-port
-/// normal: `heading = berth.orientation + pi - ship_port`. The side-on
-/// default (berth north, port flank) yields pi — nose west, M3.5's look.
-/// Unknown berths fall back to the same default. Replacing the client's and
-/// exterior's hardcoded side-on rotation, this is what generalises mooring to
-/// nose-in / arbitrary approaches (issue #14).
+/// station. From the berth's outward normal and the docking ship's own
+/// `ship_port` normal (its class `dock_port_orientation`, ship-local radians):
+/// `heading = berth.orientation + pi - ship_port`. The side-on case (berth
+/// north, port flank ship_port = pi/2) yields pi — nose west, M3.5's look.
+/// Unknown berths fall back to the default berth orientation. Replacing the
+/// client's and exterior's hardcoded side-on rotation, this is what generalises
+/// mooring to nose-in / arbitrary approaches (issue #14) and to ships whose
+/// own dock port differs from the Mockingbird's.
 pub fn moored_heading(
   world: World,
   station_id: String,
   berth_index: Int,
+  ship_port: Float,
 ) -> Float {
   let orientation = case station_berth(world, station_id, berth_index) {
     Ok(berth) -> berth.orientation
     Error(Nil) -> composite.default_orientation
   }
-  orientation +. pi -. default_ship_port_orientation
+  orientation +. pi -. ship_port
 }
 
 /// Summed gravitational acceleration from every body with `mu > 0` at

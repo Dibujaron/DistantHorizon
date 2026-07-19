@@ -84,7 +84,15 @@ fn sin(x: Float) -> Float
 
 /// A new ship, docked at `world.spawn_station`, pinned to that station's
 /// position and velocity at sim time `t`, holding the given berth index.
-pub fn spawn_docked(id: Int, world: World, t: Float, berth: Int) -> Ship {
+/// `ship_port` is the docking ship class's own `dock_port_orientation`, used
+/// to derive the moored heading (#14).
+pub fn spawn_docked(
+  id: Int,
+  world: World,
+  t: Float,
+  berth: Int,
+  ship_port: Float,
+) -> Ship {
   let station_id = world.spawn_station
   // Moored at the berth's pose (station centre + its world anchor), holding
   // the orientation-derived moored heading — not pinned at the bare centre,
@@ -96,7 +104,7 @@ pub fn spawn_docked(id: Int, world: World, t: Float, berth: Int) -> Ship {
     y: y,
     vx: vx,
     vy: vy,
-    heading: world.moored_heading(world, station_id, berth),
+    heading: world.moored_heading(world, station_id, berth, ship_port),
     controls: Controls(rotate: 0.0, thrust: 0.0),
     dock: Docked(station_id, berth),
     wallet: starting_wallet,
@@ -156,6 +164,7 @@ pub fn try_dock(
   world: World,
   t: Float,
   claim_berth: fn(String) -> Result(Int, String),
+  ship_port: Float,
 ) -> Result(Ship, String) {
   case ship.dock {
     Docked(_, _) -> Error("already_docked")
@@ -185,7 +194,12 @@ pub fn try_dock(
                       y: my,
                       vx: mvx,
                       vy: mvy,
-                      heading: world.moored_heading(world, station_id, berth),
+                      heading: world.moored_heading(
+                        world,
+                        station_id,
+                        berth,
+                        ship_port,
+                      ),
                       controls: Controls(rotate: 0.0, thrust: 0.0),
                       dock: Docked(station_id, berth),
                     ),

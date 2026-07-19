@@ -360,7 +360,13 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
             Ok(berth) -> {
               let t = int.to_float(state.tick) *. ship.dt
               let new_ship =
-                ship.spawn_docked(state.next_ship_id, state.world, t, berth)
+                ship.spawn_docked(
+                  state.next_ship_id,
+                  state.world,
+                  t,
+                  berth,
+                  state.class.dock_port_orientation,
+                )
               // Rebuild the spawn station's composite with the new mooring
               // before placing the character in the composite frame.
               let state =
@@ -469,11 +475,13 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
           with_helm_ship(state, character_id, reply, fn(state, found) {
             let t = int.to_float(state.tick) *. ship.dt
             case
-              ship.try_dock(found, state.world, t, free_berth(
-                state,
-                found.id,
-                _,
-              ))
+              ship.try_dock(
+                found,
+                state.world,
+                t,
+                free_berth(state, found.id, _),
+                state.class.dock_port_orientation,
+              )
             {
               Error(reason) -> {
                 process.send(reply, Error(reason))

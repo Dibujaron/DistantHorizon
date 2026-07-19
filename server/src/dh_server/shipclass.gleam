@@ -24,8 +24,8 @@ pub type Handling {
 
 /// The default ship docking-port normal, ship-local radians (0 = nose/+x):
 /// pi/2 = the port flank. A hull with this port moors side-on — the M3.5
-/// look. Kept in sync with `world.default_ship_port_orientation` under the
-/// single-hull assumption (see that constant).
+/// look. This is the canonical default fed into `world.moored_heading` for a
+/// class that doesn't author its own `dock_port_orientation`.
 pub const default_dock_port_orientation = 1.5707963267948966
 
 pub type ShipClass {

@@ -386,7 +386,8 @@ pub fn encode_market_test() {
 
 pub fn encode_cargo_sorts_hold_and_lists_transfers_test() {
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  let s = ship.spawn_docked(7, w, 0.0, 0)
+  let s =
+    ship.spawn_docked(7, w, 0.0, 0, shipclass.default_dock_port_orientation)
   let s =
     ship.Ship(
       ..s,
