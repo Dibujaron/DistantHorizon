@@ -59,3 +59,16 @@ pub fn console_kind_and_glyph_roundtrip_test() {
   assert glyphs.console_glyph(reg, "dock") == "Q"
   assert glyphs.console_glyph(reg, "nope") == ""
 }
+
+pub fn is_decor_test() {
+  let reg = glyphs.default()
+  assert glyphs.is_decor(reg, "r") == True
+  // seat, bed, pallet are decor; plain floor / stairs / console / dock / spawn are not
+  assert glyphs.is_decor(reg, "d") == True
+  assert glyphs.is_decor(reg, "p") == True
+  assert glyphs.is_decor(reg, " ") == False
+  assert glyphs.is_decor(reg, "x") == False
+  assert glyphs.is_decor(reg, "h") == False
+  assert glyphs.is_decor(reg, "Q") == False
+  assert glyphs.is_decor(reg, "s") == False
+}

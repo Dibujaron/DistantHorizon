@@ -1,4 +1,5 @@
 import dh_server/deckplan.{Console, DeckPlan}
+import gleam/option
 
 // ------------------------------------------------- docking ports (#31) --
 
@@ -236,4 +237,31 @@ pub fn deck_to_rows_round_trips_test() {
   let assert Ok(g) = deckplan.parse_deck("d", rows)
   let assert Ok(g2) = deckplan.parse_deck("d", deckplan.deck_to_rows(g))
   assert g2.cells == g.cells
+}
+
+// ---------------------------------------------------- decor / colour (v3.1) --
+
+pub fn decor_and_color_parse_test() {
+  // 3x3 block: NE corner (row0 col2) = "a"; centre (row1 col1) = "d" (bed).
+  let rows = ["#=a", " d ", "###"]
+  let assert Ok(g) = deckplan.parse_deck("t", rows)
+  let assert Ok(c) = deckplan.cell_at_xy(g, 0, 0)
+  assert c.decor == option.Some("d")
+  assert c.color == option.Some(10)
+  assert c.tile == deckplan.Floor
+}
+
+pub fn decor_color_roundtrip_test() {
+  let rows = ["#=a", " d ", "###"]
+  let assert Ok(g) = deckplan.parse_deck("t", rows)
+  let assert Ok(g2) = deckplan.parse_deck("t", deckplan.deck_to_rows(g))
+  assert g2.cells == g.cells
+}
+
+pub fn blank_ne_corner_is_uncolored_test() {
+  let rows = ["# #", " r ", "###"]
+  let assert Ok(g) = deckplan.parse_deck("t", rows)
+  let assert Ok(c) = deckplan.cell_at_xy(g, 0, 0)
+  assert c.color == option.None
+  assert c.decor == option.Some("r")
 }

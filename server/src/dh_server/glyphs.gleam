@@ -99,6 +99,18 @@ pub fn console_kind(reg: Registry, glyph: String) -> Result(String, Nil) {
   option.to_result(center(reg, glyph).console, Nil)
 }
 
+/// Whether a centre glyph is a decorative floor tile (rug/seat/bed/pallet …):
+/// Floor-kind, not a console/dock/spawn, and carrying a client sprite. These
+/// are preserved per-cell and rendered as art, unlike bare floor.
+pub fn is_decor(reg: Registry, glyph: String) -> Bool {
+  let spec = center(reg, glyph)
+  spec.tile == Floor
+  && spec.console == None
+  && !spec.dock
+  && !spec.spawn
+  && spec.sprite != None
+}
+
 /// The center glyph that installs console kind `kind` (inverse of
 /// `console_kind`), or `""` if the registry has none.
 pub fn console_glyph(reg: Registry, kind: String) -> String {

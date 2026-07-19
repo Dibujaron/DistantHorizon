@@ -143,8 +143,8 @@ pub fn parse_deck_with(
             parse_edge(reg, cell_at(cells_g, 3 * y + 2, 3 * x + 1)),
             parse_edge(reg, cell_at(cells_g, 3 * y + 1, 3 * x)),
           ),
-          decor: None,
-          color: None,
+          decor: parse_decor(reg, cell_at(cells_g, 3 * y + 1, 3 * x + 1)),
+          color: parse_color(cell_at(cells_g, 3 * y, 3 * x + 2)),
         )
       })
     })
@@ -166,6 +166,22 @@ fn parse_edge(reg: glyphs.Registry, ch: String) -> Edge {
     glyphs.Door -> Door
     // A named or unknown edge glyph is a wall-fixture; keep its own char.
     glyphs.Fixture -> Fixture(ch)
+  }
+}
+
+fn parse_decor(reg: glyphs.Registry, ch: String) -> option.Option(String) {
+  case glyphs.is_decor(reg, ch) {
+    True -> Some(ch)
+    False -> None
+  }
+}
+
+/// The NE corner encodes colour as a single hex digit 0-f -> 0-15; anything
+/// else (blank, "#", junk) is uncoloured.
+fn parse_color(ch: String) -> option.Option(Int) {
+  case int.base_parse(ch, 16) {
+    Ok(n) if n >= 0 && n <= 15 -> Some(n)
+    _ -> None
   }
 }
 
@@ -192,7 +208,7 @@ pub fn deck_at(plan: DeckPlan, i: Int) -> Result(DeckGrid, Nil) {
 
 /// The tile at `(x, y)` on `g`; `Void` out of bounds.
 pub fn tile_at(g: DeckGrid, x: Int, y: Int) -> Tile {
-  case cell_of(g, x, y) {
+  case cell_at_xy(g, x, y) {
     Ok(c) -> c.tile
     Error(Nil) -> Void
   }
@@ -205,14 +221,14 @@ pub fn edges_at(
   x: Int,
   y: Int,
 ) -> Result(#(Edge, Edge, Edge, Edge), Nil) {
-  case cell_of(g, x, y) {
+  case cell_at_xy(g, x, y) {
     Ok(c) -> Ok(c.edges)
     Error(Nil) -> Error(Nil)
   }
 }
 
 /// The cell at `(x, y)` on `g`; `Error(Nil)` out of bounds.
-fn cell_of(g: DeckGrid, x: Int, y: Int) -> Result(Cell, Nil) {
+pub fn cell_at_xy(g: DeckGrid, x: Int, y: Int) -> Result(Cell, Nil) {
   case in_bounds(g, x, y) {
     False -> Error(Nil)
     True ->
@@ -706,15 +722,45 @@ pub fn deck_to_rows(g: DeckGrid) -> List(String) {
 }
 
 fn tile_block(g: DeckGrid, x: Int, y: Int) -> #(String, String, String) {
-  let #(n, e, s, w) = case edges_at(g, x, y) {
-    Ok(edges) -> edges
-    Error(Nil) -> #(Open, Open, Open, Open)
+  let assert Ok(cell) = cell_at_xy(g, x, y)
+  let #(n, e, s, w) = cell.edges
+  let c = case cell.decor {
+    Some(glyph) -> glyph
+    None -> center_glyph(cell.tile)
   }
-  let c = center_glyph(tile_at(g, x, y))
-  let top = corner(n, w) <> edge_glyph(n) <> corner(n, e)
+  let ne = case cell.color {
+    Some(v) -> to_hex_digit(v)
+    None -> corner(n, e)
+  }
+  let top = corner(n, w) <> edge_glyph(n) <> ne
   let mid = edge_glyph(w) <> c <> edge_glyph(e)
   let bot = corner(s, w) <> edge_glyph(s) <> corner(s, e)
   #(top, mid, bot)
+}
+
+/// A colour index 0-15 as its lowercase hex digit (the NE-corner encoding);
+/// `gleam/int` has no single-digit base-16 formatter, so this is local. `_`
+/// (out of range) falls back to blank rather than crashing on a bad Cell.
+fn to_hex_digit(v: Int) -> String {
+  case v {
+    0 -> "0"
+    1 -> "1"
+    2 -> "2"
+    3 -> "3"
+    4 -> "4"
+    5 -> "5"
+    6 -> "6"
+    7 -> "7"
+    8 -> "8"
+    9 -> "9"
+    10 -> "a"
+    11 -> "b"
+    12 -> "c"
+    13 -> "d"
+    14 -> "e"
+    15 -> "f"
+    _ -> " "
+  }
 }
 
 fn center_glyph(tile: Tile) -> String {
