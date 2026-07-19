@@ -29,6 +29,20 @@ const ARM_UP := 2      ## px the leading arm lifts as it swings
 const ARM_SWING := 1   ## px the arms sway sideways (opposite phase to the legs)
 const PREVIEW_SCALE := 10
 
+# --- side-profile scissor tunables ---
+const SIDE_STRIDE := 2  ## px a side-view leg swings fore/aft
+const SIDE_BOB := 1     ## px the body rises on a passing frame
+
+# Slice profiles. A config with arm rects of zero width skips arm-cutting, so
+# the arms ride with the body (the side view has one arm and no arm-swing yet).
+const FRONT_CFG := {
+	leg_top = LEG_TOP, split_x = SPLIT_X, arm_l = ARM_L, arm_r = ARM_R,
+}
+const SIDE_CFG := {
+	leg_top = LEG_TOP, split_x = SPLIT_X,
+	arm_l = Rect2i(0, 0, 0, 0), arm_r = Rect2i(0, 0, 0, 0),
+}
+
 const CHARACTERS := ["player", "crew_0", "crew_1", "crew_2"]
 
 
@@ -60,53 +74,84 @@ func _poses() -> Array[Dictionary]:
 	]
 
 
+# Side scissor: legL is the BACK leg, legR the FRONT leg (split at SPLIT_X).
+# They swing on X (fore/aft) instead of lifting; the body bobs on the pass
+# frames. Idle (0) matches the rest cell so start/stop never pops.
+func _side_poses() -> Array[Dictionary]:
+	return [
+		{body = Vector2i.ZERO, legL = Vector2i.ZERO, legR = Vector2i.ZERO,
+			armL = Vector2i.ZERO, armR = Vector2i.ZERO},
+		{body = Vector2i.ZERO, legL = Vector2i(-SIDE_STRIDE, 0), legR = Vector2i(SIDE_STRIDE, 0),
+			armL = Vector2i.ZERO, armR = Vector2i.ZERO},
+		{body = Vector2i(0, -SIDE_BOB), legL = Vector2i.ZERO, legR = Vector2i.ZERO,
+			armL = Vector2i.ZERO, armR = Vector2i.ZERO},
+		{body = Vector2i.ZERO, legL = Vector2i(SIDE_STRIDE, 0), legR = Vector2i(-SIDE_STRIDE, 0),
+			armL = Vector2i.ZERO, armR = Vector2i.ZERO},
+		{body = Vector2i(0, -SIDE_BOB), legL = Vector2i.ZERO, legR = Vector2i.ZERO,
+			armL = Vector2i.ZERO, armR = Vector2i.ZERO},
+	]
+
+
 func _initialize() -> void:
 	var root := ProjectSettings.globalize_path("res://assets/characters")
 	for name in CHARACTERS:
-		var src := Image.load_from_file(root + "/" + name + ".png")
-		if src == null:
-			push_error("baker: missing " + name)
-			continue
-		src.convert(Image.FORMAT_RGBA8)
-		var frames := _build_frames(src)
-		_save_sheet(frames, root + "/" + name + "_walk.png")
-		_save_preview(frames, root + "/" + name + "_sheet.png")
-		print("baked %s: %d frames, cell %dx%d" % [
-			name, frames.size(), frames[0].get_width(), frames[0].get_height()])
+		_bake_view(root, name, "", FRONT_CFG, _poses())
+		_bake_view(root, name, "_back", FRONT_CFG, _poses())
+		_bake_view(root, name, "_side", SIDE_CFG, _side_poses())
 	quit()
 
 
-## Build one Image per frame. Every frame is the same padded cell size so the
-## sheet is a clean horizontal strip and the runtime can index it by width.
-func _build_frames(src: Image) -> Array:
+## Load <name><suffix>.png, bake it, and write <name><suffix>_walk.png (+ preview).
+func _bake_view(root: String, name: String, suffix: String,
+		cfg: Dictionary, poses: Array) -> void:
+	var src := Image.load_from_file(root + "/" + name + suffix + ".png")
+	if src == null:
+		push_error("baker: missing " + name + suffix)
+		return
+	src.convert(Image.FORMAT_RGBA8)
+	var frames := _build_frames(src, cfg, poses)
+	_save_sheet(frames, root + "/" + name + suffix + "_walk.png")
+	_save_preview(frames, root + "/" + name + suffix + "_sheet.png")
+	print("baked %s%s: %d frames, cell %dx%d" % [
+		name, suffix, frames.size(), frames[0].get_width(), frames[0].get_height()])
+
+
+## Build one Image per frame from a slice config + pose table. Every frame is
+## the same padded cell size so the sheet is a clean horizontal strip.
+func _build_frames(src: Image, cfg: Dictionary, poses: Array) -> Array:
 	var w := src.get_width()
 	var h := src.get_height()
+	var leg_top: int = cfg.leg_top
+	var split_x: int = cfg.split_x
+	var arm_l: Rect2i = cfg.arm_l
+	var arm_r: Rect2i = cfg.arm_r
+	var cut_arms := arm_l.size.x > 0 and arm_r.size.x > 0
 	var cell_w := w + 2 * PAD_X
 	var cell_h := h + PAD_TOP
-	var body_rect := Rect2i(0, 0, w, LEG_TOP)
-	var legL_rect := Rect2i(0, LEG_TOP, SPLIT_X, h - LEG_TOP)
-	var legR_rect := Rect2i(SPLIT_X, LEG_TOP, w - SPLIT_X, h - LEG_TOP)
-	# The arms swing independently, so cut them out of the body (leaving the
-	# shoulders) and carry them as their own pieces. Their vacated slot is the
-	# body's outer edge — showing through to nothing there is correct.
-	var arm_L := src.get_region(ARM_L)
-	var arm_R := src.get_region(ARM_R)
+	var body_rect := Rect2i(0, 0, w, leg_top)
+	var legL_rect := Rect2i(0, leg_top, split_x, h - leg_top)
+	var legR_rect := Rect2i(split_x, leg_top, w - split_x, h - leg_top)
 	var body := src.get_region(body_rect)
-	_erase(body, ARM_L)
-	_erase(body, ARM_R)
+	var arm_L := Image.new()
+	var arm_R := Image.new()
+	if cut_arms:
+		# Carry the arms as their own pieces so they swing; leave the shoulders.
+		arm_L = src.get_region(arm_l)
+		arm_R = src.get_region(arm_r)
+		_erase(body, arm_l)
+		_erase(body, arm_r)
 	var out := []
-	for p in _poses():
+	for p in poses:
 		var cell := Image.create(cell_w, cell_h, false, Image.FORMAT_RGBA8)
 		var origin := Vector2i(PAD_X, PAD_TOP)
-		# Body (arm-less) first; legs over the pelvis seam; arms over the
-		# shoulders. Arms inherit the body's shift so they stay attached.
 		cell.blend_rect(body, Rect2i(Vector2i.ZERO, body_rect.size), origin + p.body)
 		cell.blend_rect(src, legL_rect, origin + legL_rect.position + p.legL)
 		cell.blend_rect(src, legR_rect, origin + legR_rect.position + p.legR)
-		cell.blend_rect(arm_L, Rect2i(Vector2i.ZERO, ARM_L.size),
-			origin + ARM_L.position + p.body + p.armL)
-		cell.blend_rect(arm_R, Rect2i(Vector2i.ZERO, ARM_R.size),
-			origin + ARM_R.position + p.body + p.armR)
+		if cut_arms:
+			cell.blend_rect(arm_L, Rect2i(Vector2i.ZERO, arm_l.size),
+				origin + arm_l.position + p.body + p.armL)
+			cell.blend_rect(arm_R, Rect2i(Vector2i.ZERO, arm_r.size),
+				origin + arm_r.position + p.body + p.armR)
 		out.append(cell)
 	return out
 
