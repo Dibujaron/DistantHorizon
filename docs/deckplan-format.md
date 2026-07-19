@@ -1,8 +1,9 @@
 # Interior deck-plan format (v3)
 
-The canonical, human-authorable format for ship and station interiors. The
-ship/station `.json` (e.g. `server/classes/mockingbird.json`) is the **single
-source of truth** for a layout: the server parses it into deck plans and sends
+The canonical, human-authorable format for ship and station interiors. The ship
+class (`server/shipclasses/mockingbird.json`) and station class
+(`server/stationclasses/*.json`) `.json` files are the **single source of
+truth** for a layout: the server parses them into deck plans and sends
 them to the client, which only renders what it's told. A visual builder is
 tracked in issue #24; this ASCII format is what the builder round-trips, and
 what you hand-author until it exists.
@@ -42,61 +43,59 @@ room       (double wall
            between them)
 ```
 
-## Glyph key
+## Glyph key — see `server/glyphs.json`
 
-### Center — what the tile *is*
+The glyph vocabulary is **data, not prose**: `server/glyphs.json` is the single
+source of truth, loaded at startup so the server's parser and this document can
+never drift (issue #32). Each entry gives a glyph its long-form `id` (the
+client's sprite key), its role, and flags. The prose below is rationale; the
+registry is the list.
 
-| Glyph | Meaning |
-|-------|---------|
-| (space) | Open floor — walkable |
-| `.` | Void — outside the hull; not a tile |
-| `x` | Stairs / ladder — walkable, and connects to the vertically-aligned tile on the adjacent deck |
-| `h` | Helm console (walkable floor) |
-| `c` | Cargo console (walkable floor) |
-| `b` | Broker console — station concourses (walkable floor) |
-| `Q` | Docking port / airlock (walkable floor) — a mooring/boarding tile |
-| `s` | Spawn / arrival tile (walkable floor) — where crew appear ashore |
+- **Center glyphs** (what a tile *is*) carry a `tile` kind — `floor` (walkable),
+  `void` (outside the hull; not a tile), or `stairs` (walkable; connects decks)
+  — plus optional flags: a `console` kind (`h`=helm, `c`=cargo, `b`=broker), a
+  `dock` port (`Q`), or a `spawn` tile (`s`). Consoles/dock/spawn are all
+  `floor`-kind. A letter in the **center** is a console/marker; the same letter
+  on an **edge-mid** is a fixture — position disambiguates.
+- **Edge glyphs** (N/E/S/W mid characters, what's on that side) carry an
+  edge kind: `open` (space, passable), `wall` (`#`, blocks), `door` (`=`,
+  passable, auto-opens), or `fixture` (a named wall decoration like `v`=
+  viewscreen — blocks like a wall and renders its art). Any edge char not in the
+  registry parses as a generic fixture, so nothing is ever a syntax error.
+- **Corners** are cosmetic. Use `#` for a clean hull outline; the renderer
+  auto-joins wall corners, so a blank corner between two walls still renders
+  closed.
 
-The console/airlock/spawn glyphs are an **authoring** convenience: **the map is
-the single source of truth**, so the position can't drift from a separate list.
-At load the server derives a structured console list (ids auto-generated from
-the kind — `helm`, or `broker0`/`broker1` when repeated) and the spawn/mooring
-tile from these glyphs. A letter in the **center** is a console; the same letter
-on an **edge-mid** is a fixture — position disambiguates. The kind legend is
-extensible (`h`/`c`/`b`/`Q` today).
+Console/dock/spawn glyphs are an **authoring** convenience: **the map is the
+single source of truth**, so a position can't drift from a separate list. At
+load the server derives a structured console list (ids auto-generated from the
+kind — `helm`, or `broker0`/`broker1` when repeated) and the spawn/mooring tile
+from these glyphs. The wire form carries the derived, **namespaced** console
+list explicitly (`s3:helm`) — the composite needs ids that glyphs can't express
+— so when `consoles`/`spawn` are present on an object they win; otherwise
+they're derived from the glyphs. Hand-authored docs omit them. There is no
+`rooms` list.
+
+### Docking ports and berths (`Q`)
 
 A **docking port** (`Q`) is a full tile that moors to a station or another hull.
 It must have **at least one door (`=`) on an edge that faces void** — the *outer*
-door the gangway connects through; other doors/shape are free (an L-bend, three
-doors, whatever). A ship's mooring/spawn tile is derived as the docking port
-whose outer door faces void on the **port (west)** side (the side that meets the
-gangway under side-on mooring).
+door the gangway connects through (a `Q` with no void-facing door is an authoring
+error, rejected at load). Other doors/shape are free (an L-bend, three doors,
+whatever). That void-facing edge is the port's **outward normal**.
 
-The wire form carries the derived, **namespaced** console list explicitly
-(`s3:helm`) — the composite needs ids that glyphs can't express — so when
-`consoles`/`spawn` are present on an object they win; otherwise they're derived
-from the glyphs. Hand-authored docs omit them.
+The same `Q` rule is the single source of docking geometry for both ships and
+stations (issue #31):
 
-Rooms are gone: there is no `rooms` list. Console prompt labels derive from the
-console kind, and station berth signage is detected structurally (a walkable
-concourse tile with void directly to its north is a berth mouth).
-
-### Edges (N / E / S / W mid characters) — what's on that side
-
-| Glyph | Meaning | Collision |
-|-------|---------|-----------|
-| (space) | Open — no wall | passable |
-| `#` | Wall | blocks |
-| `=` | Door — auto-opens for now | passable |
-| letter (e.g. `v`) | Wall-mounted fixture — a wall that also carries a fixture | blocks |
-
-Fixture letters are an extensible legend (start: `v` = viewscreen/screen). A
-fixture implies the wall is there, so it blocks like `#` and renders its art.
-
-### Corners
-
-Cosmetic only. Use `#` for a clean hull outline; the renderer also auto-joins
-wall corners, so a blank corner between two walls still renders closed.
+- A **ship's** mooring/spawn tile is the docking port whose outer door faces
+  void on the **port (west)** side (the side that meets the gangway under side-on
+  mooring).
+- A **station's berths** are its concourse `Q` ports whose door faces void on the
+  **north** side (the mouth opening to the space above the concourse). Each `Q`
+  is one berth — there is no separate `berths` list. A ship's moored world
+  position is the berth tile plus its class's `dock_standoff` (tiles/metres)
+  along the outward normal; the standoff is authored **per ship class** because
+  a tiny shuttle and a wide freighter stand off differently.
 
 ## Collision
 
@@ -121,14 +120,19 @@ the old single-grid split-level alphabet (`2`/`L`/`U`/`B`) and all of its
 cross-deck rendering logic.
 
 Decks connect only through **stairs/ladders** (`x` center tiles): standing on an
-`x` lets you move to the vertically-aligned tile on the adjacent deck. (This
-replaces the old `B` between-level tiles.)
+`x` lets you move to the nearest deck (searching down first, then up) with an
+`x` at the same tile. (This replaces the old `B` between-level tiles.) The shaft
+**passes through intermediate levels that are void at that tile** but a solid
+floor blocks it — so a stair can bypass a level the column doesn't exist on
+(e.g. the Mockingbird's forward stairs skipping the void mezzanine).
 
 The **Mockingbird becomes a three-deck ship**: Upper (cockpit, quarters, mess,
 commons, aft passage), a rear Mezzanine (the former docking half-flight, now its
 own deck), and Lower (bow ramp, main hold, docking deck).
 
 ## JSON shape
+
+A **ship class** (`server/shipclasses/*.json`):
 
 ```jsonc
 {
@@ -141,12 +145,33 @@ own deck), and Lower (bow ramp, main hold, docking deck).
     { "name": "Lower",     "grid": [ /* ... `c` marks the cargo console ... */ ] }
   ],
   "cargo":    { "capacity": 40, "handling": "breakbulk" },
-  "dock_port_orientation": 1.5707963267948966
+  "dock_port_orientation": 1.5707963267948966,
+  "dock_standoff": 20.0
 }
 ```
 
+A **station class** (`server/stationclasses/*.json`) is the same deck-plan shape
+plus `dock_radius` and `crane`, minus the ship-only `cargo`/`dock_*` fields:
+
+```jsonc
+{
+  "schema": 1,
+  "id": "highport",
+  "name": "Highport",
+  "dock_radius": 150.0,
+  "crane": true,
+  "decks": [ { "name": "Concourse", "grid": [ /* `b` brokers, `s` spawn, `Q` berths */ ] } ]
+}
+```
+
+A world (`server/worlds/*.json`) references a station class by id and carries
+only per-instance data (`id`, `name`, `class`, `parent`, `orbit`, `market`);
+the class supplies the concourse/`dock_radius`/`crane`, and berths derive from
+its `Q` glyphs (issue #30/#31).
+
 No `rooms`, `consoles`, or `spawn` lists — those are read from the grid glyphs.
-(`cargo` here is the hold's capacity/handling block, not the cargo console.)
+(`cargo` is the hold's capacity/handling block, not the cargo console;
+`dock_standoff` is the hull's moored standoff in tiles/metres.)
 
 - A deck's tile dimensions are derived from its grid: `width = len(row) / 3`,
   `height = len(grid) / 3`. Every row in a deck must be the same length, and row

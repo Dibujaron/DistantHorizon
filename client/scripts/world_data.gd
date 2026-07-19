@@ -52,19 +52,18 @@ class Body:
 		return body
 
 
-## An authored docking port on a station (wire: the station's `berths`).
-## `tile` is the interior/composite berth tile; `orientation` is the port's
-## outward normal in world radians (y-up, 0 = +x/east); `anchor` is the
-## mooring point's world-unit offset from the station centre. The moored
-## hull's heading and exterior pose derive from these (#14) — the default
-## (north, zero anchor) reproduces M3.5's side-on mooring. Accepts the object
-## form `{tile, orientation?, anchor?}` and the legacy bare `[x, y]` array.
+## A station docking port, derived server-side from a `Q` glyph in the
+## concourse (wire: the station's `berths`, issue #31). `tile` is the
+## interior/composite berth tile; `orientation` is the port's outward normal in
+## world radians (y-up, 0 = +x/east). The moored hull's heading derives from
+## these (#14); its exterior pose is drawn at the station sprite's own "berth"
+## anchor (see world_view.gd), not from any wire anchor. Accepts the object form
+## `{tile, orientation?}` and a bare `[x, y]` array.
 class Berth:
 	const DEFAULT_ORIENTATION := 1.5707963267948966  ## pi/2, north; server default
 
 	var tile: Vector2i
 	var orientation: float = DEFAULT_ORIENTATION
-	var anchor: Vector2 = Vector2.ZERO
 
 	static func from_variant(data: Variant) -> Berth:
 		var berth := Berth.new()
@@ -75,9 +74,6 @@ class Berth:
 			if tile is Array and tile.size() >= 2:
 				berth.tile = Vector2i(int(tile[0]), int(tile[1]))
 			berth.orientation = float(data.get("orientation", DEFAULT_ORIENTATION))
-			var anchor: Variant = data.get("anchor", [0.0, 0.0])
-			if anchor is Array and anchor.size() >= 2:
-				berth.anchor = Vector2(float(anchor[0]), float(anchor[1]))
 		return berth
 
 
