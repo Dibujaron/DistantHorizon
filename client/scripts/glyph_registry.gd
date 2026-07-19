@@ -24,6 +24,11 @@ var sprite_by_id: Dictionary = {}
 ## carrying a client sprite. Mirrors `glyphs.is_decor` (glyphs.gleam).
 var _decor_glyphs: Dictionary = {}
 
+## Single-char glyph (centre OR edge) -> sprite id, for decor/fixture
+## rendering keyed directly on the deck-grid character (issue #29/#30's
+## renderer, T6/T7) rather than on console kind or long-form id.
+var sprite_by_glyph: Dictionary = {}
+
 
 static func from_dict(data: Variant) -> GlyphRegistry:
 	var reg := GlyphRegistry.new()
@@ -52,6 +57,7 @@ func _ingest(entries: Variant) -> void:
 				var sprite: Variant = e.get("sprite")
 				if sprite != null:
 					sprite_by_id[str(e.get("id", ""))] = str(sprite)
+					sprite_by_glyph[str(e.get("glyph", ""))] = str(sprite)
 
 
 ## The sprite id for a console of `kind`, or "" if the registry maps none (the
@@ -65,3 +71,9 @@ func sprite_for_console(kind: String) -> String:
 ## Mirrors `glyphs.is_decor` (glyphs.gleam).
 func is_decor(glyph: String) -> bool:
 	return _decor_glyphs.has(glyph)
+
+
+## The sprite id for centre-or-edge glyph `glyph` (e.g. "d" -> "bed",
+## "w" -> "window"), or "" if the registry maps none.
+func sprite_for_glyph(glyph: String) -> String:
+	return str(sprite_by_glyph.get(glyph, ""))

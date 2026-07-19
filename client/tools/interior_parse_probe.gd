@@ -39,5 +39,19 @@ func _ready() -> void:
 	ok = ok and cls.decor_at(0, 0, 0) == "d"
 	ok = ok and cls.color_at(0, 0, 0) == 10
 
+	# T6: Palette parses the shipped server/colors.json (16 hex strings, index
+	# = NE-corner colour slot). res:// cannot reach outside the project root
+	# (see header), so read via an absolute, globalized filesystem path.
+	var colors_path := ProjectSettings.globalize_path("res://").path_join("../server/colors.json")
+	var raw: Variant = JSON.parse_string(FileAccess.get_file_as_string(colors_path))
+	var hexes: Array = []
+	if raw is Dictionary:
+		for e: Variant in raw.get("palette", []):
+			if e is Dictionary:
+				hexes.append(e.get("hex", ""))
+	var pal := Palette.from_dict(hexes)
+	ok = ok and pal.colors.size() == 16
+	ok = ok and pal.color(15).is_equal_approx(Color("#1D1D21"))
+
 	print("[parse_probe] ", "PASS" if ok else "FAIL")
 	get_tree().quit(0 if ok else 1)
