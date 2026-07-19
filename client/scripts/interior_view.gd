@@ -74,6 +74,18 @@ const VIEW_CONE_DARK := Color(0.02, 0.025, 0.045, 0.92)
 const VIEW_RANGE_TILES := 5.5   # how far you can make out PEOPLE outside
 ## Draw size for the 22x34 character art ("a touch too small" at native).
 const CHAR_SIZE := Vector2(27, 42)
+## Baked walk sheets (see tools/character_walk_baker.gd): each `<name>_walk`
+## texture is SHEET_CELLS cells wide — cell 0 idle, cells 1.. the walk cycle.
+const SHEET_CELLS := 5
+const WALK_FPS := 9.0
+const WALK_FRAME_MS := 1000.0 / WALK_FPS
+## A character counts as walking if it moved more than MOVE_EPS tiles since the
+## last frame; the walk animation then coasts for MOVE_COAST_MS so brief
+## sub-threshold frames (or the gap between network updates) don't flicker to
+## idle mid-stride.
+const MOVE_EPS := 0.01
+const MOVE_COAST_MS := 140
+const FACE_EPS := 0.01
 
 
 ## One hull exterior drawn under the tiles: `asset` names a ship kind or
@@ -113,7 +125,8 @@ var _font: Font
 var _lib: AssetLibrary = null
 var _floor_tex: Array[Texture2D] = []
 var _facing: Dictionary = {}        # character id -> -1.0 | 1.0
-var _last_char_x: Dictionary = {}   # character id -> last tile x
+var _last_pos: Dictionary = {}      # character id -> last drawn Vector2 (tiles)
+var _walk_until: Dictionary = {}    # character id -> ms the walk cycle coasts to
 ## LOS cache: Vector2i tile -> bool visible; recomputed when the own tile,
 ## the plan, or the toggle changes.
 var _los: Dictionary = {}
@@ -602,25 +615,50 @@ func _draw_characters(origin: Vector2) -> void:
 				and character.position().distance_to(focus_tile) > VIEW_RANGE_TILES:
 			continue  # beyond the window range
 		var screen_pos := _tile_to_screen(character.position(), origin)
-		var tex := _lib.character("player" if is_own
-			else "crew_%d" % (absi(hash(character.id)) % 3))
+		var base_name: String = "player" if is_own \
+			else "crew_%d" % (absi(hash(character.id)) % 3)
+		var tex := _lib.character(base_name)
+		var walk := _lib.character(base_name + "_walk")
 		if tex != null:
+			# Facing + walk state from how far the body moved since last frame.
+			var last: Vector2 = _last_pos.get(character.id, character.position())
 			var facing: float = _facing.get(character.id, 1.0)
-			var last_x: float = _last_char_x.get(character.id, character.x)
-			if character.x - last_x > 0.01:
+			if character.x - last.x > FACE_EPS:
 				facing = 1.0
-			elif character.x - last_x < -0.01:
+			elif character.x - last.x < -FACE_EPS:
 				facing = -1.0
+			var now := Time.get_ticks_msec()
+			if character.position().distance_to(last) > MOVE_EPS:
+				_walk_until[character.id] = now + MOVE_COAST_MS
+			var walking: bool = not character.is_seated() \
+				and now < int(_walk_until.get(character.id, 0))
 			_facing[character.id] = facing
-			_last_char_x[character.id] = character.x
-			# feet at the collision circle's bottom edge; art is 22x34,
-			# drawn at CHAR_SIZE (a touch bigger, user note round 9). Facing
-			# flips the sprite horizontally with left/right movement.
+			_last_pos[character.id] = character.position()
+			# feet at the collision circle's bottom edge; facing flips the
+			# sprite horizontally with left/right movement.
 			draw_set_transform(screen_pos + Vector2(0, radius_px),
 				0.0, Vector2(facing, 1.0))
-			draw_texture_rect(tex,
-				Rect2(Vector2(-CHAR_SIZE.x * 0.5, -CHAR_SIZE.y), CHAR_SIZE),
-				false)
+			if walk != null:
+				# Play the baked cycle: idle = cell 0, walking = cells 1.. by
+				# wall-clock phase (offset per id so crew don't march in step).
+				# The sheet is padded, so scale each cell to keep the body the
+				# same on-screen size CHAR_SIZE gives the native art.
+				var cell_w := walk.get_width() / SHEET_CELLS
+				var cell_h := walk.get_height()
+				var draw_w := CHAR_SIZE.x * float(cell_w) / float(tex.get_width())
+				var draw_h := CHAR_SIZE.y * float(cell_h) / float(tex.get_height())
+				var frame := 0
+				if walking:
+					frame = 1 + (int(now / WALK_FRAME_MS) + character.id) \
+						% (SHEET_CELLS - 1)
+				draw_texture_rect_region(walk,
+					Rect2(Vector2(-draw_w * 0.5, -draw_h), Vector2(draw_w, draw_h)),
+					Rect2(frame * cell_w, 0, cell_w, cell_h))
+			else:
+				# No baked sheet — fall back to the single static frame.
+				draw_texture_rect(tex,
+					Rect2(Vector2(-CHAR_SIZE.x * 0.5, -CHAR_SIZE.y), CHAR_SIZE),
+					false)
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		else:
 			var color := OWN_CHARACTER_COLOR if is_own else OTHER_CHARACTER_COLOR
