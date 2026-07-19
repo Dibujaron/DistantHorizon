@@ -235,6 +235,5 @@ pub fn deck_to_rows_round_trips_test() {
   let rows = ["######", "# ## #", "#=##=#"]
   let assert Ok(g) = deckplan.parse_deck("d", rows)
   let assert Ok(g2) = deckplan.parse_deck("d", deckplan.deck_to_rows(g))
-  assert g2.tiles == g.tiles
-  assert g2.edges == g.edges
+  assert g2.cells == g.cells
 }
