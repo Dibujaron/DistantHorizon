@@ -213,11 +213,11 @@ The same "the map is the single source of truth" rule that derives consoles
 and berths from glyphs also applies to breakbulk hold capacity: at load, the
 server counts a hull's `p` (cargo-pallet) tiles across all of its decks and
 uses that count as `cargo.capacity`, so the number in the JSON can't drift
-from what's actually drawn on the deck plan. The authored `"capacity"` in the
-`cargo` block is used only as a **fallback**, for a hull with zero pallet
-tiles — today's Mockingbird example above (`"capacity": 40`, no `p` glyphs
-yet) is exactly that case. `handling` (e.g. `"breakbulk"`) is still
-hand-authored; only the numeric capacity is derived.
+from what's actually drawn on the deck plan. The Mockingbird draws 60 `p`
+tiles across its holds, so its capacity derives to **60** and the authored
+`"capacity"` is ignored. The authored value is used only as a **fallback**,
+for a hull that draws zero pallet tiles. `handling` (e.g. `"breakbulk"`) is
+still hand-authored; only the numeric capacity is derived.
 
 ## Compatibility
 

@@ -124,7 +124,10 @@ pub fn decode_rejects_garbage_test() {
 
 pub fn decode_reads_cargo_block_test() {
   let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
-  assert c.cargo_capacity == 40
+  // Capacity is DERIVED from the hull's cargo-pallet (`p`) tiles, not the
+  // authored `cargo.capacity`: the Mockingbird draws 60 pallets, so its
+  // authored 40 is overridden. `handling` is still read from the block.
+  assert c.cargo_capacity == 60
   assert c.handling == shipclass.BreakBulk
 }
 
