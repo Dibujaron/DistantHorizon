@@ -46,18 +46,23 @@ pub type Dir {
   W
 }
 
-/// One deck: a `width` x `height` grid of tiles, each with its own four
-/// edges. `tiles[y][x]` is the centre; `edges[y][x]` is `#(n, e, s, w)` for
-/// that tile. A partition between two rooms is a *double* wall — each tile
+/// One tile: what it IS at centre plus its four edges `#(n, e, s, w)`, and
+/// (from deck-plan v3.1) an optional decor glyph and an optional palette
+/// color index for that tile.
+pub type Cell {
+  Cell(
+    tile: Tile,
+    edges: #(Edge, Edge, Edge, Edge),
+    decor: option.Option(String),
+    color: option.Option(Int),
+  )
+}
+
+/// One deck: a `width` x `height` grid of cells. `cells[y][x]` is the tile at
+/// `(x, y)`. A partition between two rooms is a *double* wall — each tile
 /// owns its own side — so `edge_blocks` ORs the two facing edges.
 pub type DeckGrid {
-  DeckGrid(
-    name: String,
-    width: Int,
-    height: Int,
-    tiles: List(List(Tile)),
-    edges: List(List(#(Edge, Edge, Edge, Edge))),
-  )
+  DeckGrid(name: String, width: Int, height: Int, cells: List(List(Cell)))
 }
 
 /// A single-tile interactable on one deck. `kind` is e.g. `"helm"`,
@@ -126,31 +131,24 @@ pub fn parse_deck_with(
   let width = first_len / 3
   let height = row_count / 3
   // Index once into a grid of graphemes; repeated slicing on strings is O(n).
-  let cells = list.map(rows, string.to_graphemes)
-  let tiles =
+  let cells_g = list.map(rows, string.to_graphemes)
+  let cells =
     list.map(range(0, height), fn(y) {
       list.map(range(0, width), fn(x) {
-        parse_center(reg, cell_at(cells, 3 * y + 1, 3 * x + 1))
-      })
-    })
-  let edges =
-    list.map(range(0, height), fn(y) {
-      list.map(range(0, width), fn(x) {
-        #(
-          parse_edge(reg, cell_at(cells, 3 * y, 3 * x + 1)),
-          parse_edge(reg, cell_at(cells, 3 * y + 1, 3 * x + 2)),
-          parse_edge(reg, cell_at(cells, 3 * y + 2, 3 * x + 1)),
-          parse_edge(reg, cell_at(cells, 3 * y + 1, 3 * x)),
+        Cell(
+          tile: parse_center(reg, cell_at(cells_g, 3 * y + 1, 3 * x + 1)),
+          edges: #(
+            parse_edge(reg, cell_at(cells_g, 3 * y, 3 * x + 1)),
+            parse_edge(reg, cell_at(cells_g, 3 * y + 1, 3 * x + 2)),
+            parse_edge(reg, cell_at(cells_g, 3 * y + 2, 3 * x + 1)),
+            parse_edge(reg, cell_at(cells_g, 3 * y + 1, 3 * x)),
+          ),
+          decor: parse_decor(reg, cell_at(cells_g, 3 * y + 1, 3 * x + 1)),
+          color: parse_color(cell_at(cells_g, 3 * y, 3 * x + 2)),
         )
       })
     })
-  Ok(DeckGrid(
-    name: name,
-    width: width,
-    height: height,
-    tiles: tiles,
-    edges: edges,
-  ))
+  Ok(DeckGrid(name: name, width: width, height: height, cells: cells))
 }
 
 fn parse_center(reg: glyphs.Registry, ch: String) -> Tile {
@@ -168,6 +166,22 @@ fn parse_edge(reg: glyphs.Registry, ch: String) -> Edge {
     glyphs.Door -> Door
     // A named or unknown edge glyph is a wall-fixture; keep its own char.
     glyphs.Fixture -> Fixture(ch)
+  }
+}
+
+fn parse_decor(reg: glyphs.Registry, ch: String) -> option.Option(String) {
+  case glyphs.is_decor(reg, ch) {
+    True -> Some(ch)
+    False -> None
+  }
+}
+
+/// The NE corner encodes colour as a single hex digit 0-f -> 0-15; anything
+/// else (blank, "#", junk) is uncoloured.
+fn parse_color(ch: String) -> option.Option(Int) {
+  case int.base_parse(ch, 16) {
+    Ok(n) if n >= 0 && n <= 15 -> Some(n)
+    _ -> None
   }
 }
 
@@ -194,17 +208,9 @@ pub fn deck_at(plan: DeckPlan, i: Int) -> Result(DeckGrid, Nil) {
 
 /// The tile at `(x, y)` on `g`; `Void` out of bounds.
 pub fn tile_at(g: DeckGrid, x: Int, y: Int) -> Tile {
-  case in_bounds(g, x, y) {
-    False -> Void
-    True ->
-      case list.drop(g.tiles, y) |> list.first {
-        Error(Nil) -> Void
-        Ok(row) ->
-          case list.drop(row, x) |> list.first {
-            Error(Nil) -> Void
-            Ok(t) -> t
-          }
-      }
+  case cell_at_xy(g, x, y) {
+    Ok(c) -> c.tile
+    Error(Nil) -> Void
   }
 }
 
@@ -215,10 +221,18 @@ pub fn edges_at(
   x: Int,
   y: Int,
 ) -> Result(#(Edge, Edge, Edge, Edge), Nil) {
+  case cell_at_xy(g, x, y) {
+    Ok(c) -> Ok(c.edges)
+    Error(Nil) -> Error(Nil)
+  }
+}
+
+/// The cell at `(x, y)` on `g`; `Error(Nil)` out of bounds.
+pub fn cell_at_xy(g: DeckGrid, x: Int, y: Int) -> Result(Cell, Nil) {
   case in_bounds(g, x, y) {
     False -> Error(Nil)
     True ->
-      case list.drop(g.edges, y) |> list.first {
+      case list.drop(g.cells, y) |> list.first {
         Error(Nil) -> Error(Nil)
         Ok(row) -> list.drop(row, x) |> list.first
       }
@@ -402,6 +416,26 @@ fn outward_dir(g: DeckGrid, x: Int, y: Int) -> Result(Dir, Nil) {
   list.find([N, E, S, W], fn(dir) {
     let #(nx, ny) = neighbor(x, y, dir)
     edge_in(g, x, y, dir) == Door && tile_at(g, nx, ny) == Void
+  })
+}
+
+/// Count of cargo-pallet tiles across every deck — the derived breakbulk
+/// hold capacity ("the map is the single source of truth"). A pallet is a
+/// cell whose decor glyph maps to the `cargo_pallet` id in the registry.
+pub fn pallet_count(plan: DeckPlan, reg: glyphs.Registry) -> Int {
+  list.fold(plan.decks, 0, fn(total, g) {
+    list.fold(g.cells, total, fn(t, row) {
+      list.fold(row, t, fn(n, c) {
+        case c.decor {
+          Some(glyph) ->
+            case glyphs.center(reg, glyph).id == "cargo_pallet" {
+              True -> n + 1
+              False -> n
+            }
+          None -> n
+        }
+      })
+    })
   })
 }
 
@@ -665,7 +699,7 @@ fn deck_entry_decoder(
 }
 
 fn empty_grid(name: String) -> DeckGrid {
-  DeckGrid(name: name, width: 0, height: 0, tiles: [], edges: [])
+  DeckGrid(name: name, width: 0, height: 0, cells: [])
 }
 
 fn console_decoder() -> decode.Decoder(Console) {
@@ -708,15 +742,45 @@ pub fn deck_to_rows(g: DeckGrid) -> List(String) {
 }
 
 fn tile_block(g: DeckGrid, x: Int, y: Int) -> #(String, String, String) {
-  let #(n, e, s, w) = case edges_at(g, x, y) {
-    Ok(edges) -> edges
-    Error(Nil) -> #(Open, Open, Open, Open)
+  let assert Ok(cell) = cell_at_xy(g, x, y)
+  let #(n, e, s, w) = cell.edges
+  let c = case cell.decor {
+    Some(glyph) -> glyph
+    None -> center_glyph(cell.tile)
   }
-  let c = center_glyph(tile_at(g, x, y))
-  let top = corner(n, w) <> edge_glyph(n) <> corner(n, e)
+  let ne = case cell.color {
+    Some(v) -> to_hex_digit(v)
+    None -> corner(n, e)
+  }
+  let top = corner(n, w) <> edge_glyph(n) <> ne
   let mid = edge_glyph(w) <> c <> edge_glyph(e)
   let bot = corner(s, w) <> edge_glyph(s) <> corner(s, e)
   #(top, mid, bot)
+}
+
+/// A colour index 0-15 as its lowercase hex digit (the NE-corner encoding);
+/// `gleam/int` has no single-digit base-16 formatter, so this is local. `_`
+/// (out of range) falls back to blank rather than crashing on a bad Cell.
+fn to_hex_digit(v: Int) -> String {
+  case v {
+    0 -> "0"
+    1 -> "1"
+    2 -> "2"
+    3 -> "3"
+    4 -> "4"
+    5 -> "5"
+    6 -> "6"
+    7 -> "7"
+    8 -> "8"
+    9 -> "9"
+    10 -> "a"
+    11 -> "b"
+    12 -> "c"
+    13 -> "d"
+    14 -> "e"
+    15 -> "f"
+    _ -> " "
+  }
 }
 
 fn center_glyph(tile: Tile) -> String {

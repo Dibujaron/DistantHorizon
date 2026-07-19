@@ -1,4 +1,16 @@
 import dh_server/deckplan.{Console, DeckPlan}
+import dh_server/glyphs
+import gleam/option
+
+// ---------------------------------------------------------- cargo tiles --
+
+pub fn pallet_count_test() {
+  let rows = ["######", " p  p ", "######"]
+  let assert Ok(g) = deckplan.parse_deck("hold", rows)
+  let plan =
+    DeckPlan(decks: [g], consoles: [], spawn_deck: 0, spawn_tile: #(0, 0))
+  assert deckplan.pallet_count(plan, glyphs.default()) == 2
+}
 
 // ------------------------------------------------- docking ports (#31) --
 
@@ -235,6 +247,46 @@ pub fn deck_to_rows_round_trips_test() {
   let rows = ["######", "# ## #", "#=##=#"]
   let assert Ok(g) = deckplan.parse_deck("d", rows)
   let assert Ok(g2) = deckplan.parse_deck("d", deckplan.deck_to_rows(g))
-  assert g2.tiles == g.tiles
-  assert g2.edges == g.edges
+  assert g2.cells == g.cells
+}
+
+// ---------------------------------------------------- decor / colour (v3.1) --
+
+pub fn decor_and_color_parse_test() {
+  // 3x3 block: NE corner (row0 col2) = "a"; centre (row1 col1) = "d" (bed).
+  let rows = ["#=a", " d ", "###"]
+  let assert Ok(g) = deckplan.parse_deck("t", rows)
+  let assert Ok(c) = deckplan.cell_at_xy(g, 0, 0)
+  assert c.decor == option.Some("d")
+  assert c.color == option.Some(10)
+  assert c.tile == deckplan.Floor
+}
+
+pub fn decor_color_roundtrip_test() {
+  let rows = ["#=a", " d ", "###"]
+  let assert Ok(g) = deckplan.parse_deck("t", rows)
+  let assert Ok(g2) = deckplan.parse_deck("t", deckplan.deck_to_rows(g))
+  assert g2.cells == g.cells
+}
+
+pub fn blank_ne_corner_is_uncolored_test() {
+  let rows = ["# #", " r ", "###"]
+  let assert Ok(g) = deckplan.parse_deck("t", rows)
+  let assert Ok(c) = deckplan.cell_at_xy(g, 0, 0)
+  assert c.color == option.None
+  assert c.decor == option.Some("r")
+}
+
+pub fn hash_ne_corner_is_uncolored_test() {
+  let rows = ["#=#", " d ", "###"]
+  let assert Ok(g) = deckplan.parse_deck("t", rows)
+  let assert Ok(c) = deckplan.cell_at_xy(g, 0, 0)
+  assert c.color == option.None
+}
+
+pub fn junk_letter_ne_corner_is_uncolored_test() {
+  let rows = ["#=g", " d ", "###"]
+  let assert Ok(g) = deckplan.parse_deck("t", rows)
+  let assert Ok(c) = deckplan.cell_at_xy(g, 0, 0)
+  assert c.color == option.None
 }

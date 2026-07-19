@@ -162,6 +162,7 @@ func _draw() -> void:
 	_refresh_los()
 	_update_backdrops(origin)
 	_draw_floor(origin)
+	_draw_decor(origin)
 	_draw_structure(origin)
 	_draw_signage(origin)
 	_draw_consoles(origin)
@@ -300,6 +301,36 @@ func _draw_floor(origin: Vector2) -> void:
 						Color(1, 1, 1, FLOOR_TEXTURE_ALPHA))
 
 
+## Decor (deck-plan v3.1): a decorative centre glyph (rug/seat/bed/pallet …)
+## renders its sprite, tinted by the tile's NE-corner palette colour. Decor
+## art doesn't exist yet, so a missing sprite falls back to a centred tinted
+## swatch — authored decor + colour is visible NOW, ahead of the art.
+func _draw_decor(origin: Vector2) -> void:
+	var reg: GlyphRegistry = NetworkClient.glyphs
+	if reg == null:
+		return
+	for ty in _grid_h():
+		for tx in _grid_w():
+			if not _vis(tx, ty):
+				continue
+			var glyph := ship_class.decor_at(view_deck, tx, ty)
+			if glyph == "":
+				continue
+			var slot := ship_class.color_at(view_deck, tx, ty)
+			var tint := NetworkClient.palette.color(slot) if slot >= 0 \
+				and NetworkClient.palette != null else Color.WHITE
+			var pos := _tile_to_screen(Vector2(tx, ty), origin)
+			var sprite_id := reg.sprite_for_glyph(glyph)
+			var tex: Texture2D = _lib.interior(sprite_id) if sprite_id != "" else null
+			if tex != null:
+				draw_texture_rect(tex, Rect2(pos, Vector2(TILE_PIXELS, TILE_PIXELS)), false, tint)
+			else:
+				# Placeholder until decor art exists: a centred tinted swatch.
+				var m := TILE_PIXELS * 0.22
+				draw_rect(Rect2(pos + Vector2(m, m), Vector2(TILE_PIXELS - 2 * m, TILE_PIXELS - 2 * m)),
+					tint if slot >= 0 else Color(0.6, 0.6, 0.65), true)
+
+
 ## Walls and doors from the per-edge tile data (#19/#20). Each visible floor
 ## tile asks ShipClassData.edge_at for its four edges; a shared edge between
 ## two floor tiles is stamped once (by its N/W owner) so doors don't double up.
@@ -310,6 +341,7 @@ func _draw_structure(origin: Vector2) -> void:
 	var wall_tex := _lib.interior("wall_n")
 	if wall_tex == null:
 		return
+	var reg: GlyphRegistry = NetworkClient.glyphs
 	for ty in _grid_h():
 		for tx in _grid_w():
 			if not _vis(tx, ty):
@@ -322,7 +354,7 @@ func _draw_structure(origin: Vector2) -> void:
 				if kind == ShipClassData.Edge.DOOR:
 					_draw_edge_door(pos, dir)
 				else:
-					_draw_edge_wall(pos, dir, wall_tex)
+					_draw_edge_wall(pos, dir, wall_tex, _fixture_tex(reg, tx, ty, dir))
 			_draw_wall_corners(pos, tx, ty)
 
 
@@ -357,10 +389,36 @@ func _begin_edge(pos: Vector2, dir: int) -> void:
 			draw_set_transform(pos, 0.0, Vector2.ONE)
 
 
-func _draw_edge_wall(pos: Vector2, dir: int, wall_tex: Texture2D) -> void:
+## A FIXTURE edge (window `w`, viewscreen `v`) draws its own sprite on the
+## wall strip instead of a plain plate; `fixture_tex` is null for a plain WALL
+## edge, or when the registry has no sprite for the fixture glyph yet — either
+## way this falls back to `wall_tex` (today's look).
+func _draw_edge_wall(pos: Vector2, dir: int, wall_tex: Texture2D, fixture_tex: Texture2D = null) -> void:
 	_begin_edge(pos, dir)
-	draw_texture_rect(wall_tex, Rect2(Vector2.ZERO, Vector2(TILE_PIXELS, WALL_PX)), false)
+	var tex := fixture_tex if fixture_tex != null else wall_tex
+	draw_texture_rect(tex, Rect2(Vector2.ZERO, Vector2(TILE_PIXELS, WALL_PX)), false)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## The sprite texture for a FIXTURE boundary between tile (tx,ty) and its
+## `dir` neighbour, or null when this boundary carries no fixture (a plain
+## WALL) or the registry maps the fixture glyph to no sprite yet — either way
+## the caller falls back to the plain wall plate. The double-wall model means
+## the fixture's raw glyph may live on either facing side of the boundary.
+func _fixture_tex(reg: GlyphRegistry, tx: int, ty: int, dir: int) -> Texture2D:
+	if reg == null:
+		return null
+	var g := _deck()
+	if g == null:
+		return null
+	var d: Vector2i = ShipClassData.EDGE_DELTAS[dir]
+	var ch: String = str(g.fixtures.get("%d,%d,%d" % [tx, ty, dir], ""))
+	if ch == "":
+		ch = str(g.fixtures.get("%d,%d,%d" % [tx + d.x, ty + d.y, (dir + 2) % 4], ""))
+	if ch == "":
+		return null
+	var sprite_id := reg.sprite_for_glyph(ch)
+	return _lib.interior(sprite_id) if sprite_id != "" else null
 
 
 ## A hatch in the same strip footprint as a wall: recessed threshold, two

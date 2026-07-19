@@ -73,6 +73,10 @@ var ship_class: ShipClassData = null
 ## The tile-glyph registry (server/glyphs.json), parsed at welcome (issue #32).
 ## The interior renderer reads console sprite ids from it. Null until welcome.
 var glyphs: GlyphRegistry = null
+## The 16-colour tile palette (server/colors.json), parsed at welcome (issue
+## #29). The interior renderer looks up a cell's NE-corner colour slot here.
+## Null until welcome.
+var palette: Palette = null
 ## The walkable space we're currently in (M3.1); null until the first
 ## `space` message arrives right after `welcome`.
 var space: SpaceData = null
@@ -227,10 +231,14 @@ func _handle_welcome(message: Dictionary) -> void:
 	character_id = int(message.get("character_id", -1))
 	station_id = ""
 	space = null
+	# glyphs/palette must be set before parsing ship_class: Deck.from_grid ->
+	# _parse_decor reads NetworkClient.glyphs to resolve decor tiles, so
+	# parsing ship_class first would leave the aboard ship's decor unresolved.
+	glyphs = GlyphRegistry.from_dict(message.get("glyphs"))
+	palette = Palette.from_dict(message.get("palette", []))
 	var class_doc: Variant = message.get("ship_class")
 	if class_doc is Dictionary:
 		ship_class = ShipClassData.from_dict(class_doc)
-	glyphs = GlyphRegistry.from_dict(message.get("glyphs"))
 	logged_in = true
 	print("[net] welcome: ship_id=%d account_id=%d character_id=%d" % [ship_id, account_id, character_id])
 	welcome_received.emit(ship_id, world)

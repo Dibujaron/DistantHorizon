@@ -124,7 +124,10 @@ pub fn decode_rejects_garbage_test() {
 
 pub fn decode_reads_cargo_block_test() {
   let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
-  assert c.cargo_capacity == 40
+  // Capacity is DERIVED from the hull's cargo-pallet (`p`) tiles, not the
+  // authored `cargo.capacity`: the Mockingbird draws 60 pallets, so its
+  // authored 40 is overridden. `handling` is still read from the block.
+  assert c.cargo_capacity == 60
   assert c.handling == shipclass.BreakBulk
 }
 
@@ -154,6 +157,26 @@ pub fn decode_rejects_missing_cargo_block_test() {
     <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":1,\"y\":0}],"
     <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]}}"
   let assert Error(_) = shipclass.decode(bad)
+}
+
+pub fn cargo_capacity_derives_from_pallet_tiles_test() {
+  // Three pallet tiles ('p' centre) on the one deck; authored capacity is 0
+  // to prove the derived count wins.
+  let doc =
+    "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
+    <> "\"decks\":[{\"name\":\"main\",\"grid\":"
+    <> "[\"#####################\",\"#h     p     p     p#\",\"#####################\"]}],"
+    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":0,\"y\":0}],"
+    <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
+    <> "\"cargo\":{\"capacity\":0,\"handling\":\"breakbulk\"}}"
+  let assert Ok(c) = shipclass.decode(doc)
+  assert c.cargo_capacity == 3
+}
+
+pub fn cargo_capacity_falls_back_to_authored_when_no_pallets_test() {
+  // No pallet tiles at all — the authored capacity is used unchanged.
+  let assert Ok(c) = shipclass.decode(valid_doc())
+  assert c.cargo_capacity == 10
 }
 
 fn is_ok(result: Result(a, b)) -> Bool {

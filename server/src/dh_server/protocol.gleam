@@ -64,6 +64,7 @@ import dh_server/composite
 import dh_server/deckplan.{type DeckPlan}
 import dh_server/glyphs
 import dh_server/market
+import dh_server/palette
 import dh_server/ship.{type Ship}
 import dh_server/shipclass.{type ShipClass}
 import dh_server/stats.{type StatsReply}
@@ -171,6 +172,7 @@ pub fn encode_welcome(
   world: World,
   class: ShipClass,
   registry: glyphs.Registry,
+  palette: palette.Palette,
 ) -> String {
   json.object([
     #("v", json.int(version)),
@@ -183,6 +185,7 @@ pub fn encode_welcome(
     #("world", world.encode(world)),
     #("ship_class", shipclass.encode(class)),
     #("glyphs", glyphs.encode(registry)),
+    #("palette", palette.encode(palette)),
   ])
   |> json.to_string
 }

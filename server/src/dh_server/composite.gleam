@@ -18,11 +18,12 @@
 //// composite index. The output is an ordinary DeckPlan the sim and client walk.
 
 import dh_server/deckplan.{
-  type DeckGrid, type DeckPlan, type Edge, type Tile, Console, DeckGrid,
-  DeckPlan, Floor, Open, Void,
+  type DeckGrid, type DeckPlan, type Edge, Cell, Console, DeckGrid, DeckPlan,
+  Floor, Open, Void,
 }
 import gleam/int
 import gleam/list
+import gleam/option.{None}
 import gleam/result
 import gleam/string
 
@@ -333,7 +334,7 @@ fn place_ships(
 fn mooring_grid(p: Placed) -> DeckGrid {
   case list.drop(p.rotated, p.mooring_index) |> list.first {
     Ok(g) -> g
-    Error(Nil) -> DeckGrid(name: "", width: 0, height: 0, tiles: [], edges: [])
+    Error(Nil) -> DeckGrid(name: "", width: 0, height: 0, cells: [])
   }
 }
 
@@ -401,9 +402,10 @@ fn compose_level(
           })
         let sources =
           list.append(concourse_cells, ship_cells)
-          |> list.filter(fn(c) { c.0 != Void })
+          |> list.filter(fn(c) { c.tile != Void })
         case sources {
-          [] -> Ok(#(Void, open_edges()))
+          [] ->
+            Ok(Cell(tile: Void, edges: open_edges(), decor: None, color: None))
           [one] -> Ok(one)
           _ -> Error("berth_blocked")
         }
@@ -451,7 +453,10 @@ fn carve_tubes(
 
 fn carve_tile(g: DeckGrid, x: Int, y: Int) -> Result(DeckGrid, String) {
   case deckplan.tile_at(g, x, y) {
-    Void -> Ok(DeckGrid(..g, tiles: set_2d(g.tiles, x, y, Floor)))
+    Void -> {
+      let c = cell(g, x, y)
+      Ok(DeckGrid(..g, cells: set_2d(g.cells, x, y, Cell(..c, tile: Floor))))
+    }
     _ -> Error("berth_blocked")
   }
 }
@@ -506,11 +511,9 @@ fn rotate_ccw_grid(g: DeckGrid) -> DeckGrid {
       list.map(range(0, new_w), fn(x) {
         let ox = g.width - 1 - y
         let oy = x
-        let #(n, e, s, w) = case deckplan.edges_at(g, ox, oy) {
-          Ok(edges) -> edges
-          Error(Nil) -> open_edges()
-        }
-        #(deckplan.tile_at(g, ox, oy), #(e, s, w, n))
+        let source = cell(g, ox, oy)
+        let #(n, e, s, w) = source.edges
+        Cell(..source, edges: #(e, s, w, n))
       })
     })
   grid_from_cells(g.name, new_w, new_h, cells)
@@ -523,19 +526,16 @@ fn rotate_point(x: Int, y: Int, w: Int) -> #(Int, Int) {
 
 // -------------------------------------------------------------- cells --
 
-/// A tile plus its four edges — the unit `compose`/`lift` shuffle around.
-type Cell =
-  #(Tile, #(Edge, Edge, Edge, Edge))
-
 fn open_edges() -> #(Edge, Edge, Edge, Edge) {
   #(Open, Open, Open, Open)
 }
 
 /// The cell at `(x, y)` on `g`; void + open edges out of bounds.
-fn cell(g: DeckGrid, x: Int, y: Int) -> Cell {
-  case deckplan.edges_at(g, x, y) {
-    Ok(edges) -> #(deckplan.tile_at(g, x, y), edges)
-    Error(Nil) -> #(Void, open_edges())
+fn cell(g: DeckGrid, x: Int, y: Int) -> deckplan.Cell {
+  case deckplan.cell_at_xy(g, x, y) {
+    Ok(c) -> c
+    Error(Nil) ->
+      Cell(tile: Void, edges: open_edges(), decor: None, color: None)
   }
 }
 
@@ -543,15 +543,9 @@ fn grid_from_cells(
   name: String,
   width: Int,
   height: Int,
-  cells: List(List(Cell)),
+  cells: List(List(deckplan.Cell)),
 ) -> DeckGrid {
-  DeckGrid(
-    name: name,
-    width: width,
-    height: height,
-    tiles: list.map(cells, fn(row) { list.map(row, fn(c) { c.0 }) }),
-    edges: list.map(cells, fn(row) { list.map(row, fn(c) { c.1 }) }),
-  )
+  DeckGrid(name: name, width: width, height: height, cells: cells)
 }
 
 /// Replace the value at `(x, y)` in a `[y][x]` 2D list, leaving others.

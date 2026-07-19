@@ -28,15 +28,23 @@ const WALK_SPEED := 3.0
 const CHARACTER_RADIUS := 0.3
 
 
-## One deck: a width x height grid of tiles, each with its own four edges.
-## `tiles[y][x]` is a Tile; `edges[y][x]` is [n, e, s, w] of Edge. Fixture
+## One cell of a deck grid: what its tile IS at centre, its four edges
+## [n, e, s, w], and (deck-plan v3.1) an optional decor glyph and an optional
+## NE-corner palette colour index. Mirrors `Cell` in deckplan.gleam.
+class Cell:
+	var tile: int = Tile.VOID
+	var edges: Array = [Edge.OPEN, Edge.OPEN, Edge.OPEN, Edge.OPEN]
+	var decor: String = ""  # centre decoration glyph, "" = none
+	var color: int = -1     # 0-15 from the NE corner, -1 = uncoloured
+
+
+## One deck: a width x height grid of cells. `cells[y][x]` is a Cell. Fixture
 ## letters (for rendering art) are kept in `fixtures["x,y,dir"] -> String`.
 class Deck:
 	var name: String
 	var width: int
 	var height: int
-	var tiles: Array = []
-	var edges: Array = []
+	var cells: Array = []
 	var fixtures: Dictionary = {}
 
 	## Parse a width x height deck from 3*height rows of 3*width chars.
@@ -50,21 +58,24 @@ class Deck:
 		deck.width = first_len / 3
 		deck.height = row_count / 3
 		for ty in deck.height:
-			var tile_row: Array = []
-			var edge_row: Array = []
+			var cell_row: Array = []
 			for tx in deck.width:
-				tile_row.append(_parse_center(_cell(rows, 3 * ty + 1, 3 * tx + 1)))
+				var cell := Cell.new()
+				var center_ch := _cell(rows, 3 * ty + 1, 3 * tx + 1)
+				cell.tile = _parse_center(center_ch)
 				var n := _parse_edge(_cell(rows, 3 * ty, 3 * tx + 1))
 				var e := _parse_edge(_cell(rows, 3 * ty + 1, 3 * tx + 2))
 				var s := _parse_edge(_cell(rows, 3 * ty + 2, 3 * tx + 1))
 				var w := _parse_edge(_cell(rows, 3 * ty + 1, 3 * tx))
-				edge_row.append([n, e, s, w])
+				cell.edges = [n, e, s, w]
+				cell.decor = _parse_decor(center_ch)
+				cell.color = _parse_color(_cell(rows, 3 * ty, 3 * tx + 2))
+				cell_row.append(cell)
 				deck._note_fixture(tx, ty, 0, _cell(rows, 3 * ty, 3 * tx + 1))
 				deck._note_fixture(tx, ty, 1, _cell(rows, 3 * ty + 1, 3 * tx + 2))
 				deck._note_fixture(tx, ty, 2, _cell(rows, 3 * ty + 2, 3 * tx + 1))
 				deck._note_fixture(tx, ty, 3, _cell(rows, 3 * ty + 1, 3 * tx))
-			deck.tiles.append(tile_row)
-			deck.edges.append(edge_row)
+			deck.cells.append(cell_row)
 		return deck
 
 	func _note_fixture(tx: int, ty: int, dir: int, ch: String) -> void:
@@ -74,16 +85,20 @@ class Deck:
 	func in_bounds(tx: int, ty: int) -> bool:
 		return tx >= 0 and tx < width and ty >= 0 and ty < height
 
-	func tile_at(tx: int, ty: int) -> int:
+	## The Cell at (tx, ty), or null out of bounds.
+	func cell_at(tx: int, ty: int) -> Cell:
 		if not in_bounds(tx, ty):
-			return Tile.VOID
-		return tiles[ty][tx]
+			return null
+		return cells[ty][tx]
+
+	func tile_at(tx: int, ty: int) -> int:
+		var c := cell_at(tx, ty)
+		return Tile.VOID if c == null else c.tile
 
 	## The four edges [n, e, s, w] of tile (tx, ty), or [] out of bounds.
 	func edges_at(tx: int, ty: int) -> Array:
-		if not in_bounds(tx, ty):
-			return []
-		return edges[ty][tx]
+		var c := cell_at(tx, ty)
+		return [] if c == null else c.edges
 
 	## True if (tx, ty) is a walkable tile (Floor or Stairs, in bounds).
 	func is_walkable(tx: int, ty: int) -> bool:
@@ -96,6 +111,18 @@ class Deck:
 		if e.is_empty():
 			return Edge.OPEN
 		return e[dir]
+
+	## The centre decoration glyph of tile (tx, ty) ("" = none, or out of
+	## bounds).
+	func decor_at(tx: int, ty: int) -> String:
+		var c := cell_at(tx, ty)
+		return "" if c == null else c.decor
+
+	## The NE-corner palette colour index (0-15) of tile (tx, ty); -1 if
+	## uncoloured or out of bounds.
+	func color_at(tx: int, ty: int) -> int:
+		var c := cell_at(tx, ty)
+		return -1 if c == null else c.color
 
 	## Whether a step from (tx, ty) across its `dir` edge is blocked: the
 	## double-wall OR-rule -- blocked if EITHER this tile's edge or the
@@ -124,6 +151,24 @@ class Deck:
 		if ch == "=":
 			return Edge.DOOR
 		return Edge.FIXTURE
+
+	## The centre decoration glyph, or "" if `ch` is not a decor glyph per the
+	## welcome-time glyph registry (or no registry is loaded yet -- geometry
+	## still parses without decor). Mirrors `parse_decor` in deckplan.gleam.
+	static func _parse_decor(ch: String) -> String:
+		var glyphs: GlyphRegistry = NetworkClient.glyphs if NetworkClient != null else null
+		if glyphs == null:
+			return ""
+		return ch if glyphs.is_decor(ch) else ""
+
+	## The NE-corner colour: a single hex digit 0-f -> 0-15; anything else
+	## (blank, "#", junk) is uncoloured (-1). Mirrors `parse_color` in
+	## deckplan.gleam.
+	static func _parse_color(ch: String) -> int:
+		if ch.length() != 1 or not "0123456789abcdefABCDEF".contains(ch):
+			return -1
+		var v := ("0x" + ch).hex_to_int()
+		return v if v >= 0 and v <= 15 else -1
 
 	static func _cell(rows: Array, r: int, c: int) -> String:
 		if r < 0 or r >= rows.size():
@@ -227,6 +272,20 @@ func tile_at(deck: int, tx: int, ty: int) -> int:
 func edge_at(deck: int, tx: int, ty: int, dir: int) -> int:
 	var g := get_deck(deck)
 	return Edge.OPEN if g == null else g.edge_in(tx, ty, dir)
+
+
+## The centre decoration glyph at (tx, ty) on deck `deck`; "" if none or out
+## of range.
+func decor_at(deck: int, tx: int, ty: int) -> String:
+	var g := get_deck(deck)
+	return "" if g == null else g.decor_at(tx, ty)
+
+
+## The NE-corner palette colour index (0-15) at (tx, ty) on deck `deck`; -1
+## if uncoloured or out of range.
+func color_at(deck: int, tx: int, ty: int) -> int:
+	var g := get_deck(deck)
+	return -1 if g == null else g.color_at(tx, ty)
 
 
 ## The deck index a Stairs tile at (tx, ty) on `deck` connects to: the nearest

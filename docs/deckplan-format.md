@@ -25,10 +25,13 @@ SW  S  SE      (2,0)=SW  (2,1)=S   (2,2)=SE
 ```
 
 The parser reads **five positions**: the center, and the four edge-mids
-(N/E/S/W). The four corners are cosmetic — draw `#` there for a tidy-looking
-hull, but they carry no data (you never walk through a corner, so they have no
-collision meaning). Nothing is ever a syntax error; a blank simply means "no
-wall here."
+(N/E/S/W). The four corners carry no collision data (you never walk through a
+corner) and never change walkability — but the **NE corner** carries one more
+fact: a single hex digit `0`–`f` selects a slot in the 16-colour palette
+(`server/colors.json`) that tints the tile's decor. A blank, `#`, or any other
+non-hex character means uncoloured. NW/SW/SE remain purely cosmetic — draw `#`
+there for a tidy-looking hull, but they carry no data. Nothing is ever a
+syntax error; a blank simply means "no wall here."
 
 Each tile owns **all four of its own walls**. A partition between two rooms is
 therefore a *double* wall — which is exactly what lets you decorate one room's
@@ -56,15 +59,39 @@ registry is the list.
   — plus optional flags: a `console` kind (`h`=helm, `c`=cargo, `b`=broker), a
   `dock` port (`Q`), or a `spawn` tile (`s`). Consoles/dock/spawn are all
   `floor`-kind. A letter in the **center** is a console/marker; the same letter
-  on an **edge-mid** is a fixture — position disambiguates.
+  on an **edge-mid** is a fixture — position disambiguates. Pass-1 decor adds
+  four more `floor`-kind center glyphs that are purely cosmetic (no console/
+  dock/spawn flag, still walkable): `r`=rug, `e`=seat, `d`=bed, and `p`=cargo
+  pallet — the last one doubles as the unit a hull's breakbulk capacity is
+  derived from (see "Derived cargo capacity" below).
 - **Edge glyphs** (N/E/S/W mid characters, what's on that side) carry an
   edge kind: `open` (space, passable), `wall` (`#`, blocks), `door` (`=`,
-  passable, auto-opens), or `fixture` (a named wall decoration like `v`=
-  viewscreen — blocks like a wall and renders its art). Any edge char not in the
-  registry parses as a generic fixture, so nothing is ever a syntax error.
-- **Corners** are cosmetic. Use `#` for a clean hull outline; the renderer
-  auto-joins wall corners, so a blank corner between two walls still renders
-  closed.
+  passable, auto-opens), or `fixture` (a named wall decoration — blocks like a
+  wall and renders its art). `v`=viewscreen is the single wall-screen glyph:
+  it stands for either a bridge viewscreen or a domestic TV, there's no
+  separate TV glyph — context (which room it's in) tells them apart, not the
+  character. `w`=window is a wall that carries a view instead of a screen.
+  Any edge char not in the registry parses as a generic fixture, so nothing
+  is ever a syntax error.
+- **Corners**: NW/SW/SE are cosmetic — use `#` for a clean hull outline; the
+  renderer auto-joins wall corners, so a blank corner between two walls still
+  renders closed. **NE is not cosmetic**: it's the tile's colour digit (see
+  "Colour" below). Corners never carry collision data and decor never changes
+  walkability — `r`/`e`/`d`/`p` are walkable floor exactly like plain floor,
+  while `v`/`w` block like any other wall-fixture.
+
+### Colour
+
+`server/colors.json` is a 16-slot palette (index 0-9 = `'0'`-`'9'`, index 10-15
+= `'a'`-`'f'`) that the NE corner digit indexes into. Sprites are authored
+**greyscale** and multiplied by the slot's colour at render time, so retuning
+a hex value in `colors.json` recolours every tile using that slot across every
+map, with no re-authoring of the maps themselves — authors reference a slot
+(the digit), never a colour value. A tile with no NE digit (blank, `#`, or any
+non-hex character) renders its decor untinted. The palette rides the wire on
+the `welcome` message, the same way the glyph registry does, and the client
+applies the tint at render — colour is transport, not gameplay: it never
+affects walkability or collision.
 
 Console/dock/spawn glyphs are an **authoring** convenience: **the map is the
 single source of truth**, so a position can't drift from a separate list. At
@@ -179,6 +206,18 @@ No `rooms`, `consoles`, or `spawn` lists — those are read from the grid glyphs
 - `rooms` and `consoles` gain a `deck` index (which grid they live on),
   replacing the old `"deck": "upper"|"lower"` string.
 - `spawn` names a deck + tile.
+
+### Derived cargo capacity
+
+The same "the map is the single source of truth" rule that derives consoles
+and berths from glyphs also applies to breakbulk hold capacity: at load, the
+server counts a hull's `p` (cargo-pallet) tiles across all of its decks and
+uses that count as `cargo.capacity`, so the number in the JSON can't drift
+from what's actually drawn on the deck plan. The Mockingbird draws 60 `p`
+tiles across its holds, so its capacity derives to **60** and the authored
+`"capacity"` is ignored. The authored value is used only as a **fallback**,
+for a hull that draws zero pallet tiles. `handling` (e.g. `"breakbulk"`) is
+still hand-authored; only the numeric capacity is derived.
 
 ## Compatibility
 
