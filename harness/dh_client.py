@@ -23,7 +23,14 @@ PROTOCOL_VERSION = 1
 # started the server on (the `server` fixture sets DH_PORT to its
 # dedicated test port, 8585 by default); falls back to 8484 -- the
 # server's own default -- when DH_PORT is unset.
-DEFAULT_URL = "ws://127.0.0.1:%s/ws" % os.environ.get("DH_PORT", "8484")
+def _default_url() -> str:
+    # Late-bound so the URL reflects DH_PORT at DHClient() construction time,
+    # not at import time -- correctness no longer depends on whether the
+    # `server` fixture's env stamp ran before this module was first imported.
+    return "ws://127.0.0.1:%s/ws" % os.environ.get("DH_PORT", "8484")
+
+
+DEFAULT_URL = _default_url()  # snapshot for back-compat references / docs
 
 # Default per-call timeout (seconds) for every reply-waiting API method
 # (login, dock, undock, next_snapshot, get_stats, recv_type). A server
@@ -86,8 +93,8 @@ class DHClient:
             snapshot = await client.recv()
     """
 
-    def __init__(self, url: str = DEFAULT_URL, name: str = "client"):
-        self.url = url
+    def __init__(self, url: Optional[str] = None, name: str = "client"):
+        self.url = url if url is not None else _default_url()
         self.name = name
         self._ws: Optional[websockets.ClientConnection] = None
         # Populated by login(): the M2 character embodiment for this
