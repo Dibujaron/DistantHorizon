@@ -33,14 +33,27 @@ def rect(px, w, x0, y0, x1, y1, col):
 G = lambda v, a=255: (v, v, v, a)
 
 def sprite_rug(w=64, h=64):
-    px = blank(w, h); rect(px, w, 6, 6, 58, 58, G(200)); rect(px, w, 10, 10, 54, 54, G(150)); return w, h, px
+    # A lighter woven border framing a darker central field, so the rug
+    # reads as a distinct floor piece (not just a colour wash) at 64px.
+    px = blank(w, h); rect(px, w, 6, 6, 58, 58, G(205)); rect(px, w, 11, 11, 53, 53, G(140)); return w, h, px
 def sprite_seat(w=64, h=64):
-    px = blank(w, h); rect(px, w, 16, 40, 48, 54, G(190)); rect(px, w, 16, 14, 22, 54, G(150)); return w, h, px
+    # A top-down chair: the seat's quarter==0 art is authored front-facing
+    # NORTH (interior_view.gd), so the backrest sits on the SOUTH edge
+    # (behind a person facing the table to the north) and the lighter
+    # cushion pad occupies the open north-facing area in front of it.
+    px = blank(w, h)
+    rect(px, w, 14, 40, 50, 54, G(150))  # backrest, south edge
+    rect(px, w, 18, 14, 46, 42, G(190))  # cushion pad, north of the back
+    return w, h, px
 def sprite_bed(w=64, h=64):
     px = blank(w, h); rect(px, w, 8, 12, 56, 56, G(200)); rect(px, w, 12, 16, 52, 26, G(230)); return w, h, px
 def sprite_cargo_pallet(w=64, h=64):
-    px = blank(w, h); rect(px, w, 10, 10, 54, 54, G(170))
-    for gx in range(10, 54, 8): rect(px, w, gx, 10, gx + 2, 54, G(120))
+    # Base grey brought up from 170 into the 185-205 legibility band (pass-1
+    # review) so the palette multiply still reads clearly; slats widened and
+    # a cross-strap added so the "pallet" silhouette holds up at 64px.
+    px = blank(w, h); rect(px, w, 10, 10, 54, 54, G(195))
+    for gx in range(11, 54, 11): rect(px, w, gx, 10, gx + 3, 54, G(125))
+    rect(px, w, 10, 30, 54, 34, G(125))  # horizontal cross-strap
     return w, h, px
 
 def _disc(px, w, h, cx, cy, r, col):
@@ -51,9 +64,11 @@ def _disc(px, w, h, cx, cy, r, col):
 
 def sprite_fountain(w=64, h=64):
     # An isolated fountain: round basin rim (light grey) around a darker
-    # water disc, so a single tile reads as a self-contained pool.
+    # water disc, with a small ripple highlight so the water itself has a
+    # visible surface, not just a flat disc.
     px = blank(w, h); _disc(px, w, h, 32, 32, 28, G(185))
     _disc(px, w, h, 32, 32, 20, G(110))
+    _disc(px, w, h, 32, 32, 6, G(145))
     return w, h, px
 
 def sprite_fountain_nesw(w=64, h=64):
@@ -66,7 +81,7 @@ def sprite_flowerbed(w=64, h=64):
     # base grey ~185 so the palette multiply reads clearly.
     px = blank(w, h); rect(px, w, 6, 6, 58, 58, G(185)); rect(px, w, 10, 10, 54, 54, G(95))
     for cx, cy in [(20, 20), (32, 26), (44, 20), (20, 44), (44, 44), (32, 40)]:
-        _disc(px, w, h, cx, cy, 3, G(160))
+        _disc(px, w, h, cx, cy, 4, G(165))
     return w, h, px
 
 def sprite_plant(w=64, h=64):

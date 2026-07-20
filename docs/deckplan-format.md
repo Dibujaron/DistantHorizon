@@ -232,6 +232,33 @@ tiles across its holds, so its capacity derives to **60** and the authored
 for a hull that draws zero pallet tiles. `handling` (e.g. `"breakbulk"`) is
 still hand-authored; only the numeric capacity is derived.
 
+## Retuning interior sprites
+
+The decor sprites referenced above (`fountain`, `flowerbed`, `table`,
+`hydroponic`, hatchway art, wall consoles, `bunk`, …) are first-crack,
+stdlib-generated **greyscale** PNGs in `client/assets/interior/`, one file per
+registry `sprite` id (e.g. `server/glyphs.json`'s `"sprite": "fountain"` ->
+`client/assets/interior/fountain.png`). `AssetLibrary` auto-loads whatever is
+in that directory by filename, so retuning them is two options:
+
+1. Edit `tools/gen_interior_sprites.py` (each shape is a small, commented
+   `sprite_*` function) and re-run `python tools/gen_interior_sprites.py` to
+   regenerate every PNG in place, or
+2. Replace any single `<sprite-id>.png` in `client/assets/interior/` directly
+   — no code or registry change needed as long as the filename, dimensions
+   (64x64 for floor decor, 64x14 for wall fixtures), and colour mode
+   (greyscale, so the palette-colour multiply at render still works) match.
+
+A few `f` (fountain) and `l` (flowerbed) test-decor tiles were added to the
+Highport station's Concourse deck (`server/stationclasses/highport.json`)
+purely so this decor renders somewhere in-engine; they're not meant as final
+station dressing.
+
+The headless screenshot harness (`DH_SHOT` pixel captures) is currently red,
+so this pass-2 art — and the console-migrated maps (Mockingbird, Highport,
+Ring) — have not had an in-engine visual pass. Both warrant an eyeball in a
+running client before considering the art or the console migration final.
+
 ## Compatibility
 
 This is `schema: 3`. The v2 single-grid `walkable` format (`.`/`#`/`L`/`U`/`2`/`B`)
