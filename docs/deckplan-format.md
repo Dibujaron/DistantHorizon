@@ -63,7 +63,15 @@ registry is the list.
   four more `floor`-kind center glyphs that are purely cosmetic (no console/
   dock/spawn flag, still walkable): `r`=rug, `e`=seat, `d`=bed, and `p`=cargo
   pallet — the last one doubles as the unit a hull's breakbulk capacity is
-  derived from (see "Derived cargo capacity" below).
+  derived from (see "Derived cargo capacity" below). Pass-2 decor adds four
+  neighbour-aware center glyphs, also purely cosmetic and walkable: `f`=fountain
+  (adjacent fountains merge into one larger pool), `l`=flowerbed (renders trees
+  where enough beds combine into an interior mass), `g`=hydroponic garden
+  (aesthetic planted trough for now — reserved as the future fresh-food
+  production hook, never renders trees), and `t`=table (adjacent tables merge
+  into one surface; nearby seats turn to face it). All four render
+  deterministically from their orthogonal neighbours and a per-tile hash, never
+  from RNG/Time/iteration order, so the layout never reshuffles on relog.
 - **Edge glyphs** (N/E/S/W mid characters, what's on that side) carry an
   edge kind: `open` (space, passable), `wall` (`#`, blocks), `door` (`=`,
   passable, auto-opens), or `fixture` (a named wall decoration — blocks like a

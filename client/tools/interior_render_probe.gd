@@ -32,6 +32,7 @@ func _ready() -> void:
 			{"glyph": "l", "id": "flowerbed", "tile": "floor", "sprite": "flowerbed"},
 			{"glyph": "t", "id": "table", "tile": "floor", "sprite": "table"},
 			{"glyph": "e", "id": "seat", "tile": "floor", "sprite": "seat"},
+			{"glyph": "g", "id": "hydroponic", "tile": "floor", "sprite": "hydroponic"},
 		],
 		"edges": [
 			{"glyph": "w", "id": "window", "sprite": "window"},
@@ -69,6 +70,9 @@ func _ready() -> void:
 	# faces east (1), the east seat (tx=2,ty=6) faces west (3), and the south
 	# seat (tx=1,ty=7) faces north (0, unrotated) — all four rotation
 	# branches of _draw_decor_tex run under --headless.
+	# Rows 24-26 append a walled-off 3-wide run of 'g' hydroponic tiles (T7,
+	# #36): exercises the mask4/popcount/plant_variant path with
+	# allow_tree=false, the branch that must never draw "tree" art.
 	_cls = ShipClassData.from_dict({
 		"id": "probe", "name": "Probe",
 		"decks": [
@@ -96,6 +100,9 @@ func _ready() -> void:
 				"         ",
 				"         ",
 				"#   e   #",
+				"#########",
+				"#########",
+				"#  ggg  #",
 				"#########",
 			]},
 			{"name": "mid", "grid": [

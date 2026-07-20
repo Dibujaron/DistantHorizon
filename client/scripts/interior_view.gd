@@ -378,6 +378,16 @@ func _draw_decor(origin: Vector2) -> void:
 				sprite_id = "table" + InteriorNeighbors.autotile_suffix(mask)
 				if _lib.interior(sprite_id) == null:
 					sprite_id = "table"  # fall back to base piece if the suffix art is absent
+			elif glyph == "g":  # hydroponic: planted trough; aesthetic, never trees
+				var mask := InteriorNeighbors.mask4(_deck(), tx, ty, glyph)
+				var neighbours := InteriorNeighbors.popcount(mask)
+				var h := InteriorNeighbors.interior_hash(view_deck, tx, ty)
+				# TODO(#food): hydroponic tiles are the future fresh-food source;
+				# a food system can enumerate 'g' decor cells (this is the seam)
+				# without touching this render code.
+				match InteriorNeighbors.plant_variant(neighbours, h, TREE_NEIGHBORS, false):
+					"plant": sprite_id = "hydro_plant"
+					_: sprite_id = "hydroponic"
 			elif glyph == "e":  # seat: turn to face an adjacent table (deterministic priority N,E,S,W)
 				sprite_id = reg.sprite_for_glyph(glyph)  # "seat"
 				# face_toward: 0=N,1=E,2=S,3=W, or -1 with no adjacent table. The

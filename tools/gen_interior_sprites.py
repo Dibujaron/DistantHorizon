@@ -96,6 +96,20 @@ def sprite_table_nesw(w=64, h=64):
     # block of interior tiles reads seamlessly as one larger surface.
     px = blank(w, h); rect(px, w, 0, 0, w, h, G(190)); return w, h, px
 
+def sprite_hydroponic(w=64, h=64):
+    # A hydroponic trough/rack: a horizontal channel (light-grey ~185 base,
+    # mirrors sprite_flowerbed) holding a darker nutrient-water strip.
+    px = blank(w, h); rect(px, w, 6, 6, 58, 58, G(185)); rect(px, w, 10, 22, 54, 42, G(110))
+    return w, h, px
+
+def sprite_hydro_plant(w=64, h=64):
+    # A small sprout rising from the trough -- mirrors sprite_plant's
+    # stem+tuft shape but seated on the hydroponic channel.
+    px = blank(w, h); rect(px, w, 6, 6, 58, 58, G(185)); rect(px, w, 10, 22, 54, 42, G(110))
+    rect(px, w, 30, 24, 34, 32, G(120))  # stem
+    _disc(px, w, h, 32, 18, 10, G(150))  # leafy tuft
+    return w, h, px
+
 def sprite_window(w=64, h=14):
     px = blank(w, h); rect(px, w, 2, 2, 62, 12, G(210)); rect(px, w, 30, 2, 34, 12, G(120)); return w, h, px
 def sprite_viewscreen(w=64, h=14):
@@ -148,7 +162,8 @@ SPRITES = {"rug": sprite_rug, "seat": sprite_seat, "bed": sprite_bed,
            "stairs_updown": sprite_stairs_updown,
            "fountain": sprite_fountain, "fountain_nesw": sprite_fountain_nesw,
            "flowerbed": sprite_flowerbed, "plant": sprite_plant, "tree": sprite_tree,
-           "table": sprite_table, "table_nesw": sprite_table_nesw}
+           "table": sprite_table, "table_nesw": sprite_table_nesw,
+           "hydroponic": sprite_hydroponic, "hydro_plant": sprite_hydro_plant}
 
 def main():
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("client/assets/interior")

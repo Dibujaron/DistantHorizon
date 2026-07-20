@@ -304,6 +304,10 @@ pub fn default() -> Registry {
         CenterSpec("flowerbed", Floor, None, False, False, Some("flowerbed")),
       ),
       #("t", CenterSpec("table", Floor, None, False, False, Some("table"))),
+      #(
+        "g",
+        CenterSpec("hydroponic", Floor, None, False, False, Some("hydroponic")),
+      ),
     ]),
     edges: dict.from_list([
       #(" ", EdgeSpec("open", Open, None)),
