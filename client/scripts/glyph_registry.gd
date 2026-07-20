@@ -24,17 +24,25 @@ var sprite_by_id: Dictionary = {}
 ## carrying a client sprite. Mirrors `glyphs.is_decor` (glyphs.gleam).
 var _decor_glyphs: Dictionary = {}
 
-## Single-char glyph (centre OR edge) -> sprite id, for decor/fixture
-## rendering keyed directly on the deck-grid character (issue #29/#30's
-## renderer, T6/T7) rather than on console kind or long-form id.
-var sprite_by_glyph: Dictionary = {}
+## Centre glyph -> sprite id, for decor rendering keyed directly on the
+## deck-grid centre character (issue #29/#30's renderer, T6/T7). Kept
+## separate from `edge_sprite_by_glyph` because centre and edge glyphs share
+## the same char set with independent meanings (position disambiguates, e.g.
+## centre `d` = floor bed) — a single merged dict would let an edge entry
+## clobber a centre entry with the same char (#36 T12: edge `d` = wall bunk).
+var center_sprite_by_glyph: Dictionary = {}
+
+## Edge glyph -> sprite id, for wall-fixture rendering keyed directly on the
+## deck-grid edge character. See `center_sprite_by_glyph` for why this is a
+## separate dict rather than shared.
+var edge_sprite_by_glyph: Dictionary = {}
 
 
 static func from_dict(data: Variant) -> GlyphRegistry:
 	var reg := GlyphRegistry.new()
 	if data is Dictionary:
-		reg._ingest(data.get("centers", []))
-		reg._ingest(data.get("edges", []))
+		reg._ingest(data.get("centers", []), reg.center_sprite_by_glyph)
+		reg._ingest(data.get("edges", []), reg.edge_sprite_by_glyph)
 		for c: Variant in data.get("centers", []):
 			if c is Dictionary:
 				var console: Variant = c.get("console")
@@ -58,14 +66,14 @@ static func from_dict(data: Variant) -> GlyphRegistry:
 	return reg
 
 
-func _ingest(entries: Variant) -> void:
+func _ingest(entries: Variant, target: Dictionary) -> void:
 	if entries is Array:
 		for e: Variant in entries:
 			if e is Dictionary:
 				var sprite: Variant = e.get("sprite")
 				if sprite != null:
 					sprite_by_id[str(e.get("id", ""))] = str(sprite)
-					sprite_by_glyph[str(e.get("glyph", ""))] = str(sprite)
+					target[str(e.get("glyph", ""))] = str(sprite)
 
 
 ## The sprite id for a console of `kind`, or "" if the registry maps none (the
@@ -81,7 +89,13 @@ func is_decor(glyph: String) -> bool:
 	return _decor_glyphs.has(glyph)
 
 
-## The sprite id for centre-or-edge glyph `glyph` (e.g. "d" -> "bed",
-## "w" -> "window"), or "" if the registry maps none.
-func sprite_for_glyph(glyph: String) -> String:
-	return str(sprite_by_glyph.get(glyph, ""))
+## The sprite id for centre glyph `glyph` (e.g. "d" -> "bed"), or "" if the
+## registry maps none.
+func sprite_for_center_glyph(glyph: String) -> String:
+	return str(center_sprite_by_glyph.get(glyph, ""))
+
+
+## The sprite id for edge glyph `glyph` (e.g. "w" -> "window", "d" -> "bunk"),
+## or "" if the registry maps none.
+func sprite_for_edge_glyph(glyph: String) -> String:
+	return str(edge_sprite_by_glyph.get(glyph, ""))

@@ -115,6 +115,14 @@ def sprite_window(w=64, h=14):
 def sprite_viewscreen(w=64, h=14):
     px = blank(w, h); rect(px, w, 2, 2, 62, 12, G(70)); rect(px, w, 2, 2, 62, 4, G(140)); return w, h, px
 
+def sprite_bunk(w=64, h=14):
+    # A wall-mounted bunk: frame (light grey ~185 base so the palette multiply
+    # reads) with a mattress band. Single frame for now, no up/down variant --
+    # stacking (bunk over bed, or bunk over bunk) is convention-only this pass
+    # (#36); a future pass could vary this sprite by what's beneath it (#24).
+    px = blank(w, h); rect(px, w, 2, 1, 62, 13, G(185)); rect(px, w, 4, 4, 60, 10, G(225))
+    return w, h, px
+
 def _chevron_up(px, w, cx, cy, size, col):
     # A hollow up-pointing chevron (^), built from two diagonal strokes.
     for i in range(size):
@@ -157,7 +165,7 @@ def sprite_stairs_updown(w=64, h=64):
 
 SPRITES = {"rug": sprite_rug, "seat": sprite_seat, "bed": sprite_bed,
            "cargo_pallet": sprite_cargo_pallet, "window": sprite_window,
-           "viewscreen": sprite_viewscreen,
+           "viewscreen": sprite_viewscreen, "bunk": sprite_bunk,
            "stairs_up": sprite_stairs_up, "stairs_down": sprite_stairs_down,
            "stairs_updown": sprite_stairs_updown,
            "fountain": sprite_fountain, "fountain_nesw": sprite_fountain_nesw,

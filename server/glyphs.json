@@ -26,6 +26,7 @@
     { "glyph": "w", "id": "window", "kind": "fixture", "sprite": "window", "description": "Wall-mounted window — a wall that carries a view; blocks." },
     { "glyph": "h", "id": "helm_console", "kind": "fixture", "console": "helm", "sprite": "console_helm", "description": "Helm console mounted on a wall (blocks like a wall); operated from the adjacent floor tile it faces." },
     { "glyph": "c", "id": "cargo_console", "kind": "fixture", "console": "cargo", "sprite": "console_cargo", "description": "Cargo console mounted on a wall; operated from the adjacent floor tile it faces." },
-    { "glyph": "b", "id": "broker_console", "kind": "fixture", "console": "broker", "sprite": "console_broker", "description": "Broker console mounted on a wall (station concourses); operated from the adjacent floor tile. Brokers need no seat." }
+    { "glyph": "b", "id": "broker_console", "kind": "fixture", "console": "broker", "sprite": "console_broker", "description": "Broker console mounted on a wall (station concourses); operated from the adjacent floor tile. Brokers need no seat." },
+    { "glyph": "d", "id": "bunk", "kind": "fixture", "sprite": "bunk", "description": "Wall-mounted bunk (blocks like a wall). Authoring convention: may only mount over a floor bed (centre d) or another wall bunk (to stack bunks); enforcement is #24. Distinct from centre d = floor bed." }
   ]
 }

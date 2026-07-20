@@ -37,6 +37,7 @@ func _ready() -> void:
 		"edges": [
 			{"glyph": "w", "id": "window", "sprite": "window"},
 			{"glyph": "h", "id": "helm_console", "console": "helm", "sprite": "console_helm"},
+			{"glyph": "d", "id": "bunk", "sprite": "bunk"},
 		],
 	})
 	NetworkClient.palette = Palette.from_dict([
@@ -83,6 +84,16 @@ func _ready() -> void:
 	# _draw_consoles' new skip branch: helm/cargo/broker no longer
 	# centre-draw (that art now lives on the wall), so this proves the
 	# derived-console loop runs error-free without double-drawing.
+	# Rows 30-32 append a walled-off single-tile room (T12, #36): tile
+	# (tx=1, ty=10) has centre bed 'd' (registered above as centre glyph "d",
+	# sprite "bed") and a north-wall 'd' edge fixture (registered above as a
+	# plain, non-console edge fixture, sprite "bunk") — a wall-mounted bunk
+	# over a floor bed, the authoring convention this pass documents (legal
+	# only over a bed or another bunk; enforcement is #24). Same glyph char
+	# 'd' means two different things by position (centre=bed, edge=bunk),
+	# proving GlyphRegistry's separate centre/edge sprite-by-glyph dicts
+	# resolve correctly (a merged dict would have the edge entry clobber the
+	# centre one and mis-render every floor bed as a bunk).
 	_cls = ShipClassData.from_dict({
 		"id": "probe", "name": "Probe",
 		"decks": [
@@ -116,6 +127,9 @@ func _ready() -> void:
 				"#########",
 				"####h####",
 				"#.##e##.#",
+				"#########",
+				"####d####",
+				"#.##d##.#",
 				"#########",
 			]},
 			{"name": "mid", "grid": [

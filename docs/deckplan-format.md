@@ -79,6 +79,11 @@ registry is the list.
   it stands for either a bridge viewscreen or a domestic TV, there's no
   separate TV glyph — context (which room it's in) tells them apart, not the
   character. `w`=window is a wall that carries a view instead of a screen.
+  `d`=bunk (edge) is a wall-mounted bed — **distinct from centre `d`=bed**:
+  the same letter means "floor bed" in the center and "wall bunk" on an edge,
+  same as the console letters. Authoring convention (not enforced — that's
+  #24): a bunk may only mount over a floor bed (centre `d`) or over another
+  wall bunk, so bunks stack in a legible way; nothing currently checks this.
   Any edge char not in the registry parses as a generic fixture, so nothing
   is ever a syntax error.
 - **Corners**: NW/SW/SE are cosmetic — use `#` for a clean hull outline; the
@@ -86,7 +91,7 @@ registry is the list.
   renders closed. **NE is not cosmetic**: it's the tile's colour digit (see
   "Colour" below). Corners never carry collision data and decor never changes
   walkability — `r`/`e`/`d`/`p` are walkable floor exactly like plain floor,
-  while `v`/`w` block like any other wall-fixture.
+  while `v`/`w`/edge-`d` (bunk) block like any other wall-fixture.
 
 ### Colour
 

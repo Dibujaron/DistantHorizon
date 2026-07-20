@@ -353,6 +353,7 @@ pub fn default() -> Registry {
           Some("console_broker"),
         ),
       ),
+      #("d", EdgeSpec("bunk", Fixture, None, Some("bunk"))),
     ]),
   )
 }

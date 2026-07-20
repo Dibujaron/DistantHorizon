@@ -389,7 +389,7 @@ func _draw_decor(origin: Vector2) -> void:
 					"plant": sprite_id = "hydro_plant"
 					_: sprite_id = "hydroponic"
 			elif glyph == "e":  # seat: turn to face an adjacent table (deterministic priority N,E,S,W)
-				sprite_id = reg.sprite_for_glyph(glyph)  # "seat"
+				sprite_id = reg.sprite_for_center_glyph(glyph)  # "seat"
 				# face_toward: 0=N,1=E,2=S,3=W, or -1 with no adjacent table. The
 				# seat's quarter==0 art is authored front-facing NORTH, so quarter
 				# is just the face index (clockwise turns to bring the front to
@@ -397,7 +397,7 @@ func _draw_decor(origin: Vector2) -> void:
 				var face := InteriorNeighbors.face_toward(_deck(), tx, ty, "t")
 				quarter = face if face >= 0 else 0
 			else:
-				sprite_id = reg.sprite_for_glyph(glyph)
+				sprite_id = reg.sprite_for_center_glyph(glyph)
 			var tex: Texture2D = _lib.interior(sprite_id) if sprite_id != "" else null
 			if tex != null:
 				_draw_decor_tex(tex, pos, quarter, tint)
@@ -509,7 +509,7 @@ func _fixture_tex(reg: GlyphRegistry, tx: int, ty: int, dir: int) -> Texture2D:
 		ch = str(g.fixtures.get("%d,%d,%d" % [tx + d.x, ty + d.y, (dir + 2) % 4], ""))
 	if ch == "":
 		return null
-	var sprite_id := reg.sprite_for_glyph(ch)
+	var sprite_id := reg.sprite_for_edge_glyph(ch)
 	return _lib.interior(sprite_id) if sprite_id != "" else null
 
 
