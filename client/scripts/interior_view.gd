@@ -359,6 +359,7 @@ func _draw_decor(origin: Vector2) -> void:
 				and NetworkClient.palette != null else Color.WHITE
 			var pos := _tile_to_screen(Vector2(tx, ty), origin)
 			var sprite_id := ""
+			var quarter := 0  # 90°-clockwise turns for the draw (0 = axis-aligned, today's look)
 			if glyph == "f":  # fountain: merge adjacent fountains via neighbour mask
 				var mask := InteriorNeighbors.mask4(_deck(), tx, ty, glyph)
 				sprite_id = "fountain" + InteriorNeighbors.autotile_suffix(mask)
@@ -372,16 +373,44 @@ func _draw_decor(origin: Vector2) -> void:
 					"tree": sprite_id = "tree"
 					"plant": sprite_id = "plant"
 					_: sprite_id = "flowerbed"
+			elif glyph == "t":  # table: merge adjacent tables via neighbour mask (same shape as fountain)
+				var mask := InteriorNeighbors.mask4(_deck(), tx, ty, glyph)
+				sprite_id = "table" + InteriorNeighbors.autotile_suffix(mask)
+				if _lib.interior(sprite_id) == null:
+					sprite_id = "table"  # fall back to base piece if the suffix art is absent
+			elif glyph == "e":  # seat: turn to face an adjacent table (deterministic priority N,E,S,W)
+				sprite_id = reg.sprite_for_glyph(glyph)  # "seat"
+				# face_toward: 0=N,1=E,2=S,3=W, or -1 with no adjacent table. The
+				# seat's quarter==0 art is authored front-facing NORTH, so quarter
+				# is just the face index (clockwise turns to bring the front to
+				# face E/S/W); no adjacent table leaves it unrotated (today's look).
+				var face := InteriorNeighbors.face_toward(_deck(), tx, ty, "t")
+				quarter = face if face >= 0 else 0
 			else:
 				sprite_id = reg.sprite_for_glyph(glyph)
 			var tex: Texture2D = _lib.interior(sprite_id) if sprite_id != "" else null
 			if tex != null:
-				draw_texture_rect(tex, Rect2(pos, Vector2(TILE_PIXELS, TILE_PIXELS)), false, tint)
+				_draw_decor_tex(tex, pos, quarter, tint)
 			else:
 				# Placeholder until decor art exists: a centred tinted swatch.
 				var m := TILE_PIXELS * 0.22
 				draw_rect(Rect2(pos + Vector2(m, m), Vector2(TILE_PIXELS - 2 * m, TILE_PIXELS - 2 * m)),
 					tint if slot >= 0 else Color(0.6, 0.6, 0.65), true)
+
+
+## Draw a decor texture at `pos` (tile top-left), rotated `quarter` * 90°
+## clockwise about the tile centre, modulated by `tint`. quarter 0 is the
+## plain axis-aligned draw (identical to the old direct draw_texture_rect
+## call) -- every decor glyph except a table-facing seat always passes 0, so
+## this is a no-op for them.
+func _draw_decor_tex(tex: Texture2D, pos: Vector2, quarter: int, tint: Color) -> void:
+	if quarter == 0:
+		draw_texture_rect(tex, Rect2(pos, Vector2(TILE_PIXELS, TILE_PIXELS)), false, tint)
+		return
+	var half := Vector2(TILE_PIXELS, TILE_PIXELS) * 0.5
+	draw_set_transform(pos + half, quarter * PI / 2.0, Vector2.ONE)
+	draw_texture_rect(tex, Rect2(-half, Vector2(TILE_PIXELS, TILE_PIXELS)), false, tint)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)  # reset canvas transform
 
 
 ## Walls and doors from the per-edge tile data (#19/#20). Each visible floor

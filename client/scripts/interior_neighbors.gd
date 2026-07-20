@@ -46,6 +46,19 @@ static func autotile_suffix(mask: int) -> String:
 	return s
 
 
+## Deterministic facing for a decor tile toward an orthogonally-adjacent
+## `target_glyph` (e.g. a seat facing a table), by fixed priority N,E,S,W:
+## 0=N, 1=E, 2=S, 3=W, or -1 when no neighbour matches. A tile flanked by the
+## target on two+ sides always resolves to the earliest direction in that
+## priority order, so it never depends on iteration order/RNG/Time.
+static func face_toward(deck, x: int, y: int, target_glyph: String) -> int:
+	if deck.decor_at(x, y - 1) == target_glyph: return 0  # N
+	if deck.decor_at(x + 1, y) == target_glyph: return 1  # E
+	if deck.decor_at(x, y + 1) == target_glyph: return 2  # S
+	if deck.decor_at(x - 1, y) == target_glyph: return 3  # W
+	return -1
+
+
 ## Count of set bits in a 4-bit neighbour mask (0..15).
 static func popcount(mask: int) -> int:
 	var c := 0

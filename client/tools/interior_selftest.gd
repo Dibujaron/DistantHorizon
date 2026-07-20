@@ -49,6 +49,19 @@ func _ready() -> void:
 	_check(InteriorNeighbors.plant_variant(4, h0, 3, false) != "tree", "no-tree mode")
 	# chance() is deterministic (closes the T2 gap)
 	_check(InteriorNeighbors.chance(h0, 1, 3) == InteriorNeighbors.chance(h0, 1, 3), "chance stable")
+	# face_toward (T6, #36): a seat's deterministic facing toward an adjacent
+	# table, fixed priority N,E,S,W -- built on a hand-authored 5x5 fixture
+	# with two isolated tables (mirrors the mask4 fixture above's style, but
+	# with a table 't' glyph and several distinct query points).
+	var face_deck := _face_fixture()
+	_check(InteriorNeighbors.face_toward(face_deck, 2, 3, "t") == 0, "face table-N")
+	_check(InteriorNeighbors.face_toward(face_deck, 1, 2, "t") == 1, "face table-E")
+	_check(InteriorNeighbors.face_toward(face_deck, 3, 2, "t") == 3, "face table-W")
+	# (2,1) sits between the two tables (N AND S both match) -- priority picks
+	# N (0), never S (2).
+	_check(InteriorNeighbors.face_toward(face_deck, 2, 1, "t") == 0, "face priority N over S")
+	# far corner (0,0) has no adjacent table at all.
+	_check(InteriorNeighbors.face_toward(face_deck, 0, 0, "t") == -1, "face none")
 	if _fail == "":
 		print("SELFTEST: PASS")
 		get_tree().quit(0)
@@ -75,3 +88,36 @@ func _mask_fixture() -> ShipClassData.Deck:
 	for _i in range(9):
 		rows.append(" f  f  f ")
 	return ShipClassData.Deck.from_grid("mask", rows)
+
+
+func _face_fixture() -> ShipClassData.Deck:
+	# Minimal decor registry: 't' as a Floor-kind decor centre -- mirrors
+	# _mask_fixture. Two isolated tables in a 5x5 grid, at tile (2,0) and
+	# (2,2), so (2,1) sits between them (N AND S are tables -- the priority
+	# case), (1,2)/(3,2)/(2,3) each have exactly one table neighbour
+	# (E/W/N respectively), and (0,0) has none.
+	NetworkClient.glyphs = GlyphRegistry.from_dict({
+		"centers": [
+			{"glyph": " ", "id": "floor", "tile": "floor"},
+			{"glyph": "t", "id": "table", "tile": "floor", "sprite": "table"},
+		],
+		"edges": [],
+	})
+	var blank_row := _table_row(-1)
+	var rows := PackedStringArray()
+	for _i in range(3): rows.append(_table_row(2))  # ty=0: table at tx=2
+	for _i in range(3): rows.append(blank_row)        # ty=1: none
+	for _i in range(3): rows.append(_table_row(2))  # ty=2: table at tx=2
+	for _i in range(3): rows.append(blank_row)        # ty=3: none
+	for _i in range(3): rows.append(blank_row)        # ty=4: none
+	return ShipClassData.Deck.from_grid("face", rows)
+
+
+## A single 5-tile-wide (15-char) grid row with a table centred on tile
+## `table_tx` (or no table when < 0). Built char-by-char so the centre column
+## always lands on 3*tx+1, matching Deck.from_grid's block encoding.
+func _table_row(table_tx: int) -> String:
+	var s := ""
+	for tx in range(5):
+		s += " t " if tx == table_tx else "   "
+	return s

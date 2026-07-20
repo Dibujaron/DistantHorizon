@@ -30,6 +30,8 @@ func _ready() -> void:
 			{"glyph": "p", "id": "cargo_pallet", "tile": "floor", "sprite": "cargo_pallet"},
 			{"glyph": "f", "id": "fountain", "tile": "floor", "sprite": "fountain"},
 			{"glyph": "l", "id": "flowerbed", "tile": "floor", "sprite": "flowerbed"},
+			{"glyph": "t", "id": "table", "tile": "floor", "sprite": "table"},
+			{"glyph": "e", "id": "seat", "tile": "floor", "sprite": "seat"},
 		],
 		"edges": [
 			{"glyph": "w", "id": "window", "sprite": "window"},
@@ -59,6 +61,14 @@ func _ready() -> void:
 	# exercises InteriorNeighbors.popcount + plant_variant — the interior
 	# cells (tx=2/3, ty=11/12) have >=3 same-type neighbours so trees can
 	# appear there deterministically, while the outer ring stays plant/base.
+	# Rows 15-23 append a walled-off 't' table with an 'e' seat on all four
+	# sides (T6, #36): exercises the table merge branch (isolated here, so
+	# autotile_suffix falls back to the base "table" sprite) and every
+	# InteriorNeighbors.face_toward quarter — the north seat (tx=1,ty=5)
+	# faces south (quarter 2) toward the table, the west seat (tx=0,ty=6)
+	# faces east (1), the east seat (tx=2,ty=6) faces west (3), and the south
+	# seat (tx=1,ty=7) faces north (0, unrotated) — all four rotation
+	# branches of _draw_decor_tex run under --headless.
 	_cls = ShipClassData.from_dict({
 		"id": "probe", "name": "Probe",
 		"decks": [
@@ -77,6 +87,15 @@ func _ready() -> void:
 				"#llll####",
 				"#llll####",
 				"#llll####",
+				"#########",
+				"#########",
+				"#   e   #",
+				"         ",
+				"         ",
+				"#e  t  e#",
+				"         ",
+				"         ",
+				"#   e   #",
 				"#########",
 			]},
 			{"name": "mid", "grid": [

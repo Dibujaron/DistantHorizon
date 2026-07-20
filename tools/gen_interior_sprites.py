@@ -84,6 +84,18 @@ def sprite_tree(w=64, h=64):
     _disc(px, w, h, 32, 24, 20, G(160))  # canopy
     return w, h, px
 
+def sprite_table(w=64, h=64):
+    # An isolated table: a flat rectangular surface (light grey) with a
+    # slightly darker border, so a single tile reads as a self-contained
+    # tabletop -- mirrors sprite_fountain's isolated-piece shape.
+    px = blank(w, h); rect(px, w, 6, 6, 58, 58, G(150)); rect(px, w, 10, 10, 54, 54, G(190))
+    return w, h, px
+
+def sprite_table_nesw(w=64, h=64):
+    # Fully surrounded by table neighbours: the whole tile is tabletop so a
+    # block of interior tiles reads seamlessly as one larger surface.
+    px = blank(w, h); rect(px, w, 0, 0, w, h, G(190)); return w, h, px
+
 def sprite_window(w=64, h=14):
     px = blank(w, h); rect(px, w, 2, 2, 62, 12, G(210)); rect(px, w, 30, 2, 34, 12, G(120)); return w, h, px
 def sprite_viewscreen(w=64, h=14):
@@ -135,7 +147,8 @@ SPRITES = {"rug": sprite_rug, "seat": sprite_seat, "bed": sprite_bed,
            "stairs_up": sprite_stairs_up, "stairs_down": sprite_stairs_down,
            "stairs_updown": sprite_stairs_updown,
            "fountain": sprite_fountain, "fountain_nesw": sprite_fountain_nesw,
-           "flowerbed": sprite_flowerbed, "plant": sprite_plant, "tree": sprite_tree}
+           "flowerbed": sprite_flowerbed, "plant": sprite_plant, "tree": sprite_tree,
+           "table": sprite_table, "table_nesw": sprite_table_nesw}
 
 def main():
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("client/assets/interior")
