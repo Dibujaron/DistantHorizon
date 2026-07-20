@@ -178,6 +178,33 @@ def sprite_stairs_updown(w=64, h=64):
     _chevron_down(px, w, 32, 56, 5, G(205))
     return w, h, px
 
+def sprite_console_helm(w=64, h=14):
+    # Wall-mounted helm console: a panel (light grey ~185 so the palette multiply
+    # reads) with a dark screen carrying a bright nav horizon line + heading mark.
+    # 64x14 = the wall-strip footprint (#36 moved consoles onto walls).
+    px = blank(w, h); rect(px, w, 2, 1, 62, 13, G(185))   # panel body
+    rect(px, w, 6, 3, 58, 11, G(80))                      # screen
+    rect(px, w, 10, 7, 54, 8, G(195))                     # nav horizon line
+    rect(px, w, 27, 4, 37, 6, G(170))                     # heading marker
+    return w, h, px
+
+def sprite_console_cargo(w=64, h=14):
+    # Wall-mounted cargo console: panel + screen showing a row of crate slats.
+    px = blank(w, h); rect(px, w, 2, 1, 62, 13, G(185))
+    rect(px, w, 6, 3, 58, 11, G(80))
+    for gx in range(10, 56, 8):
+        rect(px, w, gx, 4, gx + 4, 10, G(175))            # crate slats
+    return w, h, px
+
+def sprite_console_broker(w=64, h=14):
+    # Wall-mounted broker console: panel + screen with a small rising bar chart.
+    px = blank(w, h); rect(px, w, 2, 1, 62, 13, G(185))
+    rect(px, w, 6, 3, 58, 11, G(80))
+    rect(px, w, 12, 8, 18, 10, G(175))                    # rising bars (trade)
+    rect(px, w, 22, 6, 28, 10, G(190))
+    rect(px, w, 32, 4, 38, 10, G(205))
+    return w, h, px
+
 SPRITES = {"rug": sprite_rug, "seat": sprite_seat, "bed": sprite_bed,
            "cargo_pallet": sprite_cargo_pallet, "window": sprite_window,
            "viewscreen": sprite_viewscreen, "bunk": sprite_bunk,
@@ -186,7 +213,9 @@ SPRITES = {"rug": sprite_rug, "seat": sprite_seat, "bed": sprite_bed,
            "fountain": sprite_fountain, "fountain_nesw": sprite_fountain_nesw,
            "flowerbed": sprite_flowerbed, "plant": sprite_plant, "tree": sprite_tree,
            "table": sprite_table, "table_nesw": sprite_table_nesw,
-           "hydroponic": sprite_hydroponic, "hydro_plant": sprite_hydro_plant}
+           "hydroponic": sprite_hydroponic, "hydro_plant": sprite_hydro_plant,
+           "console_helm": sprite_console_helm, "console_cargo": sprite_console_cargo,
+           "console_broker": sprite_console_broker}
 
 def main():
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("client/assets/interior")
