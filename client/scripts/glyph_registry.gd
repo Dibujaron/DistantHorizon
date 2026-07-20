@@ -99,3 +99,27 @@ func sprite_for_center_glyph(glyph: String) -> String:
 ## or "" if the registry maps none.
 func sprite_for_edge_glyph(glyph: String) -> String:
 	return str(edge_sprite_by_glyph.get(glyph, ""))
+
+
+## Default palette slot (0-15) for a decor/fixture glyph, used to tint a tile
+## that carries no NE-corner colour of its own so decor reads in colour instead
+## of pale greyscale. -1 = no default (drawn untinted). First-pass CLIENT-SIDE
+## defaults; TODO(#36): promote to a `color` field in glyphs.json so they're
+## authorable/moddable like sprite ids. Slots index colors.json (0 white … 15
+## black): 1 orange, 3 light_blue, 5 lime, 8 light_gray, 9 cyan, 12 brown,
+## 13 green, 14 red.
+const _DEFAULT_CENTER_COLOR := {
+	"r": 14, "e": 12, "d": 3, "p": 12,   # rug, seat, bed, cargo pallet
+	"f": 3, "l": 13, "g": 5, "t": 12,    # fountain, flowerbed, hydroponic, table
+	"x": 8,                              # stairs
+}
+const _DEFAULT_EDGE_COLOR := {
+	"w": 3, "v": 9, "d": 3,              # window, viewscreen, bunk
+	"h": 9, "c": 1, "b": 5,             # helm, cargo, broker consoles
+}
+
+func default_center_color(glyph: String) -> int:
+	return int(_DEFAULT_CENTER_COLOR.get(glyph, -1))
+
+func default_edge_color(glyph: String) -> int:
+	return int(_DEFAULT_EDGE_COLOR.get(glyph, -1))

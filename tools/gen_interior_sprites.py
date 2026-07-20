@@ -244,13 +244,12 @@ def _chevron_down(px, w, cx, cy, size, col):
         rect(px, w, cx + i, cy - i - 4, cx + i + 2, cy - i, col)
 
 def sprite_stairs_up(w=64, h=64):
-    # A framed ladder head with light rungs climbing UP and up-chevrons — reads
-    # "ascend from here".
+    # A raised light panel with three bold dark up-chevrons — the light-on-panel
+    # inverse of the dark down-shaft, so "ascend" reads as strongly as "descend".
     px = blank(w, h)
-    box(px, w, 8, 8, 56, 56, G(130), OL, 3)
-    rect(px, w, 18, 12, 22, 52, OL); rect(px, w, 42, 12, 46, 52, OL)  # rails
-    for ry in range(16, 52, 8): rect(px, w, 22, ry, 42, ry + 3, LT)   # rungs
-    _chevron_up(px, w, 32, 12, 6, G(240))
+    box(px, w, 8, 8, 56, 56, LT, OL, 3)
+    for cy in (16, 30, 44):
+        _chevron_up(px, w, 32, cy, 8, OL)
     return w, h, px
 
 def sprite_stairs_down(w=64, h=64):
@@ -263,14 +262,15 @@ def sprite_stairs_down(w=64, h=64):
     return w, h, px
 
 def sprite_stairs_updown(w=64, h=64):
-    # Both: light rungs in the top half, a dark shaft hint + down-chevrons below.
+    # Split panel: light upper half with dark up-chevrons, dark lower shaft with
+    # light down-chevrons — both directions read at a glance.
     px = blank(w, h)
-    box(px, w, 8, 8, 56, 56, G(130), OL, 3)
-    rect(px, w, 18, 12, 22, 30, OL); rect(px, w, 42, 12, 46, 30, OL)
-    for ry in range(14, 28, 6): rect(px, w, 22, ry, 42, ry + 2, LT)
-    box(px, w, 16, 32, 48, 52, G(60), OL, 2)   # shaft hint
-    _chevron_up(px, w, 32, 10, 4, G(240))
-    _chevron_down(px, w, 32, 50, 5, LT)
+    box(px, w, 8, 8, 56, 32, LT, OL, 3)        # upper: light (up)
+    box(px, w, 8, 32, 56, 56, G(45), OL, 3)    # lower: dark shaft (down)
+    _chevron_up(px, w, 32, 14, 6, OL)
+    _chevron_up(px, w, 32, 24, 6, OL)
+    _chevron_down(px, w, 32, 40, 6, LT)
+    _chevron_down(px, w, 32, 50, 6, LT)
     return w, h, px
 
 SPRITES = {"rug": sprite_rug, "seat": sprite_seat, "bed": sprite_bed,

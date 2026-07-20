@@ -333,10 +333,21 @@ func _draw_stairs(origin: Vector2) -> void:
 			if tex == null:
 				continue  # graceful: plain floor already drawn
 			var pos := _tile_to_screen(Vector2(tx, ty), origin)
-			var slot := ship_class.color_at(view_deck, tx, ty)
-			var tint := NetworkClient.palette.color(slot) if slot >= 0 \
-				and NetworkClient.palette != null else Color.WHITE
+			var tint := _tile_tint(ship_class.color_at(view_deck, tx, ty), "x", false)
 			draw_texture_rect(tex, Rect2(pos, Vector2(TILE_PIXELS, TILE_PIXELS)), false, tint)
+
+
+## The palette tint for a tile's decor/fixture: the tile's own NE-corner colour
+## if it has one, else the glyph's default colour (so decor reads in colour, not
+## pale greyscale), else white (untinted). `is_edge` picks the edge-glyph default
+## table (wall fixtures) vs the centre one.
+func _tile_tint(slot: int, glyph: String, is_edge: bool) -> Color:
+	var reg: GlyphRegistry = NetworkClient.glyphs
+	if slot < 0 and reg != null:
+		slot = reg.default_edge_color(glyph) if is_edge else reg.default_center_color(glyph)
+	if slot >= 0 and NetworkClient.palette != null:
+		return NetworkClient.palette.color(slot)
+	return Color.WHITE
 
 
 ## Decor (deck-plan v3.1): a decorative centre glyph (rug/seat/bed/pallet …)
@@ -354,9 +365,7 @@ func _draw_decor(origin: Vector2) -> void:
 			var glyph := ship_class.decor_at(view_deck, tx, ty)
 			if glyph == "":
 				continue
-			var slot := ship_class.color_at(view_deck, tx, ty)
-			var tint := NetworkClient.palette.color(slot) if slot >= 0 \
-				and NetworkClient.palette != null else Color.WHITE
+			var tint := _tile_tint(ship_class.color_at(view_deck, tx, ty), glyph, false)
 			var pos := _tile_to_screen(Vector2(tx, ty), origin)
 			var sprite_id := ""
 			var quarter := 0  # 90°-clockwise turns for the draw (0 = axis-aligned, today's look)
@@ -405,7 +414,7 @@ func _draw_decor(origin: Vector2) -> void:
 				# Placeholder until decor art exists: a centred tinted swatch.
 				var m := TILE_PIXELS * 0.22
 				draw_rect(Rect2(pos + Vector2(m, m), Vector2(TILE_PIXELS - 2 * m, TILE_PIXELS - 2 * m)),
-					tint if slot >= 0 else Color(0.6, 0.6, 0.65), true)
+					tint if tint != Color.WHITE else Color(0.6, 0.6, 0.65), true)
 
 
 ## Draw a decor texture at `pos` (tile top-left), rotated `quarter` * 90°
@@ -446,7 +455,12 @@ func _draw_structure(origin: Vector2) -> void:
 				if kind == ShipClassData.Edge.DOOR:
 					_draw_edge_door(pos, dir)
 				else:
-					_draw_edge_wall(pos, dir, wall_tex, _fixture_tex(reg, tx, ty, dir))
+					var ftex := _fixture_tex(reg, tx, ty, dir)
+					var ftint := Color.WHITE
+					if ftex != null:
+						var fch := _fixture_ch(_deck(), tx, ty, dir)
+						ftint = _tile_tint(ship_class.color_at(view_deck, tx, ty), fch, true)
+					_draw_edge_wall(pos, dir, wall_tex, ftex, ftint)
 			_draw_wall_corners(pos, tx, ty)
 
 
@@ -485,10 +499,12 @@ func _begin_edge(pos: Vector2, dir: int) -> void:
 ## wall strip instead of a plain plate; `fixture_tex` is null for a plain WALL
 ## edge, or when the registry has no sprite for the fixture glyph yet — either
 ## way this falls back to `wall_tex` (today's look).
-func _draw_edge_wall(pos: Vector2, dir: int, wall_tex: Texture2D, fixture_tex: Texture2D = null) -> void:
+func _draw_edge_wall(pos: Vector2, dir: int, wall_tex: Texture2D, fixture_tex: Texture2D = null, tint: Color = Color.WHITE) -> void:
 	_begin_edge(pos, dir)
 	var tex := fixture_tex if fixture_tex != null else wall_tex
-	draw_texture_rect(tex, Rect2(Vector2.ZERO, Vector2(TILE_PIXELS, WALL_PX)), false)
+	# Only a fixture takes the tint; a plain wall plate stays untinted.
+	var mod := tint if fixture_tex != null else Color.WHITE
+	draw_texture_rect(tex, Rect2(Vector2.ZERO, Vector2(TILE_PIXELS, WALL_PX)), false, mod)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
@@ -503,14 +519,23 @@ func _fixture_tex(reg: GlyphRegistry, tx: int, ty: int, dir: int) -> Texture2D:
 	var g := _deck()
 	if g == null:
 		return null
-	var d: Vector2i = ShipClassData.EDGE_DELTAS[dir]
-	var ch: String = str(g.fixtures.get("%d,%d,%d" % [tx, ty, dir], ""))
-	if ch == "":
-		ch = str(g.fixtures.get("%d,%d,%d" % [tx + d.x, ty + d.y, (dir + 2) % 4], ""))
+	var ch := _fixture_ch(g, tx, ty, dir)
 	if ch == "":
 		return null
 	var sprite_id := reg.sprite_for_edge_glyph(ch)
 	return _lib.interior(sprite_id) if sprite_id != "" else null
+
+
+## The raw fixture glyph on the boundary of tile (tx,ty) toward `dir`, or "" for
+## a plain wall. The double-wall model means it may live on either facing side.
+func _fixture_ch(g, tx: int, ty: int, dir: int) -> String:
+	if g == null:
+		return ""
+	var d: Vector2i = ShipClassData.EDGE_DELTAS[dir]
+	var ch: String = str(g.fixtures.get("%d,%d,%d" % [tx, ty, dir], ""))
+	if ch == "":
+		ch = str(g.fixtures.get("%d,%d,%d" % [tx + d.x, ty + d.y, (dir + 2) % 4], ""))
+	return ch
 
 
 ## A hatch in the same strip footprint as a wall: recessed threshold, two
