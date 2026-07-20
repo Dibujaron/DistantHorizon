@@ -45,6 +45,8 @@ const FONT_SIZE := 16  # Jersey 15 diegetic slot (UiTheme)
 
 const WALL_PX := 14.0
 
+const TREE_NEIGHBORS := 3  # min same-type orthogonal neighbours before a flowerbed cell can become a tree (lever)
+
 ## #20: the open deck reads as one continuous surface. A flat FLOOR_COLOR fill
 ## under every tile is seamless (neighbours share the colour); the plate
 ## texture is only whispered back on top at this alpha, so the old per-tile
@@ -362,6 +364,14 @@ func _draw_decor(origin: Vector2) -> void:
 				sprite_id = "fountain" + InteriorNeighbors.autotile_suffix(mask)
 				if _lib.interior(sprite_id) == null:
 					sprite_id = "fountain"  # fall back to base piece if the suffix art is absent
+			elif glyph == "l":  # flowerbed: plants, trees where beds combine
+				var mask := InteriorNeighbors.mask4(_deck(), tx, ty, glyph)
+				var neighbours := InteriorNeighbors.popcount(mask)
+				var h := InteriorNeighbors.interior_hash(view_deck, tx, ty)
+				match InteriorNeighbors.plant_variant(neighbours, h, TREE_NEIGHBORS, true):
+					"tree": sprite_id = "tree"
+					"plant": sprite_id = "plant"
+					_: sprite_id = "flowerbed"
 			else:
 				sprite_id = reg.sprite_for_glyph(glyph)
 			var tex: Texture2D = _lib.interior(sprite_id) if sprite_id != "" else null

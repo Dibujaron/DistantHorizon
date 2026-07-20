@@ -61,6 +61,29 @@ def sprite_fountain_nesw(w=64, h=64):
     # block of interior tiles reads seamlessly as one larger pool.
     px = blank(w, h); rect(px, w, 0, 0, w, h, G(110)); return w, h, px
 
+def sprite_flowerbed(w=64, h=64):
+    # A soil bed: a dark rectangular plot with a few lighter seedling dots,
+    # base grey ~185 so the palette multiply reads clearly.
+    px = blank(w, h); rect(px, w, 6, 6, 58, 58, G(185)); rect(px, w, 10, 10, 54, 54, G(95))
+    for cx, cy in [(20, 20), (32, 26), (44, 20), (20, 44), (44, 44), (32, 40)]:
+        _disc(px, w, h, cx, cy, 3, G(160))
+    return w, h, px
+
+def sprite_plant(w=64, h=64):
+    # A single small sprig: a stem plus a leafy tuft, centred on the tile.
+    px = blank(w, h); rect(px, w, 6, 6, 58, 58, G(185))
+    rect(px, w, 30, 34, 34, 54, G(120))  # stem
+    _disc(px, w, h, 32, 28, 12, G(150))  # leafy tuft
+    return w, h, px
+
+def sprite_tree(w=64, h=64):
+    # A canopy blob over a trunk -- reads as a small tree when several
+    # flowerbed tiles combine into an interior mass.
+    px = blank(w, h); rect(px, w, 6, 6, 58, 58, G(185))
+    rect(px, w, 27, 36, 37, 58, G(110))  # trunk
+    _disc(px, w, h, 32, 24, 20, G(160))  # canopy
+    return w, h, px
+
 def sprite_window(w=64, h=14):
     px = blank(w, h); rect(px, w, 2, 2, 62, 12, G(210)); rect(px, w, 30, 2, 34, 12, G(120)); return w, h, px
 def sprite_viewscreen(w=64, h=14):
@@ -111,7 +134,8 @@ SPRITES = {"rug": sprite_rug, "seat": sprite_seat, "bed": sprite_bed,
            "viewscreen": sprite_viewscreen,
            "stairs_up": sprite_stairs_up, "stairs_down": sprite_stairs_down,
            "stairs_updown": sprite_stairs_updown,
-           "fountain": sprite_fountain, "fountain_nesw": sprite_fountain_nesw}
+           "fountain": sprite_fountain, "fountain_nesw": sprite_fountain_nesw,
+           "flowerbed": sprite_flowerbed, "plant": sprite_plant, "tree": sprite_tree}
 
 def main():
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("client/assets/interior")

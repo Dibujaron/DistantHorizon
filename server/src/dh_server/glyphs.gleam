@@ -299,6 +299,10 @@ pub fn default() -> Registry {
         "f",
         CenterSpec("fountain", Floor, None, False, False, Some("fountain")),
       ),
+      #(
+        "l",
+        CenterSpec("flowerbed", Floor, None, False, False, Some("flowerbed")),
+      ),
     ]),
     edges: dict.from_list([
       #(" ", EdgeSpec("open", Open, None)),

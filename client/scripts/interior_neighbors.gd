@@ -44,3 +44,24 @@ static func autotile_suffix(mask: int) -> String:
 	if mask & S: s += "s"
 	if mask & W: s += "w"
 	return s
+
+
+## Count of set bits in a 4-bit neighbour mask (0..15).
+static func popcount(mask: int) -> int:
+	var c := 0
+	for b in [N, E, S, W]:
+		if mask & b: c += 1
+	return c
+
+
+## Deterministic plant variant for flowerbed/hydroponic tiles. `neighbours` is
+## the popcount of a mask4; `hash` is interior_hash for the tile. Returns
+## "tree" | "plant" | "base". Trees only where the cell is interior to a large
+## bed (>= tree_neighbors same-type orthogonal neighbours) AND allow_tree.
+## Pure -- no RNG/Time/order.
+static func plant_variant(neighbours: int, hash: int, tree_neighbors: int, allow_tree: bool) -> String:
+	if allow_tree and neighbours >= tree_neighbors and chance(hash, 1, 3):
+		return "tree"
+	if chance(hash >> 3, 1, 2):
+		return "plant"
+	return "base"

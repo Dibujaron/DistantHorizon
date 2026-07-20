@@ -29,6 +29,7 @@ func _ready() -> void:
 			{"glyph": "d", "id": "bed", "tile": "floor", "sprite": "bed"},
 			{"glyph": "p", "id": "cargo_pallet", "tile": "floor", "sprite": "cargo_pallet"},
 			{"glyph": "f", "id": "fountain", "tile": "floor", "sprite": "fountain"},
+			{"glyph": "l", "id": "flowerbed", "tile": "floor", "sprite": "flowerbed"},
 		],
 		"edges": [
 			{"glyph": "w", "id": "window", "sprite": "window"},
@@ -54,6 +55,10 @@ func _ready() -> void:
 	# (T4, #36), walled off from the row-0 content so it's independent —
 	# exercises InteriorNeighbors.mask4 + the fountain merge branch of
 	# _draw_decor under --headless.
+	# Rows 9-14 append a walled-off 4x4 'l' flowerbed field (T5, #36):
+	# exercises InteriorNeighbors.popcount + plant_variant — the interior
+	# cells (tx=2/3, ty=11/12) have >=3 same-type neighbours so trees can
+	# appear there deterministically, while the outer ring stays plant/base.
 	_cls = ShipClassData.from_dict({
 		"id": "probe", "name": "Probe",
 		"decks": [
@@ -66,6 +71,12 @@ func _ready() -> void:
 				"# ## ####",
 				"# ## ####",
 				"#f  f##.#",
+				"#########",
+				"#########",
+				"#llll####",
+				"#llll####",
+				"#llll####",
+				"#llll####",
 				"#########",
 			]},
 			{"name": "mid", "grid": [

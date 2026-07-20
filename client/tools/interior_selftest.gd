@@ -37,6 +37,18 @@ func _ready() -> void:
 	_check(InteriorNeighbors.autotile_suffix(0) == "", "suffix isolated")
 	_check(InteriorNeighbors.autotile_suffix(InteriorNeighbors.N|InteriorNeighbors.E|InteriorNeighbors.S|InteriorNeighbors.W) == "_nesw", "suffix all")
 	_check(InteriorNeighbors.autotile_suffix(InteriorNeighbors.E|InteriorNeighbors.W) == "_ew", "suffix ew")
+	# popcount
+	_check(InteriorNeighbors.popcount(0) == 0, "popcount 0")
+	_check(InteriorNeighbors.popcount(InteriorNeighbors.N|InteriorNeighbors.E|InteriorNeighbors.S|InteriorNeighbors.W) == 4, "popcount 4")
+	_check(InteriorNeighbors.popcount(InteriorNeighbors.E|InteriorNeighbors.W) == 2, "popcount ew")
+	# plant_variant determinism + rules: a corner cell (0 or 1 neighbours) can NEVER be a tree
+	var h0 := InteriorNeighbors.interior_hash(0, 2, 2)
+	_check(InteriorNeighbors.plant_variant(1, h0, 3, true) != "tree", "corner never tree")
+	_check(InteriorNeighbors.plant_variant(4, h0, 3, true) == InteriorNeighbors.plant_variant(4, h0, 3, true), "variant stable")
+	# allow_tree=false never trees (Task 7 reuse contract)
+	_check(InteriorNeighbors.plant_variant(4, h0, 3, false) != "tree", "no-tree mode")
+	# chance() is deterministic (closes the T2 gap)
+	_check(InteriorNeighbors.chance(h0, 1, 3) == InteriorNeighbors.chance(h0, 1, 3), "chance stable")
 	if _fail == "":
 		print("SELFTEST: PASS")
 		get_tree().quit(0)
