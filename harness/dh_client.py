@@ -12,13 +12,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Optional
 
 import websockets
 
 PROTOCOL_VERSION = 1
-DEFAULT_URL = "ws://127.0.0.1:8484/ws"
+# Follows DH_PORT so harness clients land on whatever port the harness
+# started the server on (the `server` fixture sets DH_PORT to its
+# dedicated test port, 8585 by default); falls back to 8484 -- the
+# server's own default -- when DH_PORT is unset.
+DEFAULT_URL = "ws://127.0.0.1:%s/ws" % os.environ.get("DH_PORT", "8484")
 
 # Default per-call timeout (seconds) for every reply-waiting API method
 # (login, dock, undock, next_snapshot, get_stats, recv_type). A server

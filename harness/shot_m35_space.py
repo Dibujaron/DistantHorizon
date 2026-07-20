@@ -25,7 +25,7 @@ from pathlib import Path
 
 from automation import GodotAutomation, launch_client, terminate_client
 from server_fixture import (
-    HOST, PORT, SERVER_DIR, STARTUP_TIMEOUT_S, UNREACHABLE_DATABASE_URL,
+    HOST, TEST_PORT, SERVER_DIR, STARTUP_TIMEOUT_S, UNREACHABLE_DATABASE_URL,
     _kill_process_tree, _port_accepting,
 )
 
@@ -36,16 +36,16 @@ POLL_INTERVAL_S = 0.25
 
 
 def _spawn_server() -> subprocess.Popen:
-    if _port_accepting(HOST, PORT):
-        raise RuntimeError(f"something is already listening on {HOST}:{PORT}")
+    if _port_accepting(HOST, TEST_PORT):
+        raise RuntimeError(f"something is already listening on {HOST}:{TEST_PORT}")
     gleam = shutil.which("gleam")
     if gleam is None:
         raise RuntimeError("'gleam' is not on PATH (scoop shims)")
-    env = dict(os.environ, DATABASE_URL=UNREACHABLE_DATABASE_URL)
+    env = dict(os.environ, DATABASE_URL=UNREACHABLE_DATABASE_URL, DH_PORT=str(TEST_PORT))
     proc = subprocess.Popen([gleam, "run"], cwd=str(SERVER_DIR), env=env)
     deadline = time.monotonic() + STARTUP_TIMEOUT_S
     while time.monotonic() < deadline:
-        if _port_accepting(HOST, PORT):
+        if _port_accepting(HOST, TEST_PORT):
             return proc
         if proc.poll() is not None:
             raise RuntimeError("server exited during startup")

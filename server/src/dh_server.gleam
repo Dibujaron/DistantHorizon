@@ -30,6 +30,21 @@ const default_colors_path = "colors.json"
 
 const default_database_url = "postgres://postgres@127.0.0.1:5432/dh_dev"
 
+const default_port = 8484
+
+/// The listen port: `DH_PORT` when set to a valid positive integer,
+/// otherwise the default 8484 so plain `gleam run` behaviour is unchanged.
+fn resolve_port() -> Int {
+  case envoy.get("DH_PORT") {
+    Error(Nil) -> default_port
+    Ok(raw) ->
+      case int.parse(raw) {
+        Ok(p) if p > 0 -> p
+        _ -> default_port
+      }
+  }
+}
+
 /// Postgres-backed accounts when reachable; otherwise an accept-all stub so
 /// the server still boots in dev without a database. Auth is not persistent
 /// in that fallback mode: every login is accepted and no account state is
@@ -138,6 +153,7 @@ pub fn main() -> Nil {
   io.println("loaded ship class \"" <> class.id <> "\" (" <> class.name <> ")")
 
   let authenticator = build_authenticator()
+  let port = resolve_port()
 
   case sim.start(world, class) {
     Error(e) -> io.println("failed to start sim: " <> string.inspect(e))
@@ -145,6 +161,7 @@ pub fn main() -> Nil {
       let sim_subject = sim_started.data
       case
         server.start(
+          port,
           sim_subject,
           world,
           class,
@@ -158,7 +175,7 @@ pub fn main() -> Nil {
             "dh_server listening on ws://"
             <> server.bind_address
             <> ":"
-            <> int.to_string(server.port)
+            <> int.to_string(port)
             <> "/ws",
           )
           process.sleep_forever()

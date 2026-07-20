@@ -31,8 +31,6 @@ import gleam/otp/actor
 import gleam/otp/static_supervisor
 import mist.{type Connection, type ResponseData}
 
-pub const port = 8484
-
 pub const bind_address = "127.0.0.1"
 
 /// A connection's session state: not yet logged in (holding the subject
@@ -43,6 +41,7 @@ pub type Session {
 }
 
 pub fn start(
+  port: Int,
   sim_subject: Subject(sim.Msg),
   world: World,
   class: ShipClass,

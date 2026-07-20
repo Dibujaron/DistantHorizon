@@ -6,9 +6,10 @@ builds launched with `--automation` on the command line (see DESIGN.md
 request/response over a local TCP socket on 127.0.0.1:8486.
 
 This is a *separate* channel from the game's own WebSocket protocol
-(`dh_client.py` talks to the DH server on 8484): `GodotAutomation` talks to
-a running client *process* itself -- inject input, dump scene/game state,
-grab screenshots -- rather than to the server.
+(`dh_client.py` talks to the DH server on the port DH_PORT selects, 8484 by
+default): `GodotAutomation` talks to a running client *process* itself --
+inject input, dump scene/game state, grab screenshots -- rather than to
+the server.
 
 Sync (blocking sockets), not asyncio: the tests that use this also manage a
 real OS process (the Godot client) and make only a handful of calls each,
@@ -19,6 +20,7 @@ DHClient/pytest-asyncio harness.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import socket
 import subprocess
@@ -26,6 +28,8 @@ import sys
 import time
 from pathlib import Path
 from typing import Any, Optional
+
+from server_fixture import TEST_PORT
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8486
@@ -152,6 +156,10 @@ def launch_client(extra_args: Optional[list[str]] = None, automation: bool = Tru
 
     Pass `automation=False` to launch a plain client (e.g. to verify the
     control socket does *not* start without the flag).
+
+    The launched client is given DH_PORT=<server_fixture.TEST_PORT> so it
+    connects to the harness's dedicated test server (8585 by default)
+    rather than whatever's running on the default port 8484.
     """
     godot = shutil.which("godot")
     if godot is None:
@@ -164,7 +172,8 @@ def launch_client(extra_args: Optional[list[str]] = None, automation: bool = Tru
     if automation:
         args.append("--automation")
     args.extend(extra_args or [])
-    return subprocess.Popen(args, cwd=str(CLIENT_DIR))
+    env = {**os.environ, "DH_PORT": str(TEST_PORT)}
+    return subprocess.Popen(args, cwd=str(CLIENT_DIR), env=env)
 
 
 def terminate_client(proc: subprocess.Popen, timeout: float = 10.0) -> None:
