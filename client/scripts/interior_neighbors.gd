@@ -54,14 +54,22 @@ static func popcount(mask: int) -> int:
 	return c
 
 
+## Density levers for plant_variant (issue #36). Tunable -- retune to taste; the
+## selftest golden does not depend on these, only on determinism. Kept as num/den
+## fractions of the deterministic tile hash.
+const TREE_NUM := 1   # tree chance numerator   (default 1/3 of eligible interior cells)
+const TREE_DEN := 3
+const PLANT_NUM := 1  # plant chance numerator  (default 1/2 of the remaining cells)
+const PLANT_DEN := 2
+
 ## Deterministic plant variant for flowerbed/hydroponic tiles. `neighbours` is
 ## the popcount of a mask4; `hash` is interior_hash for the tile. Returns
 ## "tree" | "plant" | "base". Trees only where the cell is interior to a large
 ## bed (>= tree_neighbors same-type orthogonal neighbours) AND allow_tree.
 ## Pure -- no RNG/Time/order.
 static func plant_variant(neighbours: int, hash: int, tree_neighbors: int, allow_tree: bool) -> String:
-	if allow_tree and neighbours >= tree_neighbors and chance(hash, 1, 3):
+	if allow_tree and neighbours >= tree_neighbors and chance(hash, TREE_NUM, TREE_DEN):
 		return "tree"
-	if chance(hash >> 3, 1, 2):
+	if chance(hash >> 3, PLANT_NUM, PLANT_DEN):
 		return "plant"
 	return "base"
