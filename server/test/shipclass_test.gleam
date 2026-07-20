@@ -112,7 +112,7 @@ pub fn decode_rejects_docking_port_without_void_facing_door_test() {
   // (helm + dock) derive from the 'h'/'Q' grid glyphs.
   let bad =
     "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
-    <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"#########\",\"#   h  Q#\",\"#########\"]}],"
+    <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"####h####\",\"#      Q#\",\"#########\"]}],"
     <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
     <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
   assert shipclass.decode(bad) |> is_error

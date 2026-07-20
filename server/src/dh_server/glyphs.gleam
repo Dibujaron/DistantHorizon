@@ -258,39 +258,6 @@ pub fn default() -> Registry {
       #(".", CenterSpec("void", Void, None, False, False, None)),
       #("x", CenterSpec("stairs", Stairs, None, False, False, Some("stairs"))),
       #(
-        "h",
-        CenterSpec(
-          "helm_console",
-          Floor,
-          Some("helm"),
-          False,
-          False,
-          Some("console_helm"),
-        ),
-      ),
-      #(
-        "c",
-        CenterSpec(
-          "cargo_console",
-          Floor,
-          Some("cargo"),
-          False,
-          False,
-          Some("console_cargo"),
-        ),
-      ),
-      #(
-        "b",
-        CenterSpec(
-          "broker_console",
-          Floor,
-          Some("broker"),
-          False,
-          False,
-          Some("console_broker"),
-        ),
-      ),
-      #(
         "Q",
         CenterSpec(
           "docking_port",
