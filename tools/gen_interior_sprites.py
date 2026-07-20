@@ -2,7 +2,13 @@
 """Generate first-crack greyscale interior sprites (stdlib-only PNG writer).
 Run: python tools/gen_interior_sprites.py [outdir]
 Default outdir: client/assets/interior
-Art is intentionally crude; replace any PNG in place to retune (issue #36)."""
+
+Design language (so tiles read as OBJECTS, not white squares, and still take the
+palette-colour multiply as shading): a dark outline (~G(55)) defines the
+silhouette, a mid fill carries the body/colour, and a light highlight (~G(215))
+adds a lit edge. Uniform light fills read as blank squares — always give a shape
+a dark outline. Art is intentionally crude; replace any PNG in place to retune
+(issue #36)."""
 import sys, zlib, struct
 from pathlib import Path
 
@@ -31,178 +37,240 @@ def rect(px, w, x0, y0, x1, y1, col):
             px[y * w + x] = col
 
 G = lambda v, a=255: (v, v, v, a)
-
-def sprite_rug(w=64, h=64):
-    # A lighter woven border framing a darker central field, so the rug
-    # reads as a distinct floor piece (not just a colour wash) at 64px.
-    px = blank(w, h); rect(px, w, 6, 6, 58, 58, G(205)); rect(px, w, 11, 11, 53, 53, G(140)); return w, h, px
-def sprite_seat(w=64, h=64):
-    # A top-down chair: the seat's quarter==0 art is authored front-facing
-    # NORTH (interior_view.gd), so the backrest sits on the SOUTH edge
-    # (behind a person facing the table to the north) and the lighter
-    # cushion pad occupies the open north-facing area in front of it.
-    px = blank(w, h)
-    rect(px, w, 14, 40, 50, 54, G(150))  # backrest, south edge
-    rect(px, w, 18, 14, 46, 42, G(190))  # cushion pad, north of the back
-    return w, h, px
-def sprite_bed(w=64, h=64):
-    px = blank(w, h); rect(px, w, 8, 12, 56, 56, G(200)); rect(px, w, 12, 16, 52, 26, G(230)); return w, h, px
-def sprite_cargo_pallet(w=64, h=64):
-    # Base grey brought up from 170 into the 185-205 legibility band (pass-1
-    # review) so the palette multiply still reads clearly; slats widened and
-    # a cross-strap added so the "pallet" silhouette holds up at 64px.
-    px = blank(w, h); rect(px, w, 10, 10, 54, 54, G(195))
-    for gx in range(11, 54, 11): rect(px, w, gx, 10, gx + 3, 54, G(125))
-    rect(px, w, 10, 30, 54, 34, G(125))  # horizontal cross-strap
-    return w, h, px
+OL = G(55)    # dark outline
+DK = G(90)    # dark accent / recess
+MD = G(150)   # mid body
+LT = G(215)   # light highlight
 
 def _disc(px, w, h, cx, cy, r, col):
     # A filled circle, stamped as horizontal spans (cheap, stdlib-only).
     for y in range(max(0, cy - r), min(h, cy + r + 1)):
-        dx = int((r * r - (y - cy) ** 2) ** 0.5)
+        dx = int((r * r - (y - cy) ** 2) ** 0.5) if abs(y - cy) <= r else 0
         rect(px, w, cx - dx, y, cx + dx + 1, y + 1, col)
 
+def ring(px, w, h, cx, cy, r, col, t=3):
+    _disc(px, w, h, cx, cy, r, col)
+    _disc(px, w, h, cx, cy, r - t, (0, 0, 0, 0))
+
+def box(px, w, x0, y0, x1, y1, fill, edge=OL, t=3):
+    # Filled rect with a t-thick dark border, so it reads as a bordered object.
+    rect(px, w, x0, y0, x1, y1, edge)
+    rect(px, w, x0 + t, y0 + t, x1 - t, y1 - t, fill)
+
+# ---------------------------------------------------------------- floor decor --
+
+def sprite_rug(w=64, h=64):
+    # Bordered rug with a dark medallion, so it reads as a floor piece.
+    px = blank(w, h)
+    box(px, w, 6, 12, 58, 52, LT, OL, 3)
+    box(px, w, 14, 20, 50, 44, MD, OL, 2)     # inner field
+    _disc(px, w, h, 32, 32, 7, OL)            # medallion
+    _disc(px, w, h, 32, 32, 4, LT)
+    return w, h, px
+
+def sprite_seat(w=64, h=64):
+    # Top-down chair, front-facing NORTH (quarter==0, interior_view.gd): thick
+    # dark backrest on the SOUTH edge, a mid cushion pad in front of it, and two
+    # dark arm stubs — a clear chair silhouette, not a pad.
+    px = blank(w, h)
+    box(px, w, 16, 20, 48, 50, MD, OL, 3)     # cushion body
+    rect(px, w, 16, 44, 48, 52, OL)           # backrest (south)
+    rect(px, w, 14, 22, 20, 48, OL)           # left arm
+    rect(px, w, 44, 22, 50, 48, OL)           # right arm
+    rect(px, w, 22, 26, 42, 40, LT)           # lit seat pad
+    return w, h, px
+
+def sprite_bed(w=64, h=64):
+    # Mattress with a dark frame, a light pillow band at the north end, and a
+    # dark blanket fold line across the middle.
+    px = blank(w, h)
+    box(px, w, 10, 8, 54, 58, MD, OL, 3)
+    rect(px, w, 14, 12, 50, 24, LT)           # pillow
+    rect(px, w, 14, 24, 50, 27, OL)           # pillow shadow
+    rect(px, w, 12, 40, 52, 44, DK)           # blanket fold
+    return w, h, px
+
+def sprite_cargo_pallet(w=64, h=64):
+    # A crate: dark frame, plank slats, and an X-strap so it reads as cargo.
+    px = blank(w, h)
+    box(px, w, 8, 8, 56, 56, MD, OL, 3)
+    for gx in range(14, 54, 10): rect(px, w, gx, 11, gx + 3, 53, DK)  # slats
+    # diagonal X straps
+    for i in range(44):
+        rect(px, w, 11 + i, 11 + i, 13 + i, 13 + i, OL)
+        rect(px, w, 53 - i, 11 + i, 55 - i, 13 + i, OL)
+    return w, h, px
+
 def sprite_fountain(w=64, h=64):
-    # An isolated fountain: round basin rim (light grey) around a darker
-    # water disc, with a small ripple highlight so the water itself has a
-    # visible surface, not just a flat disc.
-    px = blank(w, h); _disc(px, w, h, 32, 32, 28, G(185))
-    _disc(px, w, h, 32, 32, 20, G(110))
-    _disc(px, w, h, 32, 32, 6, G(145))
+    # A round basin: dark stone rim, dark water pool, a light central jet — an
+    # isolated fountain (merged interiors use fountain_nesw).
+    px = blank(w, h)
+    ring(px, w, h, 32, 32, 28, OL, 4)         # rim
+    _disc(px, w, h, 32, 32, 23, DK)           # water
+    _disc(px, w, h, 32, 32, 8, LT)            # jet / spray
+    _disc(px, w, h, 32, 32, 3, G(240))
     return w, h, px
 
 def sprite_fountain_nesw(w=64, h=64):
-    # Fully surrounded by fountain neighbours: the whole tile is water so a
-    # block of interior tiles reads seamlessly as one larger pool.
-    px = blank(w, h); rect(px, w, 0, 0, w, h, G(110)); return w, h, px
+    # Seamless water interior (fills the tile edge-to-edge, no margin) so a block
+    # of fountains reads as one continuous pool; darker than the rim with a
+    # ripple so it still reads when untinted.
+    px = blank(w, h, DK)
+    for ry in range(6, 64, 14):
+        rect(px, w, 0, ry, 64, ry + 2, G(120))   # ripples
+    _disc(px, w, h, 32, 32, 6, LT)
+    return w, h, px
 
 def sprite_flowerbed(w=64, h=64):
-    # A soil bed: a dark rectangular plot with a few lighter seedling dots,
-    # base grey ~185 so the palette multiply reads clearly.
-    px = blank(w, h); rect(px, w, 6, 6, 58, 58, G(185)); rect(px, w, 10, 10, 54, 54, G(95))
-    for cx, cy in [(20, 20), (32, 26), (44, 20), (20, 44), (44, 44), (32, 40)]:
-        _disc(px, w, h, cx, cy, 4, G(165))
+    # A dark soil bed with scattered light/dark sprigs.
+    px = blank(w, h)
+    box(px, w, 8, 10, 56, 54, G(105), OL, 3)   # soil
+    for (sx, sy) in ((18, 22), (32, 18), (46, 24), (22, 40), (40, 42), (30, 34)):
+        rect(px, w, sx - 1, sy, sx + 1, sy + 8, G(70))   # stem
+        _disc(px, w, h, sx, sy, 4, LT)                   # bloom
     return w, h, px
 
 def sprite_plant(w=64, h=64):
-    # A single small sprig: a stem plus a leafy tuft, centred on the tile.
-    px = blank(w, h); rect(px, w, 6, 6, 58, 58, G(185))
-    rect(px, w, 30, 34, 34, 54, G(120))  # stem
-    _disc(px, w, h, 32, 28, 12, G(150))  # leafy tuft
+    # A single small sprig: dark stem + two leaf discs, centred with margin so
+    # it reads as one plant on the floor.
+    px = blank(w, h)
+    rect(px, w, 30, 30, 34, 52, OL)            # stem
+    _disc(px, w, h, 24, 30, 8, MD); _disc(px, w, h, 24, 30, 8 - 3, LT)
+    _disc(px, w, h, 40, 26, 9, MD); _disc(px, w, h, 40, 26, 9 - 3, LT)
     return w, h, px
 
 def sprite_tree(w=64, h=64):
-    # A canopy blob over a trunk -- reads as a small tree when several
-    # flowerbed tiles combine into an interior mass.
-    px = blank(w, h); rect(px, w, 6, 6, 58, 58, G(185))
-    rect(px, w, 27, 36, 37, 58, G(110))  # trunk
-    _disc(px, w, h, 32, 24, 20, G(160))  # canopy
+    # A trunk + a big round canopy (dark outline, mid fill, lit crown).
+    px = blank(w, h)
+    rect(px, w, 28, 40, 36, 60, OL)            # trunk
+    ring(px, w, h, 32, 26, 22, OL, 3)
+    _disc(px, w, h, 32, 26, 18, MD)
+    _disc(px, w, h, 27, 21, 8, LT)             # lit crown
     return w, h, px
 
 def sprite_table(w=64, h=64):
-    # An isolated table: a flat rectangular surface (light grey) with a
-    # slightly darker border, so a single tile reads as a self-contained
-    # tabletop -- mirrors sprite_fountain's isolated-piece shape.
-    px = blank(w, h); rect(px, w, 6, 6, 58, 58, G(150)); rect(px, w, 10, 10, 54, 54, G(190))
+    # A surface slab with a dark frame and four dark legs at the corners.
+    px = blank(w, h)
+    for (lx, ly) in ((12, 12), (46, 12), (12, 46), (46, 46)):
+        rect(px, w, lx, ly, lx + 6, ly + 6, OL)   # legs
+    box(px, w, 10, 14, 54, 50, MD, OL, 3)         # top
+    rect(px, w, 16, 20, 48, 26, LT)               # lit edge
     return w, h, px
 
 def sprite_table_nesw(w=64, h=64):
-    # Fully surrounded by table neighbours: the whole tile is tabletop so a
-    # block of interior tiles reads seamlessly as one larger surface.
-    px = blank(w, h); rect(px, w, 0, 0, w, h, G(190)); return w, h, px
+    # Seamless table top (edge-to-edge) with dark seams so a run of tables reads
+    # as one surface.
+    px = blank(w, h, MD)
+    rect(px, w, 0, 0, 64, 3, OL); rect(px, w, 0, 61, 64, 64, OL)
+    rect(px, w, 0, 0, 3, 64, OL); rect(px, w, 61, 0, 64, 64, OL)
+    rect(px, w, 8, 10, 56, 16, LT)
+    return w, h, px
 
 def sprite_hydroponic(w=64, h=64):
-    # A hydroponic trough/rack: a horizontal channel (light-grey ~185 base,
-    # mirrors sprite_flowerbed) holding a darker nutrient-water strip.
-    px = blank(w, h); rect(px, w, 6, 6, 58, 58, G(185)); rect(px, w, 10, 22, 54, 42, G(110))
+    # A planter trough: dark frame, a recessed channel, sprigs along it.
+    px = blank(w, h)
+    box(px, w, 8, 18, 56, 46, G(120), OL, 3)   # trough body
+    rect(px, w, 14, 26, 50, 38, DK)            # water channel
+    for sx in (20, 30, 40):
+        rect(px, w, sx - 1, 22, sx + 1, 30, G(70)); _disc(px, w, h, sx, 22, 3, LT)
     return w, h, px
 
 def sprite_hydro_plant(w=64, h=64):
-    # A small sprout rising from the trough -- mirrors sprite_plant's
-    # stem+tuft shape but seated on the hydroponic channel.
-    px = blank(w, h); rect(px, w, 6, 6, 58, 58, G(185)); rect(px, w, 10, 22, 54, 42, G(110))
-    rect(px, w, 30, 24, 34, 32, G(120))  # stem
-    _disc(px, w, h, 32, 18, 10, G(150))  # leafy tuft
+    # A sprout rising from the trough channel.
+    px = blank(w, h)
+    box(px, w, 8, 34, 56, 50, G(120), OL, 3)   # trough base
+    rect(px, w, 30, 14, 34, 38, OL)            # stem
+    _disc(px, w, h, 32, 14, 9, MD); _disc(px, w, h, 32, 14, 6, LT)
     return w, h, px
+
+# ------------------------------------------------------------- wall fixtures --
+# 64x14 strips (they render on the wall edge, not the tile centre).
 
 def sprite_window(w=64, h=14):
-    px = blank(w, h); rect(px, w, 2, 2, 62, 12, G(210)); rect(px, w, 30, 2, 34, 12, G(120)); return w, h, px
-def sprite_viewscreen(w=64, h=14):
-    px = blank(w, h); rect(px, w, 2, 2, 62, 12, G(70)); rect(px, w, 2, 2, 62, 4, G(140)); return w, h, px
-
-def sprite_bunk(w=64, h=14):
-    # A wall-mounted bunk: frame (light grey ~185 base so the palette multiply
-    # reads) with a mattress band. Single frame for now, no up/down variant --
-    # stacking (bunk over bed, or bunk over bunk) is convention-only this pass
-    # (#36); a future pass could vary this sprite by what's beneath it (#24).
-    px = blank(w, h); rect(px, w, 2, 1, 62, 13, G(185)); rect(px, w, 4, 4, 60, 10, G(225))
+    # A framed window: dark frame, two light panes split by a dark mullion.
+    px = blank(w, h)
+    box(px, w, 1, 1, 63, 13, LT, OL, 2)
+    rect(px, w, 31, 1, 33, 13, OL)             # mullion
     return w, h, px
 
+def sprite_viewscreen(w=64, h=14):
+    # A wall screen: dark screen behind a light frame, with a scanline glow.
+    px = blank(w, h)
+    box(px, w, 1, 1, 63, 13, DK, OL, 2)
+    rect(px, w, 4, 4, 60, 6, G(130))           # scanline glow
+    return w, h, px
+
+def sprite_bunk(w=64, h=14):
+    # Wall-mounted bunk: dark frame, mattress band, a light pillow at one end.
+    px = blank(w, h)
+    box(px, w, 1, 1, 63, 13, MD, OL, 2)
+    rect(px, w, 4, 4, 16, 10, LT)              # pillow
+    rect(px, w, 18, 6, 60, 8, DK)              # blanket line
+    return w, h, px
+
+def _console(px, w):
+    # Shared console panel: dark frame + dark screen (callers add the per-kind mark).
+    box(px, w, 1, 1, 63, 13, G(140), OL, 2)
+    rect(px, w, 6, 3, 58, 11, G(60))
+
+def sprite_console_helm(w=64, h=14):
+    px = blank(w, h); _console(px, w)
+    rect(px, w, 10, 7, 54, 8, LT)              # nav horizon
+    rect(px, w, 27, 4, 37, 6, G(170))          # heading marker
+    return w, h, px
+
+def sprite_console_cargo(w=64, h=14):
+    px = blank(w, h); _console(px, w)
+    for gx in range(10, 56, 8): rect(px, w, gx, 4, gx + 4, 10, G(175))  # crate slats
+    return w, h, px
+
+def sprite_console_broker(w=64, h=14):
+    px = blank(w, h); _console(px, w)
+    rect(px, w, 12, 8, 18, 10, G(150))         # rising bars
+    rect(px, w, 22, 6, 28, 10, G(185))
+    rect(px, w, 32, 4, 38, 10, LT)
+    return w, h, px
+
+# -------------------------------------------------------------------- stairs --
+
 def _chevron_up(px, w, cx, cy, size, col):
-    # A hollow up-pointing chevron (^), built from two diagonal strokes.
     for i in range(size):
         rect(px, w, cx - i - 2, cy + i, cx - i, cy + i + 4, col)
         rect(px, w, cx + i, cy + i, cx + i + 2, cy + i + 4, col)
 
 def _chevron_down(px, w, cx, cy, size, col):
-    # A hollow down-pointing chevron (v), mirror of _chevron_up.
     for i in range(size):
         rect(px, w, cx - i - 2, cy - i - 4, cx - i, cy - i, col)
         rect(px, w, cx + i, cy - i - 4, cx + i + 2, cy - i, col)
 
 def sprite_stairs_up(w=64, h=64):
-    # Light-grey shaft opening with rails either side and chevrons pointing
-    # up (out of the shaft) to read "climb up from here".
-    px = blank(w, h); rect(px, w, 4, 4, 60, 60, G(185))
-    rect(px, w, 4, 4, 12, 60, G(150)); rect(px, w, 52, 4, 60, 60, G(150))  # side rails
-    _chevron_up(px, w, 32, 14, 6, G(210))
-    _chevron_up(px, w, 32, 30, 6, G(210))
+    # A framed ladder head with light rungs climbing UP and up-chevrons — reads
+    # "ascend from here".
+    px = blank(w, h)
+    box(px, w, 8, 8, 56, 56, G(130), OL, 3)
+    rect(px, w, 18, 12, 22, 52, OL); rect(px, w, 42, 12, 46, 52, OL)  # rails
+    for ry in range(16, 52, 8): rect(px, w, 22, ry, 42, ry + 3, LT)   # rungs
+    _chevron_up(px, w, 32, 12, 6, G(240))
     return w, h, px
 
 def sprite_stairs_down(w=64, h=64):
-    # A dark shaft opening (you're looking down into it) with chevrons
-    # pointing down (into the shaft) to read "descend from here".
-    px = blank(w, h); rect(px, w, 4, 4, 60, 60, G(185))
-    rect(px, w, 12, 12, 52, 52, G(90))  # dark shaft opening
-    _chevron_down(px, w, 32, 34, 6, G(200))
-    _chevron_down(px, w, 32, 50, 6, G(200))
+    # A dark shaft you look down into, with down-chevrons — reads "descend".
+    px = blank(w, h)
+    box(px, w, 8, 8, 56, 56, G(130), OL, 3)
+    box(px, w, 16, 16, 48, 48, G(45), OL, 2)   # dark opening
+    _chevron_down(px, w, 32, 30, 6, LT)
+    _chevron_down(px, w, 32, 44, 6, MD)
     return w, h, px
 
 def sprite_stairs_updown(w=64, h=64):
-    # Both directions available: up chevrons in the top half, down chevrons
-    # (over a dark shaft hint) in the bottom half.
-    px = blank(w, h); rect(px, w, 4, 4, 60, 60, G(185))
-    rect(px, w, 4, 4, 12, 60, G(150)); rect(px, w, 52, 4, 60, 60, G(150))  # side rails
-    rect(px, w, 18, 34, 46, 52, G(110))  # dark shaft hint, lower half
-    _chevron_up(px, w, 32, 8, 5, G(210))
-    _chevron_down(px, w, 32, 56, 5, G(205))
-    return w, h, px
-
-def sprite_console_helm(w=64, h=14):
-    # Wall-mounted helm console: a panel (light grey ~185 so the palette multiply
-    # reads) with a dark screen carrying a bright nav horizon line + heading mark.
-    # 64x14 = the wall-strip footprint (#36 moved consoles onto walls).
-    px = blank(w, h); rect(px, w, 2, 1, 62, 13, G(185))   # panel body
-    rect(px, w, 6, 3, 58, 11, G(80))                      # screen
-    rect(px, w, 10, 7, 54, 8, G(195))                     # nav horizon line
-    rect(px, w, 27, 4, 37, 6, G(170))                     # heading marker
-    return w, h, px
-
-def sprite_console_cargo(w=64, h=14):
-    # Wall-mounted cargo console: panel + screen showing a row of crate slats.
-    px = blank(w, h); rect(px, w, 2, 1, 62, 13, G(185))
-    rect(px, w, 6, 3, 58, 11, G(80))
-    for gx in range(10, 56, 8):
-        rect(px, w, gx, 4, gx + 4, 10, G(175))            # crate slats
-    return w, h, px
-
-def sprite_console_broker(w=64, h=14):
-    # Wall-mounted broker console: panel + screen with a small rising bar chart.
-    px = blank(w, h); rect(px, w, 2, 1, 62, 13, G(185))
-    rect(px, w, 6, 3, 58, 11, G(80))
-    rect(px, w, 12, 8, 18, 10, G(175))                    # rising bars (trade)
-    rect(px, w, 22, 6, 28, 10, G(190))
-    rect(px, w, 32, 4, 38, 10, G(205))
+    # Both: light rungs in the top half, a dark shaft hint + down-chevrons below.
+    px = blank(w, h)
+    box(px, w, 8, 8, 56, 56, G(130), OL, 3)
+    rect(px, w, 18, 12, 22, 30, OL); rect(px, w, 42, 12, 46, 30, OL)
+    for ry in range(14, 28, 6): rect(px, w, 22, ry, 42, ry + 2, LT)
+    box(px, w, 16, 32, 48, 52, G(60), OL, 2)   # shaft hint
+    _chevron_up(px, w, 32, 10, 4, G(240))
+    _chevron_down(px, w, 32, 50, 5, LT)
     return w, h, px
 
 SPRITES = {"rug": sprite_rug, "seat": sprite_seat, "bed": sprite_bed,
