@@ -162,6 +162,7 @@ func _draw() -> void:
 	_refresh_los()
 	_update_backdrops(origin)
 	_draw_floor(origin)
+	_draw_stairs(origin)
 	_draw_decor(origin)
 	_draw_structure(origin)
 	_draw_signage(origin)
@@ -299,6 +300,41 @@ func _draw_floor(origin: Vector2) -> void:
 				if tex != null:
 					draw_texture_rect(tex, rect, false,
 						Color(1, 1, 1, FLOOR_TEXTURE_ALPHA))
+
+
+## Hatchway art (#36 Task 3): a Stairs tile renders as an up-chevron,
+## down-chevron, or both, derived from which vertically-adjacent decks it
+## actually connects to (void-skip scan, mirrors the server's stairs_target
+## rule) rather than any authored direction. An isolated Stairs tile (neither
+## direction connects — e.g. authored but the neighbour deck lacks a match)
+## falls back to plain floor rather than drawing a misleading glyph.
+func _draw_stairs(origin: Vector2) -> void:
+	var g := _deck()
+	if g == null:
+		return
+	for ty in _grid_h():
+		for tx in _grid_w():
+			if not _vis(tx, ty):
+				continue
+			if g.tile_at(tx, ty) != ShipClassData.Tile.STAIRS:
+				continue
+			var has_down := ship_class.stairs_leads(view_deck, 1, tx, ty)
+			var has_up := ship_class.stairs_leads(view_deck, -1, tx, ty)
+			if not has_down and not has_up:
+				continue  # isolated stair — reads as plain floor, as before
+			var name := "stairs_updown"
+			if has_up and not has_down:
+				name = "stairs_up"
+			elif has_down and not has_up:
+				name = "stairs_down"
+			var tex: Texture2D = _lib.interior(name)
+			if tex == null:
+				continue  # graceful: plain floor already drawn
+			var pos := _tile_to_screen(Vector2(tx, ty), origin)
+			var slot := ship_class.color_at(view_deck, tx, ty)
+			var tint := NetworkClient.palette.color(slot) if slot >= 0 \
+				and NetworkClient.palette != null else Color.WHITE
+			draw_texture_rect(tex, Rect2(pos, Vector2(TILE_PIXELS, TILE_PIXELS)), false, tint)
 
 
 ## Decor (deck-plan v3.1): a decorative centre glyph (rug/seat/bed/pallet …)

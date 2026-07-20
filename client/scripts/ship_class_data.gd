@@ -321,6 +321,15 @@ func _scan_stairs(deck: int, step: int, tx: int, ty: int) -> int:
 	return -1  # Floor blocks the shaft
 
 
+## Public wrapper over `_scan_stairs`: true iff a Stairs tile at (tx, ty) on
+## `deck` connects, walking direction `step` (+1 = down, -1 = up), to another
+## Stairs tile (through any void-skip). Lets callers outside this class (e.g.
+## the interior renderer, deciding up/down hatchway art) probe a direction
+## without reaching into the private scan.
+func stairs_leads(deck: int, step: int, tx: int, ty: int) -> bool:
+	return _scan_stairs(deck, step, tx, ty) != -1
+
+
 func find_console(console_id: String) -> Console:
 	for console in consoles:
 		if console.id == console_id:

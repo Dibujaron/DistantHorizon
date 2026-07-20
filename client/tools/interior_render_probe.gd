@@ -41,16 +41,33 @@ func _ready() -> void:
 	])
 
 	# 3 tiles wide x 1 tall. Tile0: bed 'd', colour 'a' (10). Tile1: pallet
-	# 'p', colour '4'. Tile1/Tile2 share a 'w' window fixture edge. Tile2:
-	# plain floor, uncoloured. NW/SW/SE corner cells are never read by the
-	# parser (only NE carries colour) — filled with '#' as inert padding.
+	# 'p', colour '4'. Tile1/Tile2 share a 'w' window fixture edge. Tile2 (now
+	# 'x'): a Stairs tile at (7,1), matched by an 'x' at the SAME (tx,ty) on
+	# the two extra decks below (T3, #36) — a 3-deck stack exercising all
+	# three hatchway directions: deck0's stair only connects down (deck1) so
+	# it draws stairs_down; deck1 connects both up (deck0) and down (deck2)
+	# so it draws stairs_updown; deck2 only connects up (deck1) so it draws
+	# stairs_up. NW/SW/SE corner cells are never read by the parser (only NE
+	# carries colour) — filled with '#' as inert padding.
 	_cls = ShipClassData.from_dict({
 		"id": "probe", "name": "Probe",
-		"decks": [{"name": "main", "grid": [
-			"##a##4## ",
-			"#d  pww #",
-			"#########",
-		]}],
+		"decks": [
+			{"name": "main", "grid": [
+				"##a##4## ",
+				"#d  pwwx#",
+				"#########",
+			]},
+			{"name": "mid", "grid": [
+				"#########",
+				"#      x#",
+				"#########",
+			]},
+			{"name": "bottom", "grid": [
+				"#########",
+				"#      x#",
+				"#########",
+			]},
+		],
 		"spawn": {"deck": 0, "tile": [0, 0]},
 	})
 
@@ -73,8 +90,13 @@ func _make_char(id: int, cname: String, x: float, y: float) -> CharacterState:
 
 func _process(delta: float) -> void:
 	_t += delta
+	# Cycle through every deck (~4/sec) so the stacked-stairs case (T3, #36)
+	# exercises _draw_stairs' up/down/updown branches under --headless,
+	# proving the draw path is error-free on all three even though only
+	# deck0 is ever screenshotted via DH_SHOT.
+	var deck := int(_t * 4.0) % _cls.deck_count()
 	_view.set_frame_data(_cls, [_own] as Array[CharacterState], 1,
-		_own.position(), 0, [] as Array[InteriorView.Backdrop])
+		_own.position(), deck, [] as Array[InteriorView.Backdrop])
 	_maybe_shot()
 
 
