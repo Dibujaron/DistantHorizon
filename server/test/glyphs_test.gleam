@@ -60,6 +60,14 @@ pub fn console_kind_and_glyph_roundtrip_test() {
   assert glyphs.console_glyph(reg, "nope") == ""
 }
 
+pub fn edge_console_kind_test() {
+  let reg = glyphs.default()
+  assert glyphs.edge_console_kind(reg, "h") == Ok("helm")
+  assert glyphs.edge_console_kind(reg, "b") == Ok("broker")
+  assert glyphs.edge_console_kind(reg, "#") == Error(Nil)
+  assert glyphs.edge_console_kind(reg, "w") == Error(Nil)
+}
+
 pub fn is_decor_test() {
   let reg = glyphs.default()
   assert glyphs.is_decor(reg, "r") == True

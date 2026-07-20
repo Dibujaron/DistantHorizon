@@ -23,6 +23,9 @@
     { "glyph": "#", "id": "wall", "kind": "wall", "sprite": "wall", "description": "Wall; blocks." },
     { "glyph": "=", "id": "door", "kind": "door", "sprite": "door", "description": "Door; auto-opens for now (passable)." },
     { "glyph": "v", "id": "viewscreen", "kind": "fixture", "sprite": "viewscreen", "description": "Wall-mounted screen (bridge viewscreen or a domestic TV) — a wall that carries art; blocks." },
-    { "glyph": "w", "id": "window", "kind": "fixture", "sprite": "window", "description": "Wall-mounted window — a wall that carries a view; blocks." }
+    { "glyph": "w", "id": "window", "kind": "fixture", "sprite": "window", "description": "Wall-mounted window — a wall that carries a view; blocks." },
+    { "glyph": "h", "id": "helm_console", "kind": "fixture", "console": "helm", "sprite": "console_helm", "description": "Helm console mounted on a wall (blocks like a wall); operated from the adjacent floor tile it faces." },
+    { "glyph": "c", "id": "cargo_console", "kind": "fixture", "console": "cargo", "sprite": "console_cargo", "description": "Cargo console mounted on a wall; operated from the adjacent floor tile it faces." },
+    { "glyph": "b", "id": "broker_console", "kind": "fixture", "console": "broker", "sprite": "console_broker", "description": "Broker console mounted on a wall (station concourses); operated from the adjacent floor tile. Brokers need no seat." }
   ]
 }
