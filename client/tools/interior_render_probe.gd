@@ -36,6 +36,7 @@ func _ready() -> void:
 		],
 		"edges": [
 			{"glyph": "w", "id": "window", "sprite": "window"},
+			{"glyph": "h", "id": "helm_console", "console": "helm", "sprite": "console_helm"},
 		],
 	})
 	NetworkClient.palette = Palette.from_dict([
@@ -73,6 +74,15 @@ func _ready() -> void:
 	# Rows 24-26 append a walled-off 3-wide run of 'g' hydroponic tiles (T7,
 	# #36): exercises the mask4/popcount/plant_variant path with
 	# allow_tree=false, the branch that must never draw "tree" art.
+	# Rows 27-29 append a walled-off single-tile room (T9, #36 REVISED):
+	# tile (tx=1, ty=9) has centre seat 'e' and a north-wall 'h' edge fixture
+	# (registered above as an edge console, kind "helm", sprite
+	# "console_helm") — the wall-mounted-console draw path (edge fixture ->
+	# _fixture_tex -> _draw_edge_wall, same as 'w' window). The matching
+	# top-level "consoles" entry below (kind "helm", x=1, y=9) exercises
+	# _draw_consoles' new skip branch: helm/cargo/broker no longer
+	# centre-draw (that art now lives on the wall), so this proves the
+	# derived-console loop runs error-free without double-drawing.
 	_cls = ShipClassData.from_dict({
 		"id": "probe", "name": "Probe",
 		"decks": [
@@ -104,6 +114,9 @@ func _ready() -> void:
 				"#########",
 				"#  ggg  #",
 				"#########",
+				"####h####",
+				"#.##e##.#",
+				"#########",
 			]},
 			{"name": "mid", "grid": [
 				"#########",
@@ -115,6 +128,9 @@ func _ready() -> void:
 				"#      x#",
 				"#########",
 			]},
+		],
+		"consoles": [
+			{"id": "helm_probe", "kind": "helm", "deck": 0, "x": 1, "y": 9},
 		],
 		"spawn": {"deck": 0, "tile": [0, 0]},
 	})

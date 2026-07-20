@@ -637,6 +637,11 @@ func _draw_consoles(origin: Vector2) -> void:
 	for console in ship_class.consoles:
 		if console.deck != view_deck:
 			continue  # a console on another deck is under/over this floor
+		# Helm/cargo/broker consoles are wall-mounted (edge fixtures) and draw
+		# on the wall strip via the fixture path; don't also centre-draw them.
+		# (dock stays a centre airlock pictogram.)
+		if console.kind == "helm" or console.kind == "cargo" or console.kind == "broker":
+			continue
 		var center := _tile_to_screen(console.tile_center(), origin)
 		var sprite_id := "" if reg == null else reg.sprite_for_console(console.kind)
 		# A docking port is an airlock hatch, not a console desk.

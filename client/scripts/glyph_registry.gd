@@ -47,6 +47,14 @@ static func from_dict(data: Variant) -> GlyphRegistry:
 				if str(tile) == "floor" and console == null \
 						and dock != true and spawn != true and sprite != null:
 					reg._decor_glyphs[str(c.get("glyph", ""))] = true
+		# Edge-defined console kinds (T8/T9, issue #36) also resolve via
+		# sprite_for_console, future-proofing for a wall-only console glyph.
+		for e: Variant in data.get("edges", []):
+			if e is Dictionary:
+				var econsole: Variant = e.get("console")
+				var esprite: Variant = e.get("sprite")
+				if econsole != null and esprite != null:
+					reg.console_sprite[str(econsole)] = str(esprite)
 	return reg
 
 
