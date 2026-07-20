@@ -42,6 +42,25 @@ def sprite_cargo_pallet(w=64, h=64):
     px = blank(w, h); rect(px, w, 10, 10, 54, 54, G(170))
     for gx in range(10, 54, 8): rect(px, w, gx, 10, gx + 2, 54, G(120))
     return w, h, px
+
+def _disc(px, w, h, cx, cy, r, col):
+    # A filled circle, stamped as horizontal spans (cheap, stdlib-only).
+    for y in range(max(0, cy - r), min(h, cy + r + 1)):
+        dx = int((r * r - (y - cy) ** 2) ** 0.5)
+        rect(px, w, cx - dx, y, cx + dx + 1, y + 1, col)
+
+def sprite_fountain(w=64, h=64):
+    # An isolated fountain: round basin rim (light grey) around a darker
+    # water disc, so a single tile reads as a self-contained pool.
+    px = blank(w, h); _disc(px, w, h, 32, 32, 28, G(185))
+    _disc(px, w, h, 32, 32, 20, G(110))
+    return w, h, px
+
+def sprite_fountain_nesw(w=64, h=64):
+    # Fully surrounded by fountain neighbours: the whole tile is water so a
+    # block of interior tiles reads seamlessly as one larger pool.
+    px = blank(w, h); rect(px, w, 0, 0, w, h, G(110)); return w, h, px
+
 def sprite_window(w=64, h=14):
     px = blank(w, h); rect(px, w, 2, 2, 62, 12, G(210)); rect(px, w, 30, 2, 34, 12, G(120)); return w, h, px
 def sprite_viewscreen(w=64, h=14):
@@ -91,7 +110,8 @@ SPRITES = {"rug": sprite_rug, "seat": sprite_seat, "bed": sprite_bed,
            "cargo_pallet": sprite_cargo_pallet, "window": sprite_window,
            "viewscreen": sprite_viewscreen,
            "stairs_up": sprite_stairs_up, "stairs_down": sprite_stairs_down,
-           "stairs_updown": sprite_stairs_updown}
+           "stairs_updown": sprite_stairs_updown,
+           "fountain": sprite_fountain, "fountain_nesw": sprite_fountain_nesw}
 
 def main():
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("client/assets/interior")

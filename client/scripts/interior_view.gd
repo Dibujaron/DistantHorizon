@@ -356,7 +356,14 @@ func _draw_decor(origin: Vector2) -> void:
 			var tint := NetworkClient.palette.color(slot) if slot >= 0 \
 				and NetworkClient.palette != null else Color.WHITE
 			var pos := _tile_to_screen(Vector2(tx, ty), origin)
-			var sprite_id := reg.sprite_for_glyph(glyph)
+			var sprite_id := ""
+			if glyph == "f":  # fountain: merge adjacent fountains via neighbour mask
+				var mask := InteriorNeighbors.mask4(_deck(), tx, ty, glyph)
+				sprite_id = "fountain" + InteriorNeighbors.autotile_suffix(mask)
+				if _lib.interior(sprite_id) == null:
+					sprite_id = "fountain"  # fall back to base piece if the suffix art is absent
+			else:
+				sprite_id = reg.sprite_for_glyph(glyph)
 			var tex: Texture2D = _lib.interior(sprite_id) if sprite_id != "" else null
 			if tex != null:
 				draw_texture_rect(tex, Rect2(pos, Vector2(TILE_PIXELS, TILE_PIXELS)), false, tint)

@@ -295,6 +295,10 @@ pub fn default() -> Registry {
           Some("cargo_pallet"),
         ),
       ),
+      #(
+        "f",
+        CenterSpec("fountain", Floor, None, False, False, Some("fountain")),
+      ),
     ]),
     edges: dict.from_list([
       #(" ", EdgeSpec("open", Open, None)),

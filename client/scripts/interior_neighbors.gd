@@ -31,3 +31,16 @@ static func mask4(deck, x: int, y: int, glyph: String) -> int:
 ## Deterministic "num/den" chance from a precomputed hash.
 static func chance(hash: int, num: int, den: int) -> bool:
 	return (hash % den) < num
+
+
+## Autotile sprite-id suffix from a mask4 bitmask: "" for isolated, else
+## "_" + set directions in n,e,s,w order (e.g. E|W -> "_ew", all -> "_nesw").
+static func autotile_suffix(mask: int) -> String:
+	if mask == 0:
+		return ""
+	var s := "_"
+	if mask & N: s += "n"
+	if mask & E: s += "e"
+	if mask & S: s += "s"
+	if mask & W: s += "w"
+	return s

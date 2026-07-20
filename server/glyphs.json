@@ -12,7 +12,8 @@
     { "glyph": "r", "id": "rug", "tile": "floor", "sprite": "rug", "description": "Decorative rug (walkable floor); honours the NE-corner colour code." },
     { "glyph": "e", "id": "seat", "tile": "floor", "sprite": "seat", "description": "Seat / chair (walkable floor); honours the NE-corner colour code." },
     { "glyph": "d", "id": "bed", "tile": "floor", "sprite": "bed", "description": "Bed (walkable floor); honours the NE-corner colour code." },
-    { "glyph": "p", "id": "cargo_pallet", "tile": "floor", "sprite": "cargo_pallet", "description": "Cargo pallet (walkable floor): the unit of breakbulk hold capacity — a hull's breakbulk capacity is its number of pallet tiles. Door-size to load it is not enforced yet." }
+    { "glyph": "p", "id": "cargo_pallet", "tile": "floor", "sprite": "cargo_pallet", "description": "Cargo pallet (walkable floor): the unit of breakbulk hold capacity — a hull's breakbulk capacity is its number of pallet tiles. Door-size to load it is not enforced yet." },
+    { "glyph": "f", "id": "fountain", "tile": "floor", "sprite": "fountain", "description": "Fountain (walkable floor); adjacent fountains render as one larger pool. Honours the NE-corner colour." }
   ],
   "edges": [
     { "glyph": " ", "id": "open", "kind": "open", "description": "No wall; passable." },

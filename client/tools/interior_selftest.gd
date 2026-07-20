@@ -33,6 +33,10 @@ func _ready() -> void:
 	var deck := _mask_fixture()
 	_check(InteriorNeighbors.mask4(deck, 1, 1, "f") == (InteriorNeighbors.N|InteriorNeighbors.E|InteriorNeighbors.S|InteriorNeighbors.W), "mask centre")
 	_check(InteriorNeighbors.mask4(deck, 0, 0, "f") == (InteriorNeighbors.E|InteriorNeighbors.S), "mask corner")
+	# autotile_suffix: pure mask -> sprite-id suffix mapping (fountain merge).
+	_check(InteriorNeighbors.autotile_suffix(0) == "", "suffix isolated")
+	_check(InteriorNeighbors.autotile_suffix(InteriorNeighbors.N|InteriorNeighbors.E|InteriorNeighbors.S|InteriorNeighbors.W) == "_nesw", "suffix all")
+	_check(InteriorNeighbors.autotile_suffix(InteriorNeighbors.E|InteriorNeighbors.W) == "_ew", "suffix ew")
 	if _fail == "":
 		print("SELFTEST: PASS")
 		get_tree().quit(0)
