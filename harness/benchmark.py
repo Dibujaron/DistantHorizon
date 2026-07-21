@@ -234,6 +234,10 @@ def report(args, results: list[ClientResult], stats: dict | None) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    # Deliberately hardcoded to the server's default port rather than
+    # following DH_PORT: this benchmark targets a manually-run server (dev
+    # or "production"), not the harness's dedicated test port. Pass --url
+    # explicitly to target a server started with a non-default DH_PORT.
     parser.add_argument("--url", default="ws://127.0.0.1:8484/ws")
     parser.add_argument("--clients", type=int, default=20)
     parser.add_argument("--duration", type=float, default=60.0, help="seconds to receive snapshots")

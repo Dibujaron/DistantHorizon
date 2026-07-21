@@ -28,11 +28,14 @@ whole test session (see `server_fixture.py`), so:
 
 - **First run is slow** (~60 s timeout budgeted for the initial Gleam
   build); subsequent runs are fast since the build is cached.
-- **Port 8484 must be free.** The fixture refuses to start if something
-  is already listening there — a stale or shared server would invalidate
-  the results. If a previous run didn't get torn down cleanly:
+- **The test port must be free.** The harness runs the server on a
+  dedicated port (8585 by default, overridable via `DH_PORT`) rather than
+  the dev default 8484, precisely so a running dev/"production" server
+  doesn't block it. The fixture still refuses to start if something is
+  already listening on that test port — a stale or shared server would
+  invalidate the results. If a previous run didn't get torn down cleanly:
   ```powershell
-  netstat -ano | findstr 8484
+  netstat -ano | findstr 8585
   taskkill /F /T /PID <pid>
   ```
 - **No local Postgres required, and none touched.** The fixture points

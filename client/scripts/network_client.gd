@@ -43,7 +43,7 @@ signal walkers_received(tick: int, space_id: String, epoch: int, characters: Arr
 
 enum ConnectionState { CONNECTING, CONNECTED, DISCONNECTED }
 
-const SERVER_URL := "ws://127.0.0.1:8484/ws"
+const DEFAULT_PORT := "8484"
 const PROTOCOL_VERSION := 1
 const RECONNECT_DELAY_SEC := 2.0
 ## A 500-ship snapshot is ~40 KB of JSON; the WebSocketPeer default inbound
@@ -85,6 +85,11 @@ var space: SpaceData = null
 ## ship (i.e. whenever `space` isn't a station space).
 var station_id: String = ""
 
+## Built once at startup (see `_ready`) from the DH_PORT env var, falling
+## back to 8484 when unset, so a dedicated test server/client pair never
+## collides with a dev server on the default port.
+var server_url: String = ""
+
 var _socket: WebSocketPeer
 var _reconnect_timer := 0.0
 var _login_sent := false
@@ -98,6 +103,10 @@ var _menu_username := ""
 var _menu_password := ""
 
 func _ready() -> void:
+	var port := OS.get_environment("DH_PORT")
+	if port == "":
+		port = DEFAULT_PORT
+	server_url = "ws://127.0.0.1:%s/ws" % port
 	var has_creds := false
 	for arg: String in OS.get_cmdline_user_args():
 		if arg.begins_with("--username="):
@@ -130,7 +139,7 @@ func _process(delta: float) -> void:
 		WebSocketPeer.STATE_OPEN:
 			if state != ConnectionState.CONNECTED:
 				_set_state(ConnectionState.CONNECTED)
-				print("[net] connected to %s" % SERVER_URL)
+				print("[net] connected to %s" % server_url)
 				if not _login_sent and not manual_login:
 					_send_login()
 			while _socket.get_available_packet_count() > 0:
@@ -158,7 +167,7 @@ func _start_connecting() -> void:
 	logged_in = false
 	_socket = WebSocketPeer.new()
 	_socket.inbound_buffer_size = INBOUND_BUFFER_BYTES
-	var err := _socket.connect_to_url(SERVER_URL)
+	var err := _socket.connect_to_url(server_url)
 	if err != OK:
 		push_error("[net] connect_to_url failed: %s" % error_string(err))
 		_socket = null
