@@ -80,14 +80,19 @@ def sprite_seat(w=64, h=64):
     rect(px, w, 22, 26, 42, 40, LT)           # lit seat pad
     return w, h, px
 
+# Classic-Minecraft bed palette — baked into the sprite (not greyscale) so a bed
+# reads red covers + white pillow by DEFAULT (its glyph carries no default slot,
+# so it draws untinted); an NE-corner colour still multiplies over it.
+BED_RED = (176, 46, 38, 255)     # colors.json 'red' #B02E26
+BED_RED_DK = (120, 30, 26, 255)
+BED_WHITE = (240, 244, 243, 255)
+
 def sprite_bed(w=64, h=64):
-    # Mattress with a dark frame, a light pillow band at the north end, and a
-    # dark blanket fold line across the middle.
     px = blank(w, h)
-    box(px, w, 10, 8, 54, 58, MD, OL, 3)
-    rect(px, w, 14, 12, 50, 24, LT)           # pillow
-    rect(px, w, 14, 24, 50, 27, OL)           # pillow shadow
-    rect(px, w, 12, 40, 52, 44, DK)           # blanket fold
+    box(px, w, 10, 8, 54, 58, BED_RED, OL, 3)      # red covers, dark frame
+    rect(px, w, 14, 40, 50, 45, BED_RED_DK)        # blanket fold shadow
+    rect(px, w, 14, 12, 50, 26, BED_WHITE)         # white pillow
+    rect(px, w, 14, 26, 50, 28, (200, 204, 203, 255))  # pillow shadow
     return w, h, px
 
 def sprite_cargo_pallet(w=64, h=64):
@@ -201,11 +206,11 @@ def sprite_viewscreen(w=64, h=14):
     return w, h, px
 
 def sprite_bunk(w=64, h=14):
-    # Wall-mounted bunk: dark frame, mattress band, a light pillow at one end.
+    # Wall-mounted bunk: same red-covers/white-pillow bedding as the floor bed.
     px = blank(w, h)
-    box(px, w, 1, 1, 63, 13, MD, OL, 2)
-    rect(px, w, 4, 4, 16, 10, LT)              # pillow
-    rect(px, w, 18, 6, 60, 8, DK)              # blanket line
+    box(px, w, 1, 1, 63, 13, BED_RED, OL, 2)   # red mattress, dark frame
+    rect(px, w, 4, 4, 16, 10, BED_WHITE)       # white pillow
+    rect(px, w, 18, 6, 60, 8, BED_RED_DK)      # blanket line
     return w, h, px
 
 def _console(px, w):

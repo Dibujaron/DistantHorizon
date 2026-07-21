@@ -109,13 +109,16 @@ func sprite_for_edge_glyph(glyph: String) -> String:
 ## black): 1 orange, 3 light_blue, 5 lime, 8 light_gray, 9 cyan, 12 brown,
 ## 13 green, 14 red.
 const _DEFAULT_CENTER_COLOR := {
-	"r": 14, "e": 12, "d": 3, "p": 12,   # rug, seat, bed, cargo pallet
+	"r": 14, "e": 12, "p": 12,           # rug, seat, cargo pallet
 	"f": 3, "l": 13, "g": 5, "t": 12,    # fountain, flowerbed, hydroponic, table
 	"x": 8,                              # stairs
+	# bed `d` deliberately absent: its sprite bakes red covers + white pillow,
+	# so it draws untinted (an NE-corner colour still overrides).
 }
 const _DEFAULT_EDGE_COLOR := {
-	"w": 3, "v": 9, "d": 3,              # window, viewscreen, bunk
+	"w": 3, "v": 9,                      # window, viewscreen
 	"h": 9, "c": 1, "b": 5,             # helm, cargo, broker consoles
+	# bunk `d` absent for the same reason as the floor bed.
 }
 
 func default_center_color(glyph: String) -> int:
