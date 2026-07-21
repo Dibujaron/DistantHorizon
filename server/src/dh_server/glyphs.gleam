@@ -52,6 +52,7 @@ pub type CenterSpec {
     dock: Bool,
     spawn: Bool,
     sprite: Option(String),
+    color: Option(Int),
   )
 }
 
@@ -64,6 +65,7 @@ pub type EdgeSpec {
     kind: EdgeKind,
     console: Option(String),
     sprite: Option(String),
+    color: Option(Int),
   )
 }
 
@@ -87,6 +89,7 @@ pub fn center(reg: Registry, glyph: String) -> CenterSpec {
         dock: False,
         spawn: False,
         sprite: None,
+        color: None,
       )
   }
 }
@@ -97,7 +100,13 @@ pub fn edge(reg: Registry, glyph: String) -> EdgeSpec {
   case dict.get(reg.edges, glyph) {
     Ok(spec) -> spec
     Error(Nil) ->
-      EdgeSpec(id: "fixture", kind: Fixture, console: None, sprite: None)
+      EdgeSpec(
+        id: "fixture",
+        kind: Fixture,
+        console: None,
+        sprite: None,
+        color: None,
+      )
   }
 }
 
@@ -188,6 +197,11 @@ fn center_decoder() -> decode.Decoder(#(String, CenterSpec)) {
     None,
     decode.map(decode.string, Some),
   )
+  use color <- decode.optional_field(
+    "color",
+    None,
+    decode.map(decode.int, Some),
+  )
   decode.success(#(
     glyph,
     CenterSpec(
@@ -197,6 +211,7 @@ fn center_decoder() -> decode.Decoder(#(String, CenterSpec)) {
       dock: dock,
       spawn: spawn,
       sprite: sprite,
+      color: color,
     ),
   ))
 }
@@ -215,9 +230,14 @@ fn edge_decoder() -> decode.Decoder(#(String, EdgeSpec)) {
     None,
     decode.map(decode.string, Some),
   )
+  use color <- decode.optional_field(
+    "color",
+    None,
+    decode.map(decode.int, Some),
+  )
   decode.success(#(
     glyph,
-    EdgeSpec(id: id, kind: kind, console: console, sprite: sprite),
+    EdgeSpec(id: id, kind: kind, console: console, sprite: sprite, color: color),
   ))
 }
 
@@ -254,9 +274,20 @@ fn edge_kind_decoder() -> decode.Decoder(EdgeKind) {
 pub fn default() -> Registry {
   Registry(
     centers: dict.from_list([
-      #(" ", CenterSpec("floor", Floor, None, False, False, None)),
-      #(".", CenterSpec("void", Void, None, False, False, None)),
-      #("x", CenterSpec("stairs", Stairs, None, False, False, Some("stairs"))),
+      #(" ", CenterSpec("floor", Floor, None, False, False, None, None)),
+      #(".", CenterSpec("void", Void, None, False, False, None, None)),
+      #(
+        "x",
+        CenterSpec(
+          "stairs",
+          Stairs,
+          None,
+          False,
+          False,
+          Some("stairs"),
+          Some(8),
+        ),
+      ),
       #(
         "Q",
         CenterSpec(
@@ -266,12 +297,19 @@ pub fn default() -> Registry {
           True,
           False,
           Some("picto_airlock"),
+          None,
         ),
       ),
-      #("s", CenterSpec("spawn", Floor, None, False, True, None)),
-      #("r", CenterSpec("rug", Floor, None, False, False, Some("rug"))),
-      #("e", CenterSpec("seat", Floor, None, False, False, Some("seat"))),
-      #("d", CenterSpec("bed", Floor, None, False, False, Some("bed"))),
+      #("s", CenterSpec("spawn", Floor, None, False, True, None, None)),
+      #(
+        "r",
+        CenterSpec("rug", Floor, None, False, False, Some("rug"), Some(14)),
+      ),
+      #(
+        "e",
+        CenterSpec("seat", Floor, None, False, False, Some("seat"), Some(12)),
+      ),
+      #("d", CenterSpec("bed", Floor, None, False, False, Some("bed"), None)),
       #(
         "p",
         CenterSpec(
@@ -281,35 +319,75 @@ pub fn default() -> Registry {
           False,
           False,
           Some("cargo_pallet"),
+          Some(12),
         ),
       ),
       #(
         "f",
-        CenterSpec("fountain", Floor, None, False, False, Some("fountain")),
+        CenterSpec(
+          "fountain",
+          Floor,
+          None,
+          False,
+          False,
+          Some("fountain"),
+          Some(3),
+        ),
       ),
       #(
         "l",
-        CenterSpec("flowerbed", Floor, None, False, False, Some("flowerbed")),
+        CenterSpec(
+          "flowerbed",
+          Floor,
+          None,
+          False,
+          False,
+          Some("flowerbed"),
+          Some(13),
+        ),
       ),
-      #("t", CenterSpec("table", Floor, None, False, False, Some("table"))),
+      #(
+        "t",
+        CenterSpec("table", Floor, None, False, False, Some("table"), Some(12)),
+      ),
       #(
         "g",
-        CenterSpec("hydroponic", Floor, None, False, False, Some("hydroponic")),
+        CenterSpec(
+          "hydroponic",
+          Floor,
+          None,
+          False,
+          False,
+          Some("hydroponic"),
+          Some(5),
+        ),
       ),
     ]),
     edges: dict.from_list([
-      #(" ", EdgeSpec("open", Open, None, None)),
-      #("#", EdgeSpec("wall", Wall, None, Some("wall"))),
-      #("=", EdgeSpec("door", Door, None, Some("door"))),
-      #("v", EdgeSpec("viewscreen", Fixture, None, Some("viewscreen"))),
-      #("w", EdgeSpec("window", Fixture, None, Some("window"))),
+      #(" ", EdgeSpec("open", Open, None, None, None)),
+      #("#", EdgeSpec("wall", Wall, None, Some("wall"), None)),
+      #("=", EdgeSpec("door", Door, None, Some("door"), None)),
+      #("v", EdgeSpec("viewscreen", Fixture, None, Some("viewscreen"), Some(9))),
+      #("w", EdgeSpec("window", Fixture, None, Some("window"), Some(3))),
       #(
         "h",
-        EdgeSpec("helm_console", Fixture, Some("helm"), Some("console_helm")),
+        EdgeSpec(
+          "helm_console",
+          Fixture,
+          Some("helm"),
+          Some("console_helm"),
+          Some(9),
+        ),
       ),
       #(
         "c",
-        EdgeSpec("cargo_console", Fixture, Some("cargo"), Some("console_cargo")),
+        EdgeSpec(
+          "cargo_console",
+          Fixture,
+          Some("cargo"),
+          Some("console_cargo"),
+          Some(1),
+        ),
       ),
       #(
         "b",
@@ -318,9 +396,10 @@ pub fn default() -> Registry {
           Fixture,
           Some("broker"),
           Some("console_broker"),
+          Some(5),
         ),
       ),
-      #("d", EdgeSpec("bunk", Fixture, None, Some("bunk"))),
+      #("d", EdgeSpec("bunk", Fixture, None, Some("bunk"), None)),
     ]),
   )
 }
@@ -348,6 +427,7 @@ fn encode_center(entry: #(String, CenterSpec)) -> Json {
     #("dock", json.bool(spec.dock)),
     #("spawn", json.bool(spec.spawn)),
     #("sprite", json.nullable(spec.sprite, json.string)),
+    #("color", json.nullable(spec.color, json.int)),
   ])
 }
 
@@ -359,6 +439,7 @@ fn encode_edge(entry: #(String, EdgeSpec)) -> Json {
     #("kind", json.string(edge_kind_name(spec.kind))),
     #("console", json.nullable(spec.console, json.string)),
     #("sprite", json.nullable(spec.sprite, json.string)),
+    #("color", json.nullable(spec.color, json.int)),
   ])
 }
 
