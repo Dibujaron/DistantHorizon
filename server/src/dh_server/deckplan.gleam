@@ -567,7 +567,13 @@ fn derive_markers(
 }
 
 /// Scan one deck's rows for console markers `#(kind, deck, x, y)` and bare
-/// spawn tiles `#(deck, x, y)`, in row-major order.
+/// spawn tiles `#(deck, x, y)`, in row-major order. A console can be authored
+/// as the tile's CENTRE glyph (`h`/`c`/`b`, the legacy floor-console form) or
+/// on one of the tile's own four EDGE glyphs (decorated-interiors pass 2,
+/// #36: a wall-mounted console, operated from the floor tile it faces). Only
+/// a tile's own edges are read — never the neighbour's facing edge — so a
+/// console authored on one wall yields exactly one console, at the tile whose
+/// wall it is; both forms coexist during the migration.
 fn scan_markers(
   reg: glyphs.Registry,
   rows: List(String),
@@ -582,15 +588,33 @@ fn scan_markers(
   list.fold(range(0, height), #([], []), fn(acc, y) {
     list.fold(range(0, width), acc, fn(inner, x) {
       let #(cs, sp) = inner
-      let ch = cell_at(cells, 3 * y + 1, 3 * x + 1)
-      case glyphs.console_kind(reg, ch) {
+      let center_ch = cell_at(cells, 3 * y + 1, 3 * x + 1)
+      let #(cs, sp) = case glyphs.console_kind(reg, center_ch) {
         Ok(kind) -> #(list.append(cs, [#(kind, deck, x, y)]), sp)
         Error(Nil) ->
-          case glyphs.center(reg, ch).spawn {
+          case glyphs.center(reg, center_ch).spawn {
             True -> #(cs, list.append(sp, [#(deck, x, y)]))
-            False -> inner
+            False -> #(cs, sp)
           }
       }
+      let cs = case glyphs.center(reg, center_ch).tile == glyphs.Floor {
+        False -> cs
+        True -> {
+          let edge_chs = [
+            cell_at(cells, 3 * y, 3 * x + 1),
+            cell_at(cells, 3 * y + 1, 3 * x + 2),
+            cell_at(cells, 3 * y + 2, 3 * x + 1),
+            cell_at(cells, 3 * y + 1, 3 * x),
+          ]
+          list.fold(edge_chs, cs, fn(cs, ch) {
+            case glyphs.edge_console_kind(reg, ch) {
+              Ok(kind) -> list.append(cs, [#(kind, deck, x, y)])
+              Error(Nil) -> cs
+            }
+          })
+        }
+      }
+      #(cs, sp)
     })
   })
 }

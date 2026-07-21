@@ -120,9 +120,10 @@ fn is_error(result: Result(a, b)) -> Bool {
 
 // -------------------------------------------------- station-class fixtures --
 
-/// A 3x2 all-floor concourse deck grid with a broker `b` at tile (1, 0) — its
-/// centre is column 4 (3*1+1), so the row is 4 spaces, `b`, 4 spaces.
-const broker_concourse_grid = "[\"         \",\"    b    \",\"         \",\"         \",\"         \",\"         \"]"
+/// A 3x2 concourse deck grid with a broker wall-console: the `b` fixture sits on
+/// the north edge (row 0, column 4) of tile (1, 0), which is the floor tile it is
+/// operated from. Consoles are wall (edge) fixtures now, not centre glyphs.
+const broker_concourse_grid = "[\"    b    \",\"         \",\"         \",\"         \",\"         \",\"         \"]"
 
 /// The same, with no broker console at all.
 const bare_concourse_grid = "[\"         \",\"         \",\"         \",\"         \",\"         \",\"         \"]"

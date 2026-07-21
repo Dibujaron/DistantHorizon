@@ -23,7 +23,9 @@ pub fn center_floor_and_void_test() {
 
 pub fn center_console_and_dock_test() {
   let reg = glyphs.default()
-  assert glyphs.center(reg, "b").console == Some("broker")
+  // Consoles are wall (edge) fixtures now; `Q` is the only centre console (dock).
+  assert glyphs.center(reg, "b").console == None
+  assert glyphs.edge_console_kind(reg, "b") == Ok("broker")
   assert glyphs.center(reg, "Q").console == Some("dock")
   assert glyphs.center(reg, "Q").dock == True
   assert glyphs.center(reg, "s").spawn == True
@@ -53,11 +55,21 @@ pub fn unknown_edge_is_fixture_test() {
 
 pub fn console_kind_and_glyph_roundtrip_test() {
   let reg = glyphs.default()
-  assert glyphs.console_kind(reg, "h") == Ok("helm")
+  // `Q` (dock) is the only centre console; helm/cargo/broker are wall fixtures.
+  assert glyphs.console_kind(reg, "Q") == Ok("dock")
+  assert glyphs.console_kind(reg, "h") == Error(Nil)
   assert glyphs.console_kind(reg, " ") == Error(Nil)
-  assert glyphs.console_glyph(reg, "helm") == "h"
   assert glyphs.console_glyph(reg, "dock") == "Q"
+  assert glyphs.console_glyph(reg, "helm") == ""
   assert glyphs.console_glyph(reg, "nope") == ""
+}
+
+pub fn edge_console_kind_test() {
+  let reg = glyphs.default()
+  assert glyphs.edge_console_kind(reg, "h") == Ok("helm")
+  assert glyphs.edge_console_kind(reg, "b") == Ok("broker")
+  assert glyphs.edge_console_kind(reg, "#") == Error(Nil)
+  assert glyphs.edge_console_kind(reg, "w") == Error(Nil)
 }
 
 pub fn is_decor_test() {

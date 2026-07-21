@@ -24,17 +24,25 @@ var sprite_by_id: Dictionary = {}
 ## carrying a client sprite. Mirrors `glyphs.is_decor` (glyphs.gleam).
 var _decor_glyphs: Dictionary = {}
 
-## Single-char glyph (centre OR edge) -> sprite id, for decor/fixture
-## rendering keyed directly on the deck-grid character (issue #29/#30's
-## renderer, T6/T7) rather than on console kind or long-form id.
-var sprite_by_glyph: Dictionary = {}
+## Centre glyph -> sprite id, for decor rendering keyed directly on the
+## deck-grid centre character (issue #29/#30's renderer, T6/T7). Kept
+## separate from `edge_sprite_by_glyph` because centre and edge glyphs share
+## the same char set with independent meanings (position disambiguates, e.g.
+## centre `d` = floor bed) — a single merged dict would let an edge entry
+## clobber a centre entry with the same char (#36 T12: edge `d` = wall bunk).
+var center_sprite_by_glyph: Dictionary = {}
+
+## Edge glyph -> sprite id, for wall-fixture rendering keyed directly on the
+## deck-grid edge character. See `center_sprite_by_glyph` for why this is a
+## separate dict rather than shared.
+var edge_sprite_by_glyph: Dictionary = {}
 
 
 static func from_dict(data: Variant) -> GlyphRegistry:
 	var reg := GlyphRegistry.new()
 	if data is Dictionary:
-		reg._ingest(data.get("centers", []))
-		reg._ingest(data.get("edges", []))
+		reg._ingest(data.get("centers", []), reg.center_sprite_by_glyph)
+		reg._ingest(data.get("edges", []), reg.edge_sprite_by_glyph)
 		for c: Variant in data.get("centers", []):
 			if c is Dictionary:
 				var console: Variant = c.get("console")
@@ -47,17 +55,25 @@ static func from_dict(data: Variant) -> GlyphRegistry:
 				if str(tile) == "floor" and console == null \
 						and dock != true and spawn != true and sprite != null:
 					reg._decor_glyphs[str(c.get("glyph", ""))] = true
+		# Edge-defined console kinds (T8/T9, issue #36) also resolve via
+		# sprite_for_console, future-proofing for a wall-only console glyph.
+		for e: Variant in data.get("edges", []):
+			if e is Dictionary:
+				var econsole: Variant = e.get("console")
+				var esprite: Variant = e.get("sprite")
+				if econsole != null and esprite != null:
+					reg.console_sprite[str(econsole)] = str(esprite)
 	return reg
 
 
-func _ingest(entries: Variant) -> void:
+func _ingest(entries: Variant, target: Dictionary) -> void:
 	if entries is Array:
 		for e: Variant in entries:
 			if e is Dictionary:
 				var sprite: Variant = e.get("sprite")
 				if sprite != null:
 					sprite_by_id[str(e.get("id", ""))] = str(sprite)
-					sprite_by_glyph[str(e.get("glyph", ""))] = str(sprite)
+					target[str(e.get("glyph", ""))] = str(sprite)
 
 
 ## The sprite id for a console of `kind`, or "" if the registry maps none (the
@@ -73,7 +89,40 @@ func is_decor(glyph: String) -> bool:
 	return _decor_glyphs.has(glyph)
 
 
-## The sprite id for centre-or-edge glyph `glyph` (e.g. "d" -> "bed",
-## "w" -> "window"), or "" if the registry maps none.
-func sprite_for_glyph(glyph: String) -> String:
-	return str(sprite_by_glyph.get(glyph, ""))
+## The sprite id for centre glyph `glyph` (e.g. "d" -> "bed"), or "" if the
+## registry maps none.
+func sprite_for_center_glyph(glyph: String) -> String:
+	return str(center_sprite_by_glyph.get(glyph, ""))
+
+
+## The sprite id for edge glyph `glyph` (e.g. "w" -> "window", "d" -> "bunk"),
+## or "" if the registry maps none.
+func sprite_for_edge_glyph(glyph: String) -> String:
+	return str(edge_sprite_by_glyph.get(glyph, ""))
+
+
+## Default palette slot (0-15) for a decor/fixture glyph, used to tint a tile
+## that carries no NE-corner colour of its own so decor reads in colour instead
+## of pale greyscale. -1 = no default (drawn untinted). First-pass CLIENT-SIDE
+## defaults; TODO(#36): promote to a `color` field in glyphs.json so they're
+## authorable/moddable like sprite ids. Slots index colors.json (0 white … 15
+## black): 1 orange, 3 light_blue, 5 lime, 8 light_gray, 9 cyan, 12 brown,
+## 13 green, 14 red.
+const _DEFAULT_CENTER_COLOR := {
+	"r": 14, "e": 12, "p": 12,           # rug, seat, cargo pallet
+	"f": 3, "l": 13, "g": 5, "t": 12,    # fountain, flowerbed, hydroponic, table
+	"x": 8,                              # stairs
+	# bed `d` deliberately absent: its sprite bakes red covers + white pillow,
+	# so it draws untinted (an NE-corner colour still overrides).
+}
+const _DEFAULT_EDGE_COLOR := {
+	"w": 3, "v": 9,                      # window, viewscreen
+	"h": 9, "c": 1, "b": 5,             # helm, cargo, broker consoles
+	# bunk `d` absent for the same reason as the floor bed.
+}
+
+func default_center_color(glyph: String) -> int:
+	return int(_DEFAULT_CENTER_COLOR.get(glyph, -1))
+
+func default_edge_color(glyph: String) -> int:
+	return int(_DEFAULT_EDGE_COLOR.get(glyph, -1))

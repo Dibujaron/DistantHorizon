@@ -1,5 +1,6 @@
 import dh_server/deckplan.{Console, DeckPlan}
 import dh_server/glyphs
+import gleam/json
 import gleam/option
 
 // ---------------------------------------------------------- cargo tiles --
@@ -289,4 +290,62 @@ pub fn junk_letter_ne_corner_is_uncolored_test() {
   let assert Ok(g) = deckplan.parse_deck("t", rows)
   let assert Ok(c) = deckplan.cell_at_xy(g, 0, 0)
   assert c.color == option.None
+}
+
+// ---------------------------------------- wall-mounted consoles (#36 p2) --
+
+// A 3-wide x 1-tall strip. Per docs/deckplan-format.md, tile (x, y)'s block
+// origin is (3x, 3y): centre at row 3y+1 col 3x+1, N at row 3y col 3x+1, E at
+// row 3y+1 col 3x+2, S at row 3y+2 col 3x+1, W at row 3y+1 col 3x.
+//
+// Tile (0,0): centre '.' (void), so it never contributes a console even
+// though its own edges are plain walls.
+// Tile (1,0): centre ' ' (floor), W edge 'h' (helm console fixture) — the
+// tile that operates it.
+// Tile (2,0): centre '.' (void).
+//
+// Row0 (N edges), row2 (S edges): "#########" (tidy hull, cosmetic here).
+// Row1 (W,C,E per tile): tile0 " .#" + tile1 "h #" + tile2 " . " = " .#h # . "
+const edge_console_rows = ["#########", " .#h # . ", "#########"]
+
+pub fn parse_deck_edge_console_fixture_test() {
+  // The 'h' on tile (1,0)'s west edge parses as a Fixture("h"), same as any
+  // other unnamed/named edge fixture — the console meaning is a registry
+  // lookup on top of that, not a new Edge constructor.
+  let assert Ok(g) = deckplan.parse_deck("d", edge_console_rows)
+  assert g.width == 3
+  assert g.height == 1
+  assert deckplan.tile_at(g, 1, 0) == deckplan.Floor
+  let assert Ok(#(_n, _e, _s, w)) = deckplan.edges_at(g, 1, 0)
+  assert w == deckplan.Fixture("h")
+}
+
+pub fn edge_console_fixture_roundtrips_test() {
+  // deck_to_rows -> parse_deck preserves the edge 'h' fixture, same as any
+  // other fixture glyph (w/v today).
+  let assert Ok(g) = deckplan.parse_deck("d", edge_console_rows)
+  let assert Ok(g2) = deckplan.parse_deck("d", deckplan.deck_to_rows(g))
+  assert g2.cells == g.cells
+}
+
+pub fn derive_edge_console_test() {
+  // Drive derivation through deckplan.decoder (which runs derive_markers) on
+  // a JSON deck, so the edge-scanning path in scan_markers is genuinely
+  // exercised end to end, not just unit-tested in isolation.
+  let text =
+    "{\"decks\":[{\"name\":\"d\",\"grid\":["
+    <> "\"#########\","
+    <> "\" .#h # . \","
+    <> "\"#########\""
+    <> "]}]}"
+  let assert Ok(plan) = json.parse(text, deckplan.decoder(glyphs.default()))
+  let assert Ok(c) = deckplan.find_console_of_kind(plan, "helm")
+  assert c.kind == "helm"
+  assert c.deck == 0
+  assert c.x == 1
+  assert c.y == 0
+  // Exactly one console derived — the void neighbour tiles (0,0)/(2,0)
+  // contribute nothing even though tile (0,0)'s own edges are plain walls,
+  // and the console is NOT double-counted onto the void tile it faces.
+  assert deckplan.find_console(plan, "helm") == Ok(c)
 }

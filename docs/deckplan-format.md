@@ -63,7 +63,15 @@ registry is the list.
   four more `floor`-kind center glyphs that are purely cosmetic (no console/
   dock/spawn flag, still walkable): `r`=rug, `e`=seat, `d`=bed, and `p`=cargo
   pallet — the last one doubles as the unit a hull's breakbulk capacity is
-  derived from (see "Derived cargo capacity" below).
+  derived from (see "Derived cargo capacity" below). Pass-2 decor adds four
+  neighbour-aware center glyphs, also purely cosmetic and walkable: `f`=fountain
+  (adjacent fountains merge into one larger pool), `l`=flowerbed (renders trees
+  where enough beds combine into an interior mass), `g`=hydroponic garden
+  (aesthetic planted trough for now — reserved as the future fresh-food
+  production hook, never renders trees), and `t`=table (adjacent tables merge
+  into one surface; nearby seats turn to face it). All four render
+  deterministically from their orthogonal neighbours and a per-tile hash, never
+  from RNG/Time/iteration order, so the layout never reshuffles on relog.
 - **Edge glyphs** (N/E/S/W mid characters, what's on that side) carry an
   edge kind: `open` (space, passable), `wall` (`#`, blocks), `door` (`=`,
   passable, auto-opens), or `fixture` (a named wall decoration — blocks like a
@@ -71,6 +79,11 @@ registry is the list.
   it stands for either a bridge viewscreen or a domestic TV, there's no
   separate TV glyph — context (which room it's in) tells them apart, not the
   character. `w`=window is a wall that carries a view instead of a screen.
+  `d`=bunk (edge) is a wall-mounted bed — **distinct from centre `d`=bed**:
+  the same letter means "floor bed" in the center and "wall bunk" on an edge,
+  same as the console letters. Authoring convention (not enforced — that's
+  #24): a bunk may only mount over a floor bed (centre `d`) or over another
+  wall bunk, so bunks stack in a legible way; nothing currently checks this.
   Any edge char not in the registry parses as a generic fixture, so nothing
   is ever a syntax error.
 - **Corners**: NW/SW/SE are cosmetic — use `#` for a clean hull outline; the
@@ -78,7 +91,7 @@ registry is the list.
   renders closed. **NE is not cosmetic**: it's the tile's colour digit (see
   "Colour" below). Corners never carry collision data and decor never changes
   walkability — `r`/`e`/`d`/`p` are walkable floor exactly like plain floor,
-  while `v`/`w` block like any other wall-fixture.
+  while `v`/`w`/edge-`d` (bunk) block like any other wall-fixture.
 
 ### Colour
 
@@ -218,6 +231,33 @@ tiles across its holds, so its capacity derives to **60** and the authored
 `"capacity"` is ignored. The authored value is used only as a **fallback**,
 for a hull that draws zero pallet tiles. `handling` (e.g. `"breakbulk"`) is
 still hand-authored; only the numeric capacity is derived.
+
+## Retuning interior sprites
+
+The decor sprites referenced above (`fountain`, `flowerbed`, `table`,
+`hydroponic`, hatchway art, wall consoles, `bunk`, …) are first-crack,
+stdlib-generated **greyscale** PNGs in `client/assets/interior/`, one file per
+registry `sprite` id (e.g. `server/glyphs.json`'s `"sprite": "fountain"` ->
+`client/assets/interior/fountain.png`). `AssetLibrary` auto-loads whatever is
+in that directory by filename, so retuning them is two options:
+
+1. Edit `tools/gen_interior_sprites.py` (each shape is a small, commented
+   `sprite_*` function) and re-run `python tools/gen_interior_sprites.py` to
+   regenerate every PNG in place, or
+2. Replace any single `<sprite-id>.png` in `client/assets/interior/` directly
+   — no code or registry change needed as long as the filename, dimensions
+   (64x64 for floor decor, 64x14 for wall fixtures), and colour mode
+   (greyscale, so the palette-colour multiply at render still works) match.
+
+A few `f` (fountain) and `l` (flowerbed) test-decor tiles were added to the
+Highport station's Concourse deck (`server/stationclasses/highport.json`)
+purely so this decor renders somewhere in-engine; they're not meant as final
+station dressing.
+
+The headless screenshot harness (`DH_SHOT` pixel captures) is currently red,
+so this pass-2 art — and the console-migrated maps (Mockingbird, Highport,
+Ring) — have not had an in-engine visual pass. Both warrant an eyeball in a
+running client before considering the art or the console migration final.
 
 ## Compatibility
 

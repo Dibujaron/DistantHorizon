@@ -82,6 +82,10 @@
           "enum": ["open", "wall", "door", "fixture"],
           "description": "The edge kind. open/door are passable; wall/fixture block. fixture is a named wall-mounted decoration."
         },
+        "console": {
+          "type": "string",
+          "description": "Optional. Console kind mounted on this wall (e.g. 'helm'); the adjacent floor tile derives the console record."
+        },
         "sprite": {
           "type": "string",
           "description": "Optional. Client-side sprite id; the server ignores it."

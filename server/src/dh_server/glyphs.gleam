@@ -55,9 +55,16 @@ pub type CenterSpec {
   )
 }
 
-/// One edge-glyph entry: long-form `id`, edge kind, and client `sprite` key.
+/// One edge-glyph entry: long-form `id`, edge kind, the console `kind` this
+/// wall (edge) fixture installs (if any — decorated-interiors pass 2, #36),
+/// and client `sprite` key.
 pub type EdgeSpec {
-  EdgeSpec(id: String, kind: EdgeKind, sprite: Option(String))
+  EdgeSpec(
+    id: String,
+    kind: EdgeKind,
+    console: Option(String),
+    sprite: Option(String),
+  )
 }
 
 /// The loaded vocabulary: center and edge glyphs, each keyed by their single
@@ -89,7 +96,8 @@ pub fn center(reg: Registry, glyph: String) -> CenterSpec {
 pub fn edge(reg: Registry, glyph: String) -> EdgeSpec {
   case dict.get(reg.edges, glyph) {
     Ok(spec) -> spec
-    Error(Nil) -> EdgeSpec(id: "fixture", kind: Fixture, sprite: None)
+    Error(Nil) ->
+      EdgeSpec(id: "fixture", kind: Fixture, console: None, sprite: None)
   }
 }
 
@@ -97,6 +105,11 @@ pub fn edge(reg: Registry, glyph: String) -> EdgeSpec {
 /// console. Dock ports read as a console of kind `"dock"`.
 pub fn console_kind(reg: Registry, glyph: String) -> Result(String, Nil) {
   option.to_result(center(reg, glyph).console, Nil)
+}
+
+/// The console kind a wall (edge) fixture installs, or Error(Nil) if none.
+pub fn edge_console_kind(reg: Registry, glyph: String) -> Result(String, Nil) {
+  option.to_result(edge(reg, glyph).console, Nil)
 }
 
 /// Whether a centre glyph is a decorative floor tile (rug/seat/bed/pallet …):
@@ -192,12 +205,20 @@ fn edge_decoder() -> decode.Decoder(#(String, EdgeSpec)) {
   use glyph <- decode.field("glyph", decode.string)
   use id <- decode.field("id", decode.string)
   use kind <- decode.field("kind", edge_kind_decoder())
+  use console <- decode.optional_field(
+    "console",
+    None,
+    decode.map(decode.string, Some),
+  )
   use sprite <- decode.optional_field(
     "sprite",
     None,
     decode.map(decode.string, Some),
   )
-  decode.success(#(glyph, EdgeSpec(id: id, kind: kind, sprite: sprite)))
+  decode.success(#(
+    glyph,
+    EdgeSpec(id: id, kind: kind, console: console, sprite: sprite),
+  ))
 }
 
 fn tile_kind_decoder() -> decode.Decoder(TileKind) {
@@ -237,39 +258,6 @@ pub fn default() -> Registry {
       #(".", CenterSpec("void", Void, None, False, False, None)),
       #("x", CenterSpec("stairs", Stairs, None, False, False, Some("stairs"))),
       #(
-        "h",
-        CenterSpec(
-          "helm_console",
-          Floor,
-          Some("helm"),
-          False,
-          False,
-          Some("console_helm"),
-        ),
-      ),
-      #(
-        "c",
-        CenterSpec(
-          "cargo_console",
-          Floor,
-          Some("cargo"),
-          False,
-          False,
-          Some("console_cargo"),
-        ),
-      ),
-      #(
-        "b",
-        CenterSpec(
-          "broker_console",
-          Floor,
-          Some("broker"),
-          False,
-          False,
-          Some("console_broker"),
-        ),
-      ),
-      #(
         "Q",
         CenterSpec(
           "docking_port",
@@ -295,13 +283,44 @@ pub fn default() -> Registry {
           Some("cargo_pallet"),
         ),
       ),
+      #(
+        "f",
+        CenterSpec("fountain", Floor, None, False, False, Some("fountain")),
+      ),
+      #(
+        "l",
+        CenterSpec("flowerbed", Floor, None, False, False, Some("flowerbed")),
+      ),
+      #("t", CenterSpec("table", Floor, None, False, False, Some("table"))),
+      #(
+        "g",
+        CenterSpec("hydroponic", Floor, None, False, False, Some("hydroponic")),
+      ),
     ]),
     edges: dict.from_list([
-      #(" ", EdgeSpec("open", Open, None)),
-      #("#", EdgeSpec("wall", Wall, Some("wall"))),
-      #("=", EdgeSpec("door", Door, Some("door"))),
-      #("v", EdgeSpec("viewscreen", Fixture, Some("viewscreen"))),
-      #("w", EdgeSpec("window", Fixture, Some("window"))),
+      #(" ", EdgeSpec("open", Open, None, None)),
+      #("#", EdgeSpec("wall", Wall, None, Some("wall"))),
+      #("=", EdgeSpec("door", Door, None, Some("door"))),
+      #("v", EdgeSpec("viewscreen", Fixture, None, Some("viewscreen"))),
+      #("w", EdgeSpec("window", Fixture, None, Some("window"))),
+      #(
+        "h",
+        EdgeSpec("helm_console", Fixture, Some("helm"), Some("console_helm")),
+      ),
+      #(
+        "c",
+        EdgeSpec("cargo_console", Fixture, Some("cargo"), Some("console_cargo")),
+      ),
+      #(
+        "b",
+        EdgeSpec(
+          "broker_console",
+          Fixture,
+          Some("broker"),
+          Some("console_broker"),
+        ),
+      ),
+      #("d", EdgeSpec("bunk", Fixture, None, Some("bunk"))),
     ]),
   )
 }
@@ -338,6 +357,7 @@ fn encode_edge(entry: #(String, EdgeSpec)) -> Json {
     #("glyph", json.string(glyph)),
     #("id", json.string(spec.id)),
     #("kind", json.string(edge_kind_name(spec.kind))),
+    #("console", json.nullable(spec.console, json.string)),
     #("sprite", json.nullable(spec.sprite, json.string)),
   ])
 }

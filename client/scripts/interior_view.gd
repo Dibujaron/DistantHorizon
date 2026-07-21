@@ -45,6 +45,8 @@ const FONT_SIZE := 16  # Jersey 15 diegetic slot (UiTheme)
 
 const WALL_PX := 14.0
 
+const TREE_NEIGHBORS := 3  # min same-type orthogonal neighbours before a flowerbed cell can become a tree (lever)
+
 ## #20: the open deck reads as one continuous surface. A flat FLOOR_COLOR fill
 ## under every tile is seamless (neighbours share the colour); the plate
 ## texture is only whispered back on top at this alpha, so the old per-tile
@@ -162,6 +164,7 @@ func _draw() -> void:
 	_refresh_los()
 	_update_backdrops(origin)
 	_draw_floor(origin)
+	_draw_stairs(origin)
 	_draw_decor(origin)
 	_draw_structure(origin)
 	_draw_signage(origin)
@@ -301,6 +304,52 @@ func _draw_floor(origin: Vector2) -> void:
 						Color(1, 1, 1, FLOOR_TEXTURE_ALPHA))
 
 
+## Hatchway art (#36 Task 3): a Stairs tile renders as an up-chevron,
+## down-chevron, or both, derived from which vertically-adjacent decks it
+## actually connects to (void-skip scan, mirrors the server's stairs_target
+## rule) rather than any authored direction. An isolated Stairs tile (neither
+## direction connects — e.g. authored but the neighbour deck lacks a match)
+## falls back to plain floor rather than drawing a misleading glyph.
+func _draw_stairs(origin: Vector2) -> void:
+	var g := _deck()
+	if g == null:
+		return
+	for ty in _grid_h():
+		for tx in _grid_w():
+			if not _vis(tx, ty):
+				continue
+			if g.tile_at(tx, ty) != ShipClassData.Tile.STAIRS:
+				continue
+			var has_down := ship_class.stairs_leads(view_deck, 1, tx, ty)
+			var has_up := ship_class.stairs_leads(view_deck, -1, tx, ty)
+			if not has_down and not has_up:
+				continue  # isolated stair — reads as plain floor, as before
+			var name := "stairs_updown"
+			if has_up and not has_down:
+				name = "stairs_up"
+			elif has_down and not has_up:
+				name = "stairs_down"
+			var tex: Texture2D = _lib.interior(name)
+			if tex == null:
+				continue  # graceful: plain floor already drawn
+			var pos := _tile_to_screen(Vector2(tx, ty), origin)
+			var tint := _tile_tint(ship_class.color_at(view_deck, tx, ty), "x", false)
+			draw_texture_rect(tex, Rect2(pos, Vector2(TILE_PIXELS, TILE_PIXELS)), false, tint)
+
+
+## The palette tint for a tile's decor/fixture: the tile's own NE-corner colour
+## if it has one, else the glyph's default colour (so decor reads in colour, not
+## pale greyscale), else white (untinted). `is_edge` picks the edge-glyph default
+## table (wall fixtures) vs the centre one.
+func _tile_tint(slot: int, glyph: String, is_edge: bool) -> Color:
+	var reg: GlyphRegistry = NetworkClient.glyphs
+	if slot < 0 and reg != null:
+		slot = reg.default_edge_color(glyph) if is_edge else reg.default_center_color(glyph)
+	if slot >= 0 and NetworkClient.palette != null:
+		return NetworkClient.palette.color(slot)
+	return Color.WHITE
+
+
 ## Decor (deck-plan v3.1): a decorative centre glyph (rug/seat/bed/pallet …)
 ## renders its sprite, tinted by the tile's NE-corner palette colour. Decor
 ## art doesn't exist yet, so a missing sprite falls back to a centred tinted
@@ -316,19 +365,71 @@ func _draw_decor(origin: Vector2) -> void:
 			var glyph := ship_class.decor_at(view_deck, tx, ty)
 			if glyph == "":
 				continue
-			var slot := ship_class.color_at(view_deck, tx, ty)
-			var tint := NetworkClient.palette.color(slot) if slot >= 0 \
-				and NetworkClient.palette != null else Color.WHITE
+			var tint := _tile_tint(ship_class.color_at(view_deck, tx, ty), glyph, false)
 			var pos := _tile_to_screen(Vector2(tx, ty), origin)
-			var sprite_id := reg.sprite_for_glyph(glyph)
+			var sprite_id := ""
+			var quarter := 0  # 90°-clockwise turns for the draw (0 = axis-aligned, today's look)
+			if glyph == "f":  # fountain: merge adjacent fountains via neighbour mask
+				var mask := InteriorNeighbors.mask4(_deck(), tx, ty, glyph)
+				sprite_id = "fountain" + InteriorNeighbors.autotile_suffix(mask)
+				if _lib.interior(sprite_id) == null:
+					sprite_id = "fountain"  # fall back to base piece if the suffix art is absent
+			elif glyph == "l":  # flowerbed: plants, trees where beds combine
+				var mask := InteriorNeighbors.mask4(_deck(), tx, ty, glyph)
+				var neighbours := InteriorNeighbors.popcount(mask)
+				var h := InteriorNeighbors.interior_hash(view_deck, tx, ty)
+				match InteriorNeighbors.plant_variant(neighbours, h, TREE_NEIGHBORS, true):
+					"tree": sprite_id = "tree"
+					"plant": sprite_id = "plant"
+					_: sprite_id = "flowerbed"
+			elif glyph == "t":  # table: merge adjacent tables via neighbour mask (same shape as fountain)
+				var mask := InteriorNeighbors.mask4(_deck(), tx, ty, glyph)
+				sprite_id = "table" + InteriorNeighbors.autotile_suffix(mask)
+				if _lib.interior(sprite_id) == null:
+					sprite_id = "table"  # fall back to base piece if the suffix art is absent
+			elif glyph == "g":  # hydroponic: planted trough; aesthetic, never trees
+				var mask := InteriorNeighbors.mask4(_deck(), tx, ty, glyph)
+				var neighbours := InteriorNeighbors.popcount(mask)
+				var h := InteriorNeighbors.interior_hash(view_deck, tx, ty)
+				# TODO(#food): hydroponic tiles are the future fresh-food source;
+				# a food system can enumerate 'g' decor cells (this is the seam)
+				# without touching this render code.
+				match InteriorNeighbors.plant_variant(neighbours, h, TREE_NEIGHBORS, false):
+					"plant": sprite_id = "hydro_plant"
+					_: sprite_id = "hydroponic"
+			elif glyph == "e":  # seat: turn to face an adjacent table (deterministic priority N,E,S,W)
+				sprite_id = reg.sprite_for_center_glyph(glyph)  # "seat"
+				# face_toward: 0=N,1=E,2=S,3=W, or -1 with no adjacent table. The
+				# seat's quarter==0 art is authored front-facing NORTH, so quarter
+				# is just the face index (clockwise turns to bring the front to
+				# face E/S/W); no adjacent table leaves it unrotated (today's look).
+				var face := InteriorNeighbors.face_toward(_deck(), tx, ty, "t")
+				quarter = face if face >= 0 else 0
+			else:
+				sprite_id = reg.sprite_for_center_glyph(glyph)
 			var tex: Texture2D = _lib.interior(sprite_id) if sprite_id != "" else null
 			if tex != null:
-				draw_texture_rect(tex, Rect2(pos, Vector2(TILE_PIXELS, TILE_PIXELS)), false, tint)
+				_draw_decor_tex(tex, pos, quarter, tint)
 			else:
 				# Placeholder until decor art exists: a centred tinted swatch.
 				var m := TILE_PIXELS * 0.22
 				draw_rect(Rect2(pos + Vector2(m, m), Vector2(TILE_PIXELS - 2 * m, TILE_PIXELS - 2 * m)),
-					tint if slot >= 0 else Color(0.6, 0.6, 0.65), true)
+					tint if tint != Color.WHITE else Color(0.6, 0.6, 0.65), true)
+
+
+## Draw a decor texture at `pos` (tile top-left), rotated `quarter` * 90°
+## clockwise about the tile centre, modulated by `tint`. quarter 0 is the
+## plain axis-aligned draw (identical to the old direct draw_texture_rect
+## call) -- every decor glyph except a table-facing seat always passes 0, so
+## this is a no-op for them.
+func _draw_decor_tex(tex: Texture2D, pos: Vector2, quarter: int, tint: Color) -> void:
+	if quarter == 0:
+		draw_texture_rect(tex, Rect2(pos, Vector2(TILE_PIXELS, TILE_PIXELS)), false, tint)
+		return
+	var half := Vector2(TILE_PIXELS, TILE_PIXELS) * 0.5
+	draw_set_transform(pos + half, quarter * PI / 2.0, Vector2.ONE)
+	draw_texture_rect(tex, Rect2(-half, Vector2(TILE_PIXELS, TILE_PIXELS)), false, tint)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)  # reset canvas transform
 
 
 ## Walls and doors from the per-edge tile data (#19/#20). Each visible floor
@@ -354,7 +455,12 @@ func _draw_structure(origin: Vector2) -> void:
 				if kind == ShipClassData.Edge.DOOR:
 					_draw_edge_door(pos, dir)
 				else:
-					_draw_edge_wall(pos, dir, wall_tex, _fixture_tex(reg, tx, ty, dir))
+					var ftex := _fixture_tex(reg, tx, ty, dir)
+					var ftint := Color.WHITE
+					if ftex != null:
+						var fch := _fixture_ch(_deck(), tx, ty, dir)
+						ftint = _tile_tint(ship_class.color_at(view_deck, tx, ty), fch, true)
+					_draw_edge_wall(pos, dir, wall_tex, ftex, ftint)
 			_draw_wall_corners(pos, tx, ty)
 
 
@@ -393,10 +499,12 @@ func _begin_edge(pos: Vector2, dir: int) -> void:
 ## wall strip instead of a plain plate; `fixture_tex` is null for a plain WALL
 ## edge, or when the registry has no sprite for the fixture glyph yet — either
 ## way this falls back to `wall_tex` (today's look).
-func _draw_edge_wall(pos: Vector2, dir: int, wall_tex: Texture2D, fixture_tex: Texture2D = null) -> void:
+func _draw_edge_wall(pos: Vector2, dir: int, wall_tex: Texture2D, fixture_tex: Texture2D = null, tint: Color = Color.WHITE) -> void:
 	_begin_edge(pos, dir)
 	var tex := fixture_tex if fixture_tex != null else wall_tex
-	draw_texture_rect(tex, Rect2(Vector2.ZERO, Vector2(TILE_PIXELS, WALL_PX)), false)
+	# Only a fixture takes the tint; a plain wall plate stays untinted.
+	var mod := tint if fixture_tex != null else Color.WHITE
+	draw_texture_rect(tex, Rect2(Vector2.ZERO, Vector2(TILE_PIXELS, WALL_PX)), false, mod)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
@@ -411,14 +519,23 @@ func _fixture_tex(reg: GlyphRegistry, tx: int, ty: int, dir: int) -> Texture2D:
 	var g := _deck()
 	if g == null:
 		return null
+	var ch := _fixture_ch(g, tx, ty, dir)
+	if ch == "":
+		return null
+	var sprite_id := reg.sprite_for_edge_glyph(ch)
+	return _lib.interior(sprite_id) if sprite_id != "" else null
+
+
+## The raw fixture glyph on the boundary of tile (tx,ty) toward `dir`, or "" for
+## a plain wall. The double-wall model means it may live on either facing side.
+func _fixture_ch(g, tx: int, ty: int, dir: int) -> String:
+	if g == null:
+		return ""
 	var d: Vector2i = ShipClassData.EDGE_DELTAS[dir]
 	var ch: String = str(g.fixtures.get("%d,%d,%d" % [tx, ty, dir], ""))
 	if ch == "":
 		ch = str(g.fixtures.get("%d,%d,%d" % [tx + d.x, ty + d.y, (dir + 2) % 4], ""))
-	if ch == "":
-		return null
-	var sprite_id := reg.sprite_for_glyph(ch)
-	return _lib.interior(sprite_id) if sprite_id != "" else null
+	return ch
 
 
 ## A hatch in the same strip footprint as a wall: recessed threshold, two
@@ -545,6 +662,11 @@ func _draw_consoles(origin: Vector2) -> void:
 	for console in ship_class.consoles:
 		if console.deck != view_deck:
 			continue  # a console on another deck is under/over this floor
+		# Helm/cargo/broker consoles are wall-mounted (edge fixtures) and draw
+		# on the wall strip via the fixture path; don't also centre-draw them.
+		# (dock stays a centre airlock pictogram.)
+		if console.kind == "helm" or console.kind == "cargo" or console.kind == "broker":
+			continue
 		var center := _tile_to_screen(console.tile_center(), origin)
 		var sprite_id := "" if reg == null else reg.sprite_for_console(console.kind)
 		# A docking port is an airlock hatch, not a console desk.
