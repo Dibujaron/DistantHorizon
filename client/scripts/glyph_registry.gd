@@ -37,6 +37,16 @@ var center_sprite_by_glyph: Dictionary = {}
 ## separate dict rather than shared.
 var edge_sprite_by_glyph: Dictionary = {}
 
+## Centre glyph -> default palette slot (0-15), read from each entry's
+## optional `color` field (server/glyphs.json). Only glyphs that carry a
+## `color` are present; see `default_center_color`.
+var center_color_by_glyph: Dictionary = {}
+
+## Edge glyph -> default palette slot (0-15), read from each entry's
+## optional `color` field. Only glyphs that carry a `color` are present; see
+## `default_edge_color`.
+var edge_color_by_glyph: Dictionary = {}
+
 
 static func from_dict(data: Variant) -> GlyphRegistry:
 	var reg := GlyphRegistry.new()
@@ -55,6 +65,9 @@ static func from_dict(data: Variant) -> GlyphRegistry:
 				if str(tile) == "floor" and console == null \
 						and dock != true and spawn != true and sprite != null:
 					reg._decor_glyphs[str(c.get("glyph", ""))] = true
+				var ccolor: Variant = c.get("color")
+				if ccolor != null:
+					reg.center_color_by_glyph[str(c.get("glyph", ""))] = int(ccolor)
 		# Edge-defined console kinds (T8/T9, issue #36) also resolve via
 		# sprite_for_console, future-proofing for a wall-only console glyph.
 		for e: Variant in data.get("edges", []):
@@ -63,6 +76,9 @@ static func from_dict(data: Variant) -> GlyphRegistry:
 				var esprite: Variant = e.get("sprite")
 				if econsole != null and esprite != null:
 					reg.console_sprite[str(econsole)] = str(esprite)
+				var ecolor: Variant = e.get("color")
+				if ecolor != null:
+					reg.edge_color_by_glyph[str(e.get("glyph", ""))] = int(ecolor)
 	return reg
 
 
@@ -103,26 +119,11 @@ func sprite_for_edge_glyph(glyph: String) -> String:
 
 ## Default palette slot (0-15) for a decor/fixture glyph, used to tint a tile
 ## that carries no NE-corner colour of its own so decor reads in colour instead
-## of pale greyscale. -1 = no default (drawn untinted). First-pass CLIENT-SIDE
-## defaults; TODO(#36): promote to a `color` field in glyphs.json so they're
-## authorable/moddable like sprite ids. Slots index colors.json (0 white … 15
-## black): 1 orange, 3 light_blue, 5 lime, 8 light_gray, 9 cyan, 12 brown,
-## 13 green, 14 red.
-const _DEFAULT_CENTER_COLOR := {
-	"r": 14, "e": 12, "p": 12,           # rug, seat, cargo pallet
-	"f": 3, "l": 13, "g": 5, "t": 12,    # fountain, flowerbed, hydroponic, table
-	"x": 8,                              # stairs
-	# bed `d` deliberately absent: its sprite bakes red covers + white pillow,
-	# so it draws untinted (an NE-corner colour still overrides).
-}
-const _DEFAULT_EDGE_COLOR := {
-	"w": 3, "v": 9,                      # window, viewscreen
-	"h": 9, "c": 1, "b": 5,             # helm, cargo, broker consoles
-	# bunk `d` absent for the same reason as the floor bed.
-}
-
+## of pale greyscale. -1 = no default (drawn untinted). Data-driven from each
+## glyph's optional `color` field (server/glyphs.json), issue #36 follow-up —
+## authorable/moddable like sprite ids, instead of a hard-coded client table.
 func default_center_color(glyph: String) -> int:
-	return int(_DEFAULT_CENTER_COLOR.get(glyph, -1))
+	return int(center_color_by_glyph.get(glyph, -1))
 
 func default_edge_color(glyph: String) -> int:
-	return int(_DEFAULT_EDGE_COLOR.get(glyph, -1))
+	return int(edge_color_by_glyph.get(glyph, -1))

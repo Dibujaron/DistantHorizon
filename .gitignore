@@ -3,3 +3,4 @@ harness/out/
 
 # generated walk-cycle contact sheets (debug artifact from the baker)
 client/assets/characters/*_sheet.png
+tools/__pycache__/
