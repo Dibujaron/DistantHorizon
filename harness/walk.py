@@ -74,8 +74,15 @@ async def _follow(client, space: str, path: list[tuple[int, int]], max_frames: i
 async def walk_to_console(client, space: str, plan: dict, console_id: str) -> None:
     """Drive the (already-standing) character to console_id's tile, then stop.
     `plan` is the composite the server handed this client via `space`."""
-    walkers = await client.next_walkers(space)
-    me = client.character_in(walkers, client.character_id)
+    me = None
+    frames = 0
+    while me is None:
+        walkers = await client.next_walkers(space)
+        me = client.character_in(walkers, client.character_id)
+        if me is None:
+            frames += 1
+            if frames > 2000:
+                raise AssertionError(f"character {client.character_id} never appeared in {space} walkers")
     start = (int(me.x // 1), int(me.y // 1))
     goal = console_tile(plan, console_id)
     path = find_path(plan, start, goal)
