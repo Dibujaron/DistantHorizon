@@ -226,7 +226,9 @@ func _dump_state() -> Dictionary:
 	if own_ship != null:
 		state["ship_x"] = own_ship.x
 		state["ship_y"] = own_ship.y
-		state["ship_heading"] = own_ship.heading
+		# ShipState.heading is radians (Godot-native); report DEGREES to match
+		# the wire and the rest of the angle-reporting surface.
+		state["ship_heading"] = rad_to_deg(own_ship.heading)
 		state["ship_speed"] = own_ship.velocity().length()
 		# null while flying free, matching the wire protocol's `docked` field.
 		state["ship_docked"] = own_ship.docked_at if own_ship.is_docked() else null

@@ -5,7 +5,8 @@
 //// `DH_SHIP_CLASS`); every ship in the sim is spawned from the same loaded
 //// `ShipClass`. The whole document is sent verbatim to clients as
 //// `ship_class` in the `welcome` message, so `encode` round-trips exactly
-//// what was loaded.
+//// what was loaded. Angles are degrees throughout (config, wire, in memory);
+//// only the live `heading` and `cos`/`sin` work in radians.
 
 import dh_server/deckplan.{type Console, type DeckPlan}
 import dh_server/glyphs.{type Registry}
@@ -24,11 +25,12 @@ pub type Handling {
   Container
 }
 
-/// The default ship docking-port normal, ship-local radians (0 = nose/+x):
-/// pi/2 = the port flank. A hull with this port moors side-on — the M3.5
-/// look. This is the canonical default fed into `world.moored_heading` for a
-/// class that doesn't author its own `dock_port_orientation`.
-pub const default_dock_port_orientation = 1.5707963267948966
+/// The default ship docking-port normal, ship-local DEGREES (0 = nose/+x):
+/// 90 = the port flank. A hull with this port moors side-on — the M3.5
+/// look. This is the canonical default fed (via `angle.deg_to_rad`) into
+/// `world.moored_heading` for a class that doesn't author its own
+/// `dock_port_orientation`.
+pub const default_dock_port_orientation_deg = 90.0
 
 /// The default moored standoff, in tiles (= metres): how far this hull's centre
 /// sits off the berth's mooring line, along the berth's outward normal. There
@@ -46,11 +48,11 @@ pub type ShipClass {
     /// Hold size in cargo units.
     cargo_capacity: Int,
     handling: Handling,
-    /// This hull's docking-port outward normal in its OWN frame (ship-local
-    /// radians, 0 = nose/+x). The station berth's `orientation` and this
-    /// value together fix the moored heading (`world.moored_heading`), so a
-    /// hull can dock side-on (pi/2, the default — port flank to the gangway),
-    /// nose-in (0), etc., instead of the old hardcoded side-on (issue #14).
+    /// This hull's docking-port outward normal in its OWN frame, in DEGREES
+    /// (0 = nose/+x). The station berth's `orientation` and this value together
+    /// fix the moored heading (`world.moored_heading`), so a hull can dock
+    /// side-on (90°, the default — port flank to the gangway), nose-in (0°),
+    /// etc., instead of the old hardcoded side-on (issue #14).
     dock_port_orientation: Float,
     /// How far this hull's centre stands off the berth mooring line, in tiles
     /// (= metres), along the berth's outward normal — the per-ship half of the
@@ -156,7 +158,7 @@ fn ship_class_decoder(reg: Registry) -> decode.Decoder(ShipClass) {
   use cargo <- decode.field("cargo", cargo_decoder())
   use dock_port_orientation <- decode.optional_field(
     "dock_port_orientation",
-    default_dock_port_orientation,
+    default_dock_port_orientation_deg,
     decode.float,
   )
   use dock_standoff <- decode.optional_field(

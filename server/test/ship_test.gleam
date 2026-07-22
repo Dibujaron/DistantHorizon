@@ -128,7 +128,8 @@ pub fn full_rotate_turns_heading_by_turn_rate_test() {
     flying_ship(50_000.0, 50_000.0, 0.0, 0.0)
     |> ship.set_controls(1.0, 0.0)
   let after = run_ticks(ship, w, 60)
-  assert close(after.heading, 3.0, 0.01)
+  // 60 ticks = 1 s at full rotate, so heading advances by exactly turn_rate.
+  assert close(after.heading, ship.turn_rate, 0.01)
 }
 
 pub fn set_controls_clamps_test() {
@@ -145,7 +146,7 @@ pub fn spawn_docked_pins_to_spawn_station_test() {
       w,
       0.0,
       0,
-      shipclass.default_dock_port_orientation,
+      shipclass.default_dock_port_orientation_deg,
       shipclass.default_dock_standoff,
     )
   let #(sx, sy) = world.station_position(w, "s1", 0.0)
@@ -162,7 +163,7 @@ pub fn docked_ship_stays_pinned_while_station_moves_test() {
       w,
       0.0,
       0,
-      shipclass.default_dock_port_orientation,
+      shipclass.default_dock_port_orientation_deg,
       shipclass.default_dock_standoff,
     )
   let final_t = 100.0 *. ship.dt
@@ -184,7 +185,7 @@ pub fn try_dock_succeeds_in_range_at_low_speed_test() {
       w,
       0.0,
       fn(_) { Ok(0) },
-      shipclass.default_dock_port_orientation,
+      shipclass.default_dock_port_orientation_deg,
       shipclass.default_dock_standoff,
     )
   assert docked.dock == Docked("s1", 0)
@@ -204,7 +205,7 @@ pub fn try_dock_zeroes_controls_test() {
       w,
       0.0,
       fn(_) { Ok(0) },
-      shipclass.default_dock_port_orientation,
+      shipclass.default_dock_port_orientation_deg,
       shipclass.default_dock_standoff,
     )
   assert docked.controls == Controls(rotate: 0.0, thrust: 0.0)
@@ -218,7 +219,7 @@ pub fn try_dock_fails_out_of_range_test() {
       w,
       0.0,
       fn(_) { Ok(0) },
-      shipclass.default_dock_port_orientation,
+      shipclass.default_dock_port_orientation_deg,
       shipclass.default_dock_standoff,
     )
     == Error("out_of_range")
@@ -232,7 +233,7 @@ pub fn try_dock_fails_too_fast_test() {
       w,
       0.0,
       fn(_) { Ok(0) },
-      shipclass.default_dock_port_orientation,
+      shipclass.default_dock_port_orientation_deg,
       shipclass.default_dock_standoff,
     )
     == Error("too_fast")
@@ -246,7 +247,7 @@ pub fn try_dock_fails_already_docked_test() {
       w,
       0.0,
       0,
-      shipclass.default_dock_port_orientation,
+      shipclass.default_dock_port_orientation_deg,
       shipclass.default_dock_standoff,
     )
   assert ship.try_dock(
@@ -254,7 +255,7 @@ pub fn try_dock_fails_already_docked_test() {
       w,
       0.0,
       fn(_) { Ok(0) },
-      shipclass.default_dock_port_orientation,
+      shipclass.default_dock_port_orientation_deg,
       shipclass.default_dock_standoff,
     )
     == Error("already_docked")
@@ -269,7 +270,7 @@ pub fn try_dock_forwards_berth_refusal_test() {
       w,
       0.0,
       fn(_) { Error("berths_full") },
-      shipclass.default_dock_port_orientation,
+      shipclass.default_dock_port_orientation_deg,
       shipclass.default_dock_standoff,
     )
     == Error("berths_full")
@@ -284,7 +285,7 @@ pub fn try_dock_records_claimed_berth_test() {
       w,
       0.0,
       fn(_) { Ok(2) },
-      shipclass.default_dock_port_orientation,
+      shipclass.default_dock_port_orientation_deg,
       shipclass.default_dock_standoff,
     )
   let assert Docked(_, berth) = docked.dock
@@ -301,7 +302,7 @@ pub fn undock_releases_ship_in_place_test() {
         w,
         0.0,
         0,
-        shipclass.default_dock_port_orientation,
+        shipclass.default_dock_port_orientation_deg,
         shipclass.default_dock_standoff,
       ),
       heading: 1.5,
@@ -335,7 +336,7 @@ pub fn spawn_docked_has_starting_wallet_and_empty_hold_test() {
       w,
       0.0,
       0,
-      shipclass.default_dock_port_orientation,
+      shipclass.default_dock_port_orientation_deg,
       shipclass.default_dock_standoff,
     )
   assert s.wallet == ship.starting_wallet
@@ -351,7 +352,7 @@ pub fn undock_blocked_mid_transfer_test() {
       w,
       0.0,
       0,
-      shipclass.default_dock_port_orientation,
+      shipclass.default_dock_port_orientation_deg,
       shipclass.default_dock_standoff,
     )
   let busy =

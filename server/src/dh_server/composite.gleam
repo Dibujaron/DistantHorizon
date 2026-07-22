@@ -34,7 +34,7 @@ pub const tube_length = 4
 
 /// A docking port on a concourse: the walkable stub tile a ship moors onto
 /// (`x`, `y`, composite frame, deck 0) and the port's outward normal
-/// `orientation` in world radians (y-up, 0 = +x/east). Derived from a `Q`
+/// `orientation` in world DEGREES (y-up, 0 = +x/east). Derived from a `Q`
 /// glyph in the concourse (issue #31): its tile is the berth, and the edge
 /// whose door faces void gives the orientation. The interior stitch (`build`)
 /// reads only x/y; `orientation` drives the moored space-side pose. The moored
@@ -44,9 +44,10 @@ pub type Berth {
   Berth(x: Int, y: Int, orientation: Float)
 }
 
-/// The side-on default port normal: north (+y), i.e. pi/2 radians. Callers
-/// that only have a tile (tests, unknown berths) default here.
-pub const default_orientation = 1.5707963267948966
+/// The side-on default port normal: north (+y), i.e. 90 DEGREES. Callers that
+/// only have a tile (tests, unknown berths) default here, converting to
+/// radians with `angle.deg_to_rad` at the point it enters the sim math.
+pub const default_orientation_deg = 90.0
 
 /// One docked ship to moor: its id, claimed berth index, and (unrotated,
 /// multi-deck) deck plan.

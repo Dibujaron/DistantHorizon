@@ -55,12 +55,12 @@ class Body:
 ## A station docking port, derived server-side from a `Q` glyph in the
 ## concourse (wire: the station's `berths`, issue #31). `tile` is the
 ## interior/composite berth tile; `orientation` is the port's outward normal in
-## world radians (y-up, 0 = +x/east). The moored hull's heading derives from
+## world degrees (y-up, 0 = +x/east). The moored hull's heading derives from
 ## these (#14); its exterior pose is drawn at the station sprite's own "berth"
 ## anchor (see world_view.gd), not from any wire anchor. Accepts the object form
 ## `{tile, orientation?}` and a bare `[x, y]` array.
 class Berth:
-	const DEFAULT_ORIENTATION := 1.5707963267948966  ## pi/2, north; server default
+	const DEFAULT_ORIENTATION := 90.0  ## degrees, north; server default
 
 	var tile: Vector2i
 	var orientation: float = DEFAULT_ORIENTATION
