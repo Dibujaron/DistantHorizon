@@ -115,6 +115,7 @@ def server():
     env.pop("DH_WORLD", None)  # use the server's own default world doc
     env["DATABASE_URL"] = UNREACHABLE_DATABASE_URL  # force accept-all; see module docstring
     env["DH_PORT"] = str(TEST_PORT)  # dedicated test port; see module docstring
+    env["DH_SHIP_CLASS"] = "shipclasses/sparrow.json"  # small stable test ship (#33)
 
     log_file = open(SERVER_LOG_PATH, "w", encoding="utf-8")
     proc = subprocess.Popen(
