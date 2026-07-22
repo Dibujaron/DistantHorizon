@@ -429,7 +429,7 @@ pub fn encode_cargo_sorts_hold_and_lists_transfers_test() {
       w,
       0.0,
       0,
-      shipclass.default_dock_port_orientation,
+      shipclass.default_dock_port_orientation_deg,
       shipclass.default_dock_standoff,
     )
   let s =

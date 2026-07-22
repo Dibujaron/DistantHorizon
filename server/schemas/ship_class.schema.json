@@ -43,7 +43,7 @@
     },
     "dock_port_orientation": {
       "type": "number",
-      "description": "Optional field (decode.optional_field, default pi/2). This hull's docking-port outward normal in its own frame (ship-local radians, 0 = nose/+x). pi/2 = port flank (side-on mooring, the default). Combined with a station berth's orientation to fix the moored heading (issue #14)."
+      "description": "Optional field (decode.optional_field, default 90). This hull's docking-port outward normal in its own frame, in DEGREES (0 = nose/+x). 90 = port flank (side-on mooring, the default). Combined with a station berth's orientation to fix the moored heading (issue #14)."
     },
     "dock_standoff": {
       "type": "number",

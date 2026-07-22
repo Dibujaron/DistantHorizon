@@ -323,7 +323,7 @@ pub fn station_berths_derive_from_q_glyphs_test() {
   // the berth, its north-facing void door gives the side-on orientation. No
   // authored anchor.
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  let o = composite.default_orientation
+  let o = composite.default_orientation_deg
   let assert Ok(meridian) = world.get_station(w, "meridian_highport")
   assert world.station_berths(meridian)
     == [
@@ -339,10 +339,9 @@ pub fn station_berths_derive_from_q_glyphs_test() {
 pub fn moored_heading_uses_ship_port_test() {
   let assert Ok(w) = world.load("worlds/m1_system.json")
   // The moored heading derives from the docking ship's own dock-port
-  // orientation: a nose-forward port (0.0) must NOT yield the same heading as
-  // the side-on default (pi/2), or the ship-port argument is being ignored.
-  let side_on =
-    world.moored_heading(w, "meridian_highport", 0, 1.5707963267948966)
+  // orientation: a nose-forward port (0°) must NOT yield the same heading as
+  // the side-on default (90°), or the ship-port argument is being ignored.
+  let side_on = world.moored_heading(w, "meridian_highport", 0, 90.0)
   let nose_in = world.moored_heading(w, "meridian_highport", 0, 0.0)
   assert side_on != nose_in
 }

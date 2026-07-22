@@ -8,7 +8,10 @@ var x: float
 var y: float
 var vx: float
 var vy: float
-var heading: float  ## radians, y-up counter-clockwise (wire convention)
+var heading: float  ## radians, y-up counter-clockwise. The wire sends DEGREES
+	## (readable, standardized with every other angle); we convert to radians
+	## once at decode so the renderer stays Godot-native (rotations,
+	## `lerp_angle`, `cos`/`sin` are all radians).
 var docked_at: String  ## station id, or "" while flying free
 ## Claimed berth index while docked, -1 while flying. Parks the moored hull
 ## at its own berth anchor — the same berth the server releases it at on
@@ -23,7 +26,7 @@ static func from_dict(data: Dictionary) -> ShipState:
 	ship.y = float(data.get("y", 0.0))
 	ship.vx = float(data.get("vx", 0.0))
 	ship.vy = float(data.get("vy", 0.0))
-	ship.heading = float(data.get("heading", 0.0))
+	ship.heading = deg_to_rad(float(data.get("heading", 0.0)))
 	var docked: Variant = data.get("docked")
 	ship.docked_at = "" if docked == null else str(docked)
 	var berth: Variant = data.get("berth")

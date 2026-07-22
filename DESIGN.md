@@ -672,20 +672,21 @@ what makes the game developable by agents rather than merely reviewable.
   consider including the minimal part-swap refit here (see Ship customization): the starter
   ship's fix-it-up arc (docs/lore.md, the Mockingbird) is the early game's tutorial and money
   sink, and it needs only "swap one module at a dock," not M7's refit depth.
-- **M5 — Small craft:** shuttle berthed in a freighter; launch, fly, recover; shuttle the crew
-  in to a congested station while the freighter holds at anchorage.
+- **M5 — Small craft:** shuttle berthed in a freighter; launch, fly, recover; 
+  Missiles and boarding (demo only for now, but critical). shuttle the crew in to a congested 
+  station while the freighter holds at anchorage (bonus; not critical).
 - **M6 — Living system:** autopilot module, NPC traders as ambient traffic, economy reacts to
   NPC + player trades; factions get teeth (brokers, reputation effects, control map visible in
-  concourses); first run events and broker contracts; shared-universe mode opens (multiple
-  crews, one world).
+  concourses); first run events and broker contracts (quest system wired in); 
+  shared-universe mode opens (multiple crews, one world).
 - **M6.5 — The audio pass:** the game's voice. An SFX floor first (engine hum, docking
   clunks, UI ticks — silence reads as broken), then the soundtrack. FTL is the bar and the
   scope warning both: Ben Prunty's score is half that game's personality, and it's one
   coherent voice, not a library of stock loops. The themes doc is the brief — loneliness and
   awe, sparse and patient and indifferent. The test: muting the game should feel like losing
-  a crew member.
+  a crew member.can w
 - **M7+ — Expansion:** passenger transport (first new career), refit/loadout depth, combat &
-  piracy, meta-progression content (hulls, scenarios), boarding, LLM characters — reprioritize
+  piracy, meta-progression content (hulls, scenarios), LLM characters — reprioritize
   when we get here.
 
 ## Open questions

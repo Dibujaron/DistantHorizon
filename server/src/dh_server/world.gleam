@@ -18,6 +18,7 @@
 //// flat (never blows up) inside the body. At the exact centre (r = 0) the
 //// direction is undefined and the body contributes nothing.
 
+import dh_server/angle
 import dh_server/composite
 import dh_server/deckplan
 import dh_server/stationclass.{type StationClass}
@@ -37,8 +38,6 @@ import simplifile
 pub const default_station_classes_dir = "stationclasses"
 
 const two_pi = 6.283185307179586
-
-const pi = 3.141592653589793
 
 pub type Orbit {
   Orbit(radius: Float, period_s: Float, phase: Float)
@@ -219,7 +218,7 @@ pub fn get_station(world: World, station_id: String) -> Result(Station, Nil) {
 
 /// A station's berths, derived from the `Q` docking-port glyphs in its
 /// concourse (issue #31): one berth per port, its tile the glyph's position and
-/// its `orientation` the world-radian direction of the edge whose door faces
+/// its `orientation` the world-degree direction of the edge whose door faces
 /// void. Empty if the station has no concourse or no ports. This is the single
 /// source of docking geometry — no separate authored list.
 pub fn station_berths(station: Station) -> List(composite.Berth) {
@@ -255,15 +254,15 @@ pub fn station_berth(
   }
 }
 
-/// The world-radian outward normal (y-up, 0 = +x/east) for a berth whose outer
-/// door faces `dir` in the concourse grid (y-down). North (a berth mouth open
-/// to the void above the concourse) yields pi/2 — the side-on look.
+/// The world outward normal (DEGREES, y-up, 0 = +x/east) for a berth whose
+/// outer door faces `dir` in the concourse grid (y-down). North (a berth mouth
+/// open to the void above the concourse) yields 90° — the side-on look.
 fn orientation_of(dir: deckplan.Dir) -> Float {
   case dir {
-    deckplan.N -> pi /. 2.0
+    deckplan.N -> 90.0
     deckplan.E -> 0.0
-    deckplan.S -> 0.0 -. pi /. 2.0
-    deckplan.W -> pi
+    deckplan.S -> -90.0
+    deckplan.W -> 180.0
   }
 }
 
@@ -292,8 +291,10 @@ pub fn moored_position(
     Ok(station), Ok(berth) -> {
       let #(w, h) = concourse_dims(station)
       let #(ox, oy) = berth_planar_offset(berth.x, berth.y, w, h)
-      let nx = cos(berth.orientation)
-      let ny = sin(berth.orientation)
+      // Berth orientation is degrees; `cos`/`sin` need radians.
+      let normal = angle.deg_to_rad(berth.orientation)
+      let nx = cos(normal)
+      let ny = sin(normal)
       #(cx +. ox +. nx *. standoff, cy +. oy +. ny *. standoff, vx, vy)
     }
     _, _ -> #(cx, cy, vx, vy)
@@ -322,12 +323,12 @@ fn berth_planar_offset(bx: Int, by: Int, w: Int, h: Int) -> #(Float, Float) {
   #(ox, oy)
 }
 
-/// The world heading a ship holds while moored in `berth_index` at
+/// The world heading (DEGREES) a ship holds while moored in `berth_index` at
 /// `station_id`: derived so the ship's docking port faces back into the
 /// station. From the berth's outward normal and the docking ship's own
-/// `ship_port` normal (its class `dock_port_orientation`, ship-local radians):
-/// `heading = berth.orientation + pi - ship_port`. The side-on case (berth
-/// north, port flank ship_port = pi/2) yields pi — nose west, M3.5's look.
+/// `ship_port` normal (its class `dock_port_orientation`, ship-local degrees):
+/// `heading = berth.orientation + 180 - ship_port`. The side-on case (berth
+/// north 90°, port flank ship_port 90°) yields 180° — nose west, M3.5's look.
 /// Unknown berths fall back to the default berth orientation. Replacing the
 /// client's and exterior's hardcoded side-on rotation, this is what generalises
 /// mooring to nose-in / arbitrary approaches (issue #14) and to ships whose
@@ -340,9 +341,9 @@ pub fn moored_heading(
 ) -> Float {
   let orientation = case station_berth(world, station_id, berth_index) {
     Ok(berth) -> berth.orientation
-    Error(Nil) -> composite.default_orientation
+    Error(Nil) -> composite.default_orientation_deg
   }
-  orientation +. pi -. ship_port
+  orientation +. 180.0 -. ship_port
 }
 
 /// Summed gravitational acceleration from every body with `mu > 0` at
@@ -646,7 +647,7 @@ fn encode_station(station: Station) -> Json {
   ])
 }
 
-/// A derived berth on the wire: its tile and outward orientation. The moored
+/// A derived berth on the wire: its tile and outward orientation (degrees). The moored
 /// pose is computed client-side (sprite anchors) and server-side
 /// (`moored_position`); there is no anchor to send.
 fn encode_berth(berth: composite.Berth) -> Json {

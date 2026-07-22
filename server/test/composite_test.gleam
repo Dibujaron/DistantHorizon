@@ -61,7 +61,7 @@ fn berths() -> List(composite.Berth) {
 }
 
 fn berth(x: Int, y: Int) -> composite.Berth {
-  Berth(x: x, y: y, orientation: composite.default_orientation)
+  Berth(x: x, y: y, orientation: composite.default_orientation_deg)
 }
 
 pub fn empty_composite_is_the_concourse_test() {

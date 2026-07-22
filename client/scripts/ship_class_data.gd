@@ -211,9 +211,9 @@ var spawn_tile: Vector2i = Vector2i.ZERO
 ## M3 cargo block (ship classes only; concourses leave these at 0/"").
 var cargo_capacity: int = 0
 var handling: String = ""
-## This hull's docking-port outward normal, ship-local radians (0 = nose/+x);
-## PI/2 = port flank (side-on mooring, the default).
-var dock_port_orientation: float = PI / 2.0
+## This hull's docking-port outward normal, ship-local degrees (0 = nose/+x);
+## 90 = port flank (side-on mooring, the default).
+var dock_port_orientation: float = 90.0
 
 
 static func from_dict(data: Dictionary) -> ShipClassData:
@@ -241,7 +241,7 @@ static func from_dict(data: Dictionary) -> ShipClassData:
 		doc.cargo_capacity = int(cargo.get("capacity", 0))
 		doc.handling = str(cargo.get("handling", ""))
 	doc.dock_port_orientation = float(
-		data.get("dock_port_orientation", PI / 2.0))
+		data.get("dock_port_orientation", 90.0))
 	return doc
 
 
