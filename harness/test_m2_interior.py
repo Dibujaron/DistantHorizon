@@ -36,11 +36,11 @@ give or take one 0.05-tile step.
 
 from __future__ import annotations
 
-import math
-
 import pytest
 
 from dh_client import CharacterView, DHClient
+from deckplan import circle_walkable, tile_walkable  # v3 (decks/glyph rows)
+from walk import console_tile, walk_to_console
 from test_m1_flight import (  # shared station-frame helpers
     TICK_RATE,
     rail_relative_displacement,
@@ -68,48 +68,10 @@ def _mooring_dx(space: dict, ship_id: int) -> int:
 
 
 def _helm_center(space: dict, ship_id: int) -> tuple[float, float]:
-    """Composite center of `ship_id`'s helm_main (ship-local tile (1, 2)),
-    from the mooring the server actually reports -- berth assignment is
-    seed-random among free berths, so this is never assumed."""
-    for mooring in space["moorings"]:
-        if mooring["ship_id"] == ship_id:
-            return (
-                float(mooring["dx"] + 1) + 0.5,
-                float(mooring["dy"] + 2) + 0.5,
-            )
-    raise AssertionError(f"ship {ship_id} not moored in space {space.get('space')!r}")
-
-
-# --- Deck-plan math (unchanged; runs against a plan dict -- a ship class doc
-# in the ship-local frame, or the composite `plan` from a `space` message) ---
-
-
-def tile_walkable(plan: dict, tx: int, ty: int) -> bool:
-    """Whether tile (tx, ty) is in bounds and walkable per the plan doc."""
-    grid = plan["grid"]
-    if not (0 <= tx < grid["width"] and 0 <= ty < grid["height"]):
-        return False
-    return plan["walkable"][ty][tx] == "#"
-
-
-def circle_walkable(plan: dict, cx: float, cy: float) -> bool:
-    """Whether every tile overlapped by the character collision circle at
-    (cx, cy) is walkable -- the server's own invariant for any standing
-    character position, recomputed client-side from the plan doc."""
-    tx0 = math.floor(cx - CHAR_RADIUS)
-    tx1 = math.floor(cx + CHAR_RADIUS)
-    ty0 = math.floor(cy - CHAR_RADIUS)
-    ty1 = math.floor(cy + CHAR_RADIUS)
-    for tx in range(tx0, tx1 + 1):
-        for ty in range(ty0, ty1 + 1):
-            closest_x = min(max(cx, float(tx)), float(tx) + 1.0)
-            closest_y = min(max(cy, float(ty)), float(ty) + 1.0)
-            dx = cx - closest_x
-            dy = cy - closest_y
-            overlaps = dx * dx + dy * dy <= CHAR_RADIUS * CHAR_RADIUS
-            if overlaps and not tile_walkable(plan, tx, ty):
-                return False
-    return True
+    """Composite centre of ship_id's helm, from the plan the server sent --
+    correct under the current CCW side-on mooring (no hardcoded rotation)."""
+    tx, ty = console_tile(space["plan"], f"s{ship_id}:helm")
+    return (tx + 0.5, ty + 0.5)
 
 
 # --- Stream-draining helpers (walkers twin of snapshot_after_ticks) ---
@@ -216,37 +178,35 @@ async def test_spawn_state(server):
 
         ship_class = welcome["ship_class"]
         assert client.ship_class == ship_class
-        assert ship_class["schema"] == 2
+        assert ship_class["schema"] == 3
         assert ship_class["id"] == "sparrow"
-        assert ship_class["grid"] == {"width": 10, "height": 6}
-        rows = ship_class["walkable"]
-        assert len(rows) == ship_class["grid"]["height"]
-        assert all(len(row) == ship_class["grid"]["width"] for row in rows)
-        assert ship_class["spawn_tile"] == [5, 4]
 
+        # v3: one flat deck of 3x3-glyph rows; consoles carry a deck index;
+        # spawn is {deck, tile}. helm (1,2) and cargo (6,1) are the fixture's.
+        assert len(ship_class["decks"]) == 1
         consoles = {c["id"]: c for c in ship_class["consoles"]}
-        assert consoles["helm_main"]["kind"] == "helm"
-        assert (consoles["helm_main"]["x"], consoles["helm_main"]["y"]) == (1, 2)
-        assert consoles["cargo_main"]["kind"] == "cargo"
-        assert (consoles["cargo_main"]["x"], consoles["cargo_main"]["y"]) == (6, 1)
-        # Class-doc invariants the client relies on for rendering/sitting.
-        for console in ship_class["consoles"]:
-            assert tile_walkable(ship_class, console["x"], console["y"])
-        assert tile_walkable(ship_class, *ship_class["spawn_tile"])
+        assert consoles["helm"]["kind"] == "helm"
+        assert (consoles["helm"]["x"], consoles["helm"]["y"]) == (1, 2)
+        assert consoles["cargo"]["kind"] == "cargo"
+        assert (consoles["cargo"]["x"], consoles["cargo"]["y"]) == (6, 1)
+        for c in ship_class["consoles"]:
+            assert tile_walkable(ship_class, c["x"], c["y"], c.get("deck", 0))
+        sd, (stx, sty) = ship_class["spawn"]["deck"], ship_class["spawn"]["tile"]
+        assert tile_walkable(ship_class, stx, sty, sd)
 
         # The space message names the spawn station's composite and seats us
         # at our own namespaced helm, offset by whichever berth free_berth
         # assigned (seed-random among free berths -- never assumed).
         space = await client.next_space()
         assert space["space"] == SPAWN_STATION_SPACE
-        assert space["you"]["seat"] == f"s{ship_id}:helm_main"
+        assert space["you"]["seat"] == f"s{ship_id}:helm"
         helm_x, helm_y = _helm_center(space, ship_id)
 
         walkers = await client.next_walkers(SPAWN_STATION_SPACE)
         me = client.character_in(walkers, client.character_id)
         assert me is not None
         assert me.name == "gale_spawn"
-        assert me.seat == f"s{ship_id}:helm_main"
+        assert me.seat == f"s{ship_id}:helm"
         assert me.x == pytest.approx(helm_x)
         assert me.y == pytest.approx(helm_y)
 
