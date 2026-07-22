@@ -684,7 +684,7 @@ what makes the game developable by agents rather than merely reviewable.
   scope warning both: Ben Prunty's score is half that game's personality, and it's one
   coherent voice, not a library of stock loops. The themes doc is the brief — loneliness and
   awe, sparse and patient and indifferent. The test: muting the game should feel like losing
-  a crew member.can w
+  a crew member.
 - **M7+ — Expansion:** passenger transport (first new career), refit/loadout depth, combat &
   piracy, meta-progression content (hulls, scenarios), LLM characters — reprioritize
   when we get here.
