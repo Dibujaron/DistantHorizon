@@ -125,13 +125,24 @@ something you build and spend within an evening, a story beat rather than a meta
 
 ## Panic
 
-The game should not reward panic or twitch behavior if possible. Games reinforce this human instinct badly, I think.
-In the modern world it's almost always best to take 30 seconds and think about a problem before you act on it. If possible, we
-should make the knee-jerk solution in a crisis the wrong one; the best solution should be the one you find by stopping to think.
-Put positively: crises should reward diagnosis and triage. FTL — already our inspiration — is secretly a pause-and-plan game wearing a
-real-time costume; that's the model. The paper-captain grace window (see ../DESIGN.md) is an example already in the design: your ship's
-legal person dies, and the winning move is not a frantic burn but thirty seconds of route math about which port can sell you a new
-signatory in time.
+The game should not reward *undue* panic or twitch behavior. Games reinforce this human instinct badly, I think.
+In the modern world it's almost always best to take 30 seconds and think about a problem before you act on it — and nearly every
+situation this game deals out is that kind of problem. For those, we should make the knee-jerk solution in a crisis the wrong one;
+the best solution should be the one you find by stopping to think. Put positively: crises should reward diagnosis and triage.
+FTL — already our inspiration — is secretly a pause-and-plan game wearing a real-time costume; that's the model. The paper-captain
+grace window (see ../DESIGN.md) is an example already in the design: your ship's legal person dies, and the winning move is not a
+frantic burn but thirty seconds of route math about which port can sell you a new signatory in time.
+
+But the honest version of this theme admits that some moments really are immediate. If somebody is shooting at you, urgently
+shooting back is good, actually. Combat is where the dial flips, and boarding is where it slams over: a boarding drone cutting
+through your airlock is the age-of-sail moment — the navy lieutenant waiting to go over the side onto an enemy deck, minutes of
+dread and then seconds of everything at once. We want that feeling, on both sides of the hatch.
+
+The rule that keeps both halves honest: **urgency must be real, never manufactured.** No alarm-noise fake pressure, no timers
+that punish thinking when the physics would allow it; a crisis's tempo is set by the actual speed of the actual thing — a
+missile's closing velocity, a torch's progress through your hatch, the interest clock. The skill the game rewards is *telling
+the difference*: reading whether this is a route-math problem or a shoot-back problem. Treating calm as crisis wastes fuel and
+money; treating crisis as calm is how you die in the black.
 
 ## Faith
 

@@ -47,7 +47,7 @@ shared-crew multiplayer.**
 | **Keep** | 2D top-down system view; planets-on-rails orbital mechanics; flip-and-burn Newtonian flight; station docking; commodity trading and dynamic economy |
 | **Drop** | The shared persistent universe (replaced by per-run generated worlds + persistent accounts/scores); the ~23-minute repeating universe cycle (`cycle.length.ticks`) and the script-recording/replay AI it existed to serve; the Python/Flask balancer; the website; MySQL |
 | **Add** | Run structure (mortgaged start → debt escape → retirement scoring); seed-deterministic world generation; data-driven content (worlds, ship classes, modules, stations — config files, not code); ship interiors (FTL-style deck view) with walkable crew characters; shared-ship crew multiplayer; walkable station concourses with faction brokers; cargo-handling as a physical, timed process; module-slot ship loadouts; run events and broker-contract quests; robot respawn / last-human death rules; detachable small craft (shuttles/snubs/tenders); real autopilot-driven NPC ships; Postgres for accounts/meta/resumable runs |
-| **Defer** | Passenger transport (likely the *first* new career — see Careers); combat & piracy (design toward them, don't build yet); boarding (principle settled — missiles destroy, boarders capture — build later); LLM-driven characters/missions |
+| **Defer** | Passenger transport (likely the *first* new career — see Careers); piracy as a *career* (the mechanics land early — M5 missiles and boarding, M5.5 the Sim — but piracy in the run world waits for the living system); LLM-driven characters/missions |
 
 Dropping the time-loop is a big simplification: Classic needed deterministic, cycle-aligned
 simulation so recorded AI scripts stayed valid. Without it, the sim no longer needs to be
@@ -133,14 +133,15 @@ permanent. Transit duration is therefore a *designed quantity*, not something a 
   wall-clock time. That's the baseline to keep — system scale, orbital spacing, and ship
   accelerations are tuned to preserve it, and it's what makes a 2–4 hour run hold a satisfying
   number of hops.
-- **Underway life is an honest design debt.** The pilot has the proven game; between M2 and M6,
+- **Underway life is an honest design debt.** The pilot has the proven game; between M2 and M7,
   everyone else is riding along. Some of that is genuinely fine — the interior as a social
   space carries real weight in co-op (Sea of Thieves runs largely on it), and a few-minute leg
   fills itself with trade planning at the cargo console, shuttle prep, and intercom chatter.
-  But the debt comes due at M6: events and contracts should create *mid-transit decisions*
-  (reroute for the rush delivery? abort the leg the embargo just closed?), and the deferred
-  seats — gunner above all — land in transit time too. If a second crew member has nothing to
-  do underway at M6, that's a failed milestone, not a shrug.
+  The gunner gets a real *game* early (the Sim, M5.5) but a *job* underway only when combat
+  reaches the run world. The debt comes due at M7: events and contracts should create
+  *mid-transit decisions* (reroute for the rush delivery? abort the leg the embargo just
+  closed?), and the deferred seats land in transit time too. If a second crew member has
+  nothing to do underway at M7, that's a failed milestone, not a shrug.
 
 ## Careers, not just trading
 
@@ -161,14 +162,22 @@ rich *this* run?"
   Engagements are therefore either split-second high-relative-velocity passes or
   matched-velocity standoffs, and the Pirates!/age-of-sail model suggests the payoff is
   submission and cargo, not destruction: force the victim to cut thrust, board or demand tribute.
-  Fuel and delta-v become the strategic currency of both sides. One principle *is* settled:
-  **missiles destroy, boarders capture.** You can kill a ship or a station from the gunner's
-  seat, but if you want it — hull, cargo, or the station itself — somebody has to board it. And
-  boarding falls out of the piloted-missile system almost for free: a boarding pod is the same
-  fly-it-in minigame, except you latch and breach instead of detonate, and then you're a
-  character in someone else's corridors. Boarding stays deferred as a *build* item, but it
-  shapes deck plans, small-craft berths, and the autopilot API now. The rest needs real design
-  work before it needs code.
+  Fuel and delta-v become the strategic currency of both sides. The weapons canon *is* settled:
+  **missiles destroy, boarders capture, and everything dangerous is remotely piloted.** A
+  missile is a drone with a warhead, flown by a human gunner from a console aboard the
+  launching ship — "you get another one" is meant literally; the missile dies, the gunner
+  doesn't. Boarding is the same system with a different terminal verb: a **boarding drone**
+  latches and breaches instead of detonating, and what walks the victim's corridors is the
+  operator's teleoperated chassis — your drone is a character in someone else's deck plan.
+  (Open: whether the drone captures alone or just opens the door for crew — see Open
+  questions.) **Conventional guns exist but are short-range** — point-defense and knife-fight
+  range, never a sniper's game — so the long-range duel is gunner-vs-gunner, piloted missiles
+  against point-defense, and closing to gun range is itself a commitment. You can kill a ship
+  or a station from the gunner's seat, but if you want it — hull, cargo, or the station
+  itself — something has to board it. Boarding stays deferred as a *build* item, but it shapes
+  deck plans, small-craft berths, and the autopilot API now. The rest of the engagement model
+  still needs design work — which is what the Sim (M5.5) is for: iterate combat in ten-minute
+  matches, not three-hour runs.
 
 ## Stations, factions, and cargo
 
@@ -365,7 +374,8 @@ tech with a frame that happens to be a station.
 
 The link between the scales is **consoles**: sitting at the helm console binds your inputs to the
 ship's exterior controls (and your camera to the system view); the engineering console will bind
-to power/repair systems (later); a turret seat binds to a weapon (much later). Getting out of your
+to damage-control drones (later — see the seat test); a gunnery console binds you to a remotely
+piloted missile (M5). Getting out of your
 chair unbinds you and returns you to your walking body. "Zoom" in the UI is really a view/control
 mode switch, presented as a smooth camera zoom.
 
@@ -383,13 +393,17 @@ grid, rooms, door graph), console placements, docking ports, and hangar berths f
   standalone minigame. This is the hard constraint on crew design, applied ruthlessly:
   - *Pilot* — passes; it's Classic's entire (proven) game.
   - *Gunner via piloted missiles* — passes, because it **is** the piloting minigame with a new
-    win condition: you fly the missile into the enemy ship until you blow up, then you get
-    another one. Point-defense turrets shooting down incoming piloted missiles then makes
-    gunner-vs-gunner a dogfight, not a DPS check.
+    win condition: you fly the missile into the enemy ship, it blows up, you get another one —
+    remotely, from a gunnery console aboard (see Careers; the gunner never leaves their seat).
+    Point-defense turrets shooting down incoming piloted missiles then makes gunner-vs-gunner
+    a dogfight, not a DPS check.
   - *Engineer as usually implemented* (route power, mop up fires, whack-a-mole repairs) —
     **fails**; it's a diner-dash minigame wearing a jumpsuit. We don't ship it just because FTL
-    has one. If engineering ever exists, it must have a genuinely interesting core loop we
-    haven't designed yet — until then, ships simply don't need an engineer.
+    has one. The first loop that might pass is the **drone foreman** (tentative): you don't
+    mop anything yourself — you direct several damage-control drones that work in parallel,
+    so the game is triage and prioritization under fire, not reflexes. Guns of Icarus's
+    engineer, promoted from wrench to foreman. The Sim (M5.5) is the testbed; until a loop
+    proves out there, ships simply don't need an engineer.
   - *Quartermaster/cargo* — the broker-and-loading side of the game, done on foot at stations;
     fine, because it doesn't pretend to be a combat seat.
 
@@ -468,6 +482,22 @@ The hull is the fixed part; what's inside is the loadout.
   but debt service is the sink now, and a few-hour run never wants a tile editor — so we skip
   per-instance layout persistence, server-side reachability validation, and the editor UI
   entirely.
+- **A module is a stamp on the plan and a part on the hull.** Installing a module rewrites its
+  slot's cells in the deck plan — the same per-cell vocabulary hull authors use — so a slot
+  *is* racks when racks are installed and cabins when it's cabins, and walking your own deck
+  tells you what she's rigged for. A module's interior is validated at module-design time (its
+  cells are self-consistent; its doors land where its placement constraints promise), so
+  loadout validation stays tag matching, never geometry analysis: the hull fixes the corridor
+  skeleton and the slot openings; the module guarantees its own insides.
+- **Exteriors decompose the same way.** A hull sprite is the parts-vocabulary composition
+  (M3.5's pipeline) plus **mount points**, and exterior-visible modules — engines above all,
+  the atmospheric fin package, eventually hardpoint weapons — contribute their own parts to
+  the composite. This is already canon: the starter Mockingbird's Consol center engine is
+  *visible* between the two Rijay originals, and swapping it out has to show on the hull.
+  Parts reuse across hulls within a manufacturer's design language (the Mockingbird's engines
+  can be the Finch's engines), so each new hull costs less as the parts library grows. Engine
+  modules also carry the flight stats — thrust and handling move out of global constants and
+  into the loadout, where they belong.
 - Two constraints make slots satisfying instead of a menu:
   - **Breadth:** enough module types, tiers, and per-module configuration options that a
     loadout is a creative act — picking a build should say something about your plan for the
@@ -491,13 +521,15 @@ The hull is the fixed part; what's inside is the loadout.
   Future hook, not design: if the role is what the transponder *claims*, spoofing it is a
   smuggling mechanic waiting to exist.
 
-  Start-of-run loadout choice covers the early game; full refit/loadout depth arrives with M7+.
-  One slice moves up, though: **replace-one-part-at-a-dock** should land with M4, because the
-  default starter ship is a repossessed Mockingbird badly patched with Consolidated fleet parts
-  (see docs/lore.md, Manufacturers), and swapping those patches out is the intended
-  module-system tutorial, an early money sink that competes with the loan clock, and the run's
-  first act of dignity (docs/themes.md, Competence). A single "swap this module for that one"
-  interaction — no catalog breadth, no reconfiguration UI — is enough for that arc.
+  Start-of-run loadout choice covers the early game; catalog *breadth* and per-module config
+  depth still arrive with M8+. But the module **engine** now lands whole at M4 (see
+  Milestones): the interior tech came in ahead of schedule — per-cell deck plans, a client
+  that renders whatever plan the server sends — and the previously planned halfway slice
+  ("swap one hardcoded part") would have needed nearly all the same plumbing as the real
+  thing. The repossessed Mockingbird's fix-it-up arc (docs/lore.md, Manufacturers) is still
+  the tutorial, the early money sink that competes with the loan clock, and the run's first
+  act of dignity (docs/themes.md, Competence) — it just runs on the real system from day one,
+  against a starter-sized catalog.
 
 Modules, hulls, and the matching between them are all declarative config — see "Content is
 data, not code" below.
@@ -516,8 +548,9 @@ its expansion is the cautionary tale).
 
 The core pattern is **provides/requires matching**:
 
-- A **hull** (ship class file) *provides*: envelope, mass, engine stats, the deck plan (tile
-  grid, rooms, door graph), a **power budget**, hardpoints by size, hangar berths.
+- A **hull** (ship class file) *provides*: envelope, mass, engine mounts, the deck plan (tile
+  grid, rooms, door graph), a **power budget**, hardpoints by size, hangar berths, and a
+  **crew capacity** (recommendation and limit — the Sim's team sizes derive from it).
 - A **module** (module file) *requires*: a footprint ("a 2×1 room"), placement constraints
   ("door on the short wall"), power ("3 units"), and declares its type plus that type's
   parameters (a `cargo_rack` with capacity, a `cabin` with berth count, a `console` with bound
@@ -660,34 +693,62 @@ what makes the game developable by agents rather than merely reviewable.
   organized into manufacturer design languages), station exteriors assembled from station
   data, an interior/concourse tileset that reads as a place instead of a grid, and a first
   HUD/UI skin. *Exit: a stranger watching thirty seconds of the M3 loop can tell what the
-  game wants to feel like.* Deliberately before M4: the milestone that makes it a game
-  shouldn't look like a prototype when it lands. (Audio is deliberately absent here — it
-  gets its own pass, M6.5.)
+  game wants to feel like.* Deliberately early: the milestone that makes it a game (the run,
+  M6) shouldn't look like a prototype when it lands. (Audio is deliberately absent here — it
+  gets its own pass, M7.5.)
   **✅ Done 2026-07-18**
-- **M4 — The run:** world generation from a seed; the debt clock (loan, interest, fees);
-  retirement and scoring; lobby flow for creating/joining/resuming runs; universe/run-state
-  persistence. Solo-universe only at first, but the universe/run split is built in here so
-  shared universes are a capacity flag later, not a rewrite. *This is the milestone that proves
-  the game as a game* — it's when "get rich before the bank gets you" first exists. Strongly
-  consider including the minimal part-swap refit here (see Ship customization): the starter
-  ship's fix-it-up arc (docs/lore.md, the Mockingbird) is the early game's tutorial and money
-  sink, and it needs only "swap one module at a dock," not M7's refit depth.
-- **M5 — Small craft:** shuttle berthed in a freighter; launch, fly, recover; 
-  Missiles and boarding (demo only for now, but critical). shuttle the crew in to a congested 
-  station while the freighter holds at anchorage (bonus; not critical).
-- **M6 — Living system:** autopilot module, NPC traders as ambient traffic, economy reacts to
+- **M4 — Modules for real:** the module engine, whole, riding the interior tech that came in
+  ahead of schedule: multi-hull registry (the Sparrow joins the Mockingbird), per-ship-instance
+  deck plans, provides/requires tag matching, modules as deck-plan stamps and exterior parts
+  (engines and the fin package first), flight stats moved from constants into hull + engine
+  data, refit-at-a-dock interaction, and a starter-sized catalog (~8–12 types: racks, cabins,
+  tanks, bunks, consoles, engines — enough for the Consol-patch arc and for one hull to read
+  Fast Packet or Freighter by loadout). Explicitly *not* in scope: catalog breadth, tiers,
+  config depth (M8+). *Exit: swap a Consol patch out at a dock and see the change — on the
+  deck and on the hull.*
+- **M5 — Small craft, missiles, boarding:** shuttle berthed in a freighter; launch, fly,
+  recover; the piloted missile as the same system with a warhead (remote gunnery console —
+  see Careers); the **boarding drone** for real — latch, breach, walk the target's corridors,
+  a capture verb; and the game's first damage model (hull integrity, ship destruction).
+  Missiles and *especially* boarding must work before the Sim — boarding is the high-score
+  win and the game's designed panic beat (docs/themes.md, Panic). Shuttling crew in to a
+  congested station stays a bonus, not critical. *Exit: the gunnery range — park a ship, fly
+  missiles into target hulks, then put a boarding drone through a hulk's airlock.*
+- **M5.5 — The Sim (deathmatch):** the first *game* built on missiles and boarding,
+  deliberately thin: lobby flow (create/join a match, crew up, pick hull + loadout),
+  disposable arena universes, 1v1 up to 3v3 *ships* — each ship crewed to its class's crew
+  capacity, so big hulls can put ~18 a side while a pair of Sparrows makes a duel — pilots
+  flying while gunners fly missiles, the first real test of several seats playing at once,
+  and the testbed for the drone-foreman engineering loop (see the seat test). Scoring: kills
+  win points; a **capture by boarding wins the match's real prize** — submission over
+  destruction, taught from the first mode. Diegetically it's **sim hours** (docs/lore.md,
+  Ships): spacers train like the mission specialists they descend from, so the mode is
+  in-fiction simulation — respawns explained, no arena-bloodsport canon, no death economics.
+  Hard rule: the Sim only builds infrastructure the run inherits (lobby, universe instancing,
+  crew joining, match end + scoring); anything the run would never use, the Sim doesn't get.
+  It's also the combat design lab: engagement tuning iterates in ten-minute matches instead
+  of three-hour runs. *Exit: two crews fight a 2v2, one ends it with a boarding action, and
+  both ask for a rematch.*
+- **M6 — The run:** world generation from a seed; the debt clock (loan, interest, fees);
+  retirement and scoring; universe/run-state persistence — landing on the Sim's
+  lobby/universe/crew layer rather than building its own. Solo-universe only at first, but
+  the universe/run split is built in here so shared universes are a capacity flag later, not
+  a rewrite. *This is the milestone that proves the game as a game* — it's when "get rich
+  before the bank gets you" first exists.
+- **M7 — Living system:** autopilot module, NPC traders as ambient traffic, economy reacts to
   NPC + player trades; factions get teeth (brokers, reputation effects, control map visible in
-  concourses); first run events and broker contracts (quest system wired in); 
+  concourses); first run events and broker contracts (quest system wired in);
   shared-universe mode opens (multiple crews, one world).
-- **M6.5 — The audio pass:** the game's voice. An SFX floor first (engine hum, docking
+- **M7.5 — The audio pass:** the game's voice. An SFX floor first (engine hum, docking
   clunks, UI ticks — silence reads as broken), then the soundtrack. FTL is the bar and the
   scope warning both: Ben Prunty's score is half that game's personality, and it's one
   coherent voice, not a library of stock loops. The themes doc is the brief — loneliness and
   awe, sparse and patient and indifferent. The test: muting the game should feel like losing
   a crew member.
-- **M7+ — Expansion:** passenger transport (first new career), refit/loadout depth, combat &
-  piracy, meta-progression content (hulls, scenarios), LLM characters — reprioritize
-  when we get here.
+- **M8+ — Expansion:** passenger transport (first new career), refit/loadout depth (catalog
+  breadth, tiers, per-module config), piracy as a career in the run world (the Sim proves the
+  mechanics; the career needs the living system), meta-progression content (hulls, scenarios),
+  LLM characters — reprioritize when we get here.
 
 ## Open questions
 
@@ -719,11 +780,16 @@ what makes the game developable by agents rather than merely reviewable.
   leaderboard enough at launch?
 - **Module catalog:** what's the actual module list, tier structure, and per-module config
   surface — and how do we tune for "taste over solvedness" (see Ship customization) in practice?
+- **Exterior composition at runtime:** module swaps must show on the hull (see Ship
+  customization). V1 direction: the client layers pre-rendered part sprites at hull mount
+  points — it's already fully data-driven — while the full composer stays an authoring-time
+  tool. Open: whether layering holds up under the lighting pipeline (normal/height maps are
+  per-part), or whether a refit needs a server-side re-bake.
 - **Race/lineage mechanics:** races are different-but-balanced, FTL-base-game style — simple,
   legible tradeoffs, never tiers (see docs/lore.md, Population). What are the actual axes
   (walk speed? EVA tolerance? console affinities?), and how do they interact with the seat
   test and Competence-Not-Power?
-- **Event & contract vocabulary:** which events exist at M6 (embargo, accident, strike, boom,
+- **Event & contract vocabulary:** which events exist at M7 (embargo, accident, strike, boom,
   …), how contracts are generated and priced from run state so they're tempting but fair, and
   how event frequency scales with run length.
 - **Congestion tuning:** how often berths should actually be contested (per station size and
@@ -738,10 +804,17 @@ what makes the game developable by agents rather than merely reviewable.
   also direct trade, crew transfer, and (once combat exists) piracy against each other? Does a
   shared universe have a lifespan of its own (a season that eventually winds down), and how are
   crews matched into one (public browser, friends-only, region)?
-- **Combat direction when it comes:** the physics sketch under Careers (delta-v contests,
-  high-velocity passes vs. matched-velocity standoffs, submission over destruction) plus piloted
-  missiles and boarding pods is a start, not a design. Punt the build, but keep deck plans and
-  the autopilot API combat-shaped.
+- **Combat direction:** the weapons canon is settled (remote-piloted missiles and boarding
+  drones, short-range guns — see Careers) and the Sim (M5.5) is the lab, but real opens
+  remain: point-defense manning (automated v1; when does a manned PD seat pass the seat
+  test?); netcode at missile closing velocities (15 Hz snapshots + extrapolation is proven
+  for trading, unproven for terminal approach — the M5 gunnery range is the cheap test);
+  whether a boarding drone captures alone or opens the door for crew (the Trust theme says
+  strangers crossing your airlock should be a big deal); where the attacker's
+  going-over-the-side dread comes from when the boarder is a teleoperated chassis (candidates:
+  closing to grapple range is mutual gun range, and a drone operator's attention is fully
+  committed — their own ship and body sit undefended while they fly the breach); and
+  engagement tuning so matches reward delta-v thinking, per Panic's real-urgency rule.
 - **Art pipeline:** procedural, parts-based vector art — hulls and station exteriors assembled
   from a drawn parts vocabulary by data + seed (the station-exterior plan, extended to ships),
   authored and iterated by agents through the screenshot loop, so nobody hand-pixel-arts every
@@ -752,8 +825,9 @@ what makes the game developable by agents rather than merely reviewable.
   established several manufacturers' looks, which carry over, plus a few new ones. A
   manufacturer is then a parts sub-vocabulary + palette, and "who built your ship" becomes
   visible at a glance.
-- **Is there an engineering game worth having?** Open challenge to future-us: find a core loop
-  for engineer that passes the seat test, or keep the role cut.
+- **Is there an engineering game worth having?** The drone-foreman loop (see the seat test) is
+  the current candidate: several damage-control drones working in parallel, so the seat is
+  triage and prioritization, not whack-a-mole. Prove it in the Sim, or keep the role cut.
 - **Planetside landing & the surface:** free flight over 2D terrain is a dead end and stays
   one — so what happens between "burn for the planet" and "standing on the pad"? Near-term
   answer (committed): landing is *docking* — a surface pad is a station whose berth requires
