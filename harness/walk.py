@@ -50,9 +50,16 @@ def _aim(dx: float, dy: float) -> tuple[float, float]:
         return (_sign(dx), 0.0) if ax > WAYPOINT_TOLERANCE else (0.0, _sign(dy))
     return (0.0, _sign(dy)) if ay > WAYPOINT_TOLERANCE else (_sign(dx), 0.0)
 
-async def _follow(client, space: str, path: list[tuple[int, int]], max_frames: int = 2000) -> None:
+async def _follow(client, space: str, path: list[tuple[int, int]], max_stall_frames: int = 150) -> None:
+    """Drive `move` input to follow `path` tile-by-tile. `max_stall_frames`
+    bounds NO-PROGRESS frames on a *single* waypoint (the counter resets each
+    time a waypoint is reached), not the whole walk -- so a genuine stall (the
+    collision circle wedged at a pinch, oscillating without advancing) fails
+    fast with the stuck tile named, instead of hanging until some whole-walk
+    cap and dropping the connection. A single 1-tile hop needs ~8 frames at
+    15 Hz; 150 is a wide margin over any legitimate approach."""
     i = 0
-    frames = 0
+    stall = 0
     while i < len(path):
         walkers = await client.next_walkers(space)
         me = client.character_in(walkers, client.character_id)
@@ -63,10 +70,14 @@ async def _follow(client, space: str, path: list[tuple[int, int]], max_frames: i
         dy = ty + 0.5 - me.y
         if abs(dx) < WAYPOINT_TOLERANCE and abs(dy) < WAYPOINT_TOLERANCE:
             i += 1
+            stall = 0
             continue
-        frames += 1
-        if frames > max_frames:
-            raise AssertionError(f"walk driver stalled before waypoint {path[i]} (at {me.x:.2f},{me.y:.2f})")
+        stall += 1
+        if stall > max_stall_frames:
+            raise AssertionError(
+                f"walk driver stalled at waypoint {i}/{len(path)} {path[i]} "
+                f"(char at {me.x:.2f},{me.y:.2f}); path={path}"
+            )
         mx, my = _aim(dx, dy)
         await client.move(mx, my)
     await client.move(0.0, 0.0)
