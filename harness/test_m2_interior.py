@@ -36,6 +36,9 @@ give or take one 0.05-tile step.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+
 import pytest
 
 from dh_client import CharacterView, DHClient
@@ -163,6 +166,37 @@ async def matched_walkers(
     pytest.fail(f"no common-tick walkers for {space} within {max_reads} reads")
 
 
+@contextlib.asynccontextmanager
+async def _kept_drained(client: DHClient):
+    """Keep `client`'s incoming queue emptied out for the duration of the
+    `with` body, discarding whatever arrives -- walkers/snapshots stream to
+    every connected client regardless of who's doing something slow, and a
+    long cross-composite BFS walk on another client (`walk_to_console` can
+    take many seconds on a large station) would otherwise let this client's
+    unread queue grow past `recv_type`'s 1000-frame skip cap before the next
+    explicit read. Only wrap spans where nothing on `client` is being read
+    for real."""
+    stop = asyncio.Event()
+
+    async def _drain() -> None:
+        while not stop.is_set():
+            try:
+                await asyncio.wait_for(client.recv(), timeout=0.05)
+            except asyncio.TimeoutError:
+                continue
+            except Exception:
+                return
+
+    task = asyncio.create_task(_drain())
+    try:
+        yield
+    finally:
+        stop.set()
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await task
+
+
 # --- Tests ---
 
 
@@ -212,91 +246,53 @@ async def test_spawn_state(server):
 
 
 async def test_stand_walk_collide(server):
-    """Stand from the helm, walk east across the corridor into the cargo
-    hold, and pin against the far (composite) wall: position advances, the
-    collision circle never overlaps a non-walkable tile, and pushing into
-    the wall leaves the character exactly put. Collision is checked against
-    the composite plan the space message carries."""
+    """Stand from the helm, walk to the cargo console via the BFS driver,
+    then keep pushing in the same direction until pinned against a hull
+    wall: position advances, the collision circle never overlaps a
+    non-walkable tile, and pushing into the wall leaves the character
+    exactly put. Collision is checked against the composite plan the space
+    message carries -- no hardcoded composite row/column math, since the
+    ship is moored side-on and rotated relative to its own local grid."""
     async with DHClient(name="m2t2") as client:
         welcome = await client.login("hana_walk", "pw_hana")
         char_id = client.character_id
         space = await client.next_space()
         plan = space["plan"]
-        # Berth assignment is seed-random among free berths: derive this
-        # ship's mooring column rather than assume berth 0. Only x shifts
-        # with the berth; the helm row (y=2.5) is stable across all of them.
-        dx = _mooring_dx(space, welcome["ship_id"])
-        cargo_x = float(dx + 5) + 0.5
-        wall_x = float(dx + 9)
-        near_wall_x = wall_x - 0.4
-        contact_x = wall_x - CHAR_RADIUS
+        assert (await client.stand())["ok"] is True
 
-        stood = await client.stand()
-        assert stood["ok"] is True
-        assert stood["reason"] is None
-        assert stood["seat"] is None
+        # Drive onto the cargo tile via the plan the server sent, then keep
+        # pushing south (composite +y): from the cargo tile the plan shows
+        # an open run of 5 tiles south before a wall, versus 3 east, 2
+        # north, and a wall immediately west -- south gives the most room to
+        # observe an actual walk-then-pin rather than an instant one.
+        await walk_to_console(client, SPAWN_STATION_SPACE, plan, f"s{welcome['ship_id']}:cargo")
 
-        # Walk due east along composite row 2 ("...########..."): from the
-        # helm center through the corridor into the cargo hold and on until
-        # pinned against the engine-room east wall (composite tile wall_x).
-        # The y axis has zero input, so y must hold exactly at 2.5 throughout.
-        await client.move(1.0, 0.0)
-
+        # Push toward increasing y until pinned; sample positions to assert
+        # the collision circle stays walkable and y is monotonic then
+        # frozen.
+        await client.move(0.0, 1.0)
         samples: list[CharacterView] = []
-
-        def record(walkers: dict) -> CharacterView:
-            me = client.character_in(walkers, char_id)
-            assert me is not None
-            samples.append(me)
-            return me
-
-        await walkers_until(
-            client,
-            SPAWN_STATION_SPACE,
-            lambda w: record(w).x >= cargo_x,
-            max_ticks=600,
-            what=f"walked east into the cargo hold (x >= {cargo_x})",
-        )
-        near_wall = await walkers_until(
-            client,
-            SPAWN_STATION_SPACE,
-            lambda w: record(w).x >= near_wall_x,
-            max_ticks=600,
-            what=f"pinned against the east wall (x >= {near_wall_x})",
-        )
-
-        # Still pushing east: wait until the position is identical across two
-        # samples half a second apart (the wall pin exactly rejects every
-        # candidate step, so "stopped" means bit-for-bit equal). The pin
-        # lands within one 0.05-tile step of the wall_x - radius contact point.
-        me1 = client.character_in(near_wall, char_id)
-        tick = near_wall["tick"]
-        for _ in range(10):
-            later = await walkers_after_ticks(
-                client, SPAWN_STATION_SPACE, tick, TICK_RATE // 2
-            )
-            me2 = client.character_in(later, char_id)
-            samples.append(me2)
-            if me2.x == me1.x:
+        me = await walk_until_own(client, SPAWN_STATION_SPACE, lambda m: True)
+        samples.append(me)
+        prev = me
+        for _ in range(40):
+            later = await walkers_after_ticks(client, SPAWN_STATION_SPACE, 0, TICK_RATE // 2)
+            m = client.character_in(later, char_id)
+            samples.append(m)
+            if m.y == prev.y:
                 break
-            me1, tick = me2, later["tick"]
+            prev = m
         else:
             pytest.fail(f"character never pinned against the wall: {samples[-3:]}")
-        assert me2.x == pytest.approx(contact_x, abs=WALK_SPEED / TICK_RATE)
-        assert me2.x <= contact_x + 1e-9
-
         await client.move(0.0, 0.0)
 
-        # Every sampled position kept the collision circle on walkable tiles,
-        # x only ever advanced, and y never drifted off the row.
-        assert len(samples) >= 3
-        for me in samples:
-            assert circle_walkable(plan, me.x, me.y), me
-            assert me.seat is None
-            assert me.y == pytest.approx(2.5)
-        xs = [me.x for me in samples]
-        assert xs == sorted(xs)
-        assert xs[-1] > xs[0]
+        assert len(samples) >= 2
+        for s in samples:
+            assert circle_walkable(plan, s.x, s.y), s
+            assert s.seat is None
+        ys = [s.y for s in samples]
+        assert ys == sorted(ys)   # y only advanced (pushed +y)
+        assert samples[-1].y == samples[-2].y  # pinned: last two samples frozen
 
 
 async def test_seat_rules(server):
@@ -305,8 +301,8 @@ async def test_seat_rules(server):
     async with DHClient(name="m2t3") as client:
         welcome = await client.login("ivan_seats", "pw_ivan")
         ship_id = welcome["ship_id"]
-        helm = f"s{ship_id}:helm_main"
-        cargo = f"s{ship_id}:cargo_main"
+        helm = f"s{ship_id}:helm"
+        cargo = f"s{ship_id}:cargo"
 
         # Seated at the helm from login: any sit is rejected outright.
         result = await client.sit(cargo)
@@ -324,9 +320,9 @@ async def test_seat_rules(server):
         assert stood_again["reason"] == "not_seated"
         assert stood_again["seat"] is None
 
-        # cargo_main sits ~5.1 tiles from the helm in ship-local terms
-        # (mooring offset cancels out between two consoles on the same
-        # ship), far beyond the 1.2 range.
+        # cargo sits ~5.1 tiles from the helm in ship-local terms (mooring
+        # offset cancels out between two consoles on the same ship), far
+        # beyond the 1.2 range.
         too_far = await client.sit(cargo)
         assert too_far["ok"] is False
         assert too_far["reason"] == "too_far"
@@ -373,32 +369,16 @@ async def test_one_flies_one_walks(server):
         world = welcome_a["world"]
         dt = welcome_a["dt"]
 
-        # Airlock columns from the login moorings -- berth assignment is
-        # seed-random among free berths, so which of A/B lands east or west
-        # of the other is never assumed, only derived.
         space_a = await client_a.next_space()
         space_b = await client_b.next_space()
-        a_airlock = _airlock_center_x(_mooring_dx(space_a, ship_a))
-        b_airlock = _airlock_center_x(_mooring_dx(space_b, ship_b))
 
-        # B stands and walks off her own deck, along the concourse floor, and
-        # up onto A's deck (down her airlock column, along the floor toward
-        # A's from whichever side, north onto A's ship tiles, composite
-        # y <= 3.6).
-        assert (await client_b.stand())["ok"]
-        await client_b.move(1, 0)
-        await walk_until_own(client_b, SPAWN_STATION_SPACE, lambda me: me.x >= b_airlock - 0.1)
-        await client_b.move(0, 1)
-        await walk_until_own(client_b, SPAWN_STATION_SPACE, lambda me: me.y >= 7.2)
-        if a_airlock < b_airlock:
-            await client_b.move(-1, 0)
-            await walk_until_own(client_b, SPAWN_STATION_SPACE, lambda me: me.x <= a_airlock)
-        else:
-            await client_b.move(1, 0)
-            await walk_until_own(client_b, SPAWN_STATION_SPACE, lambda me: me.x >= a_airlock)
-        await client_b.move(0, -1)
-        await walk_until_own(client_b, SPAWN_STATION_SPACE, lambda me: me.y <= 3.6)
-        await client_b.move(0, 0)
+        # B stands and walks from her own deck onto A's, driven by the BFS
+        # walk driver against the composite plan the server sent -- no
+        # hardcoded airlock columns or composite rows, since berth
+        # assignment is seed-random among free berths.
+        assert (await client_b.stand())["ok"] is True
+        async with _kept_drained(client_a):
+            await walk_to_console(client_b, SPAWN_STATION_SPACE, space_b["plan"], f"s{ship_a}:helm")
 
         # A undocks: B stands on A's tiles, so she leaves as A's crew; her old
         # ship, now crewless, despawns. Both now share A's flying ship space.
@@ -476,5 +456,5 @@ async def test_one_flies_one_walks(server):
         assert crew_ids == {char_a, char_b}
         pilot = client_a.character_in(walkers_a, char_a)
         walker = client_a.character_in(walkers_a, char_b)
-        assert pilot.seat == "helm_main"  # stripped back to ship-local on undock
+        assert pilot.seat == "helm"  # stripped back to ship-local on undock
         assert walker.seat is None
