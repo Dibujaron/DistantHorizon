@@ -207,17 +207,25 @@ async def test_two_clients_see_each_other_fly(server):
         )
         assert moved_a > 10.0
 
-        # B never touched its controls: it must stay docked, its position
-        # pinned exactly to the station's analytic rail position at each
-        # snapshot's tick (not merely "moving less than A", which would race
-        # A's thrust against phase-dependent station drift).
+        # B never touched its controls: it stays docked and rides the station
+        # rail rigidly. A docked hull sits at a FIXED berth offset from the
+        # station centre -- the berth tile's planar offset plus the ship's
+        # dock_standoff along the berth normal (world.gleam moored_position,
+        # issues #13/#31) -- not at the bare centre. That offset is constant in
+        # the world frame (the station translates along its orbit, it doesn't
+        # spin the offset), so the invariant that actually holds is: B's offset
+        # from the analytic rail position is identical at both snapshots. It
+        # moved exactly as much as the station did -- no self-propulsion,
+        # phase-independent -- rather than being pinned to the rail centre.
+        offsets = []
         for b_ship, snap in ((b_in_b1, snap_b1), (b_in_b2, snap_b2)):
             assert b_ship["docked"] == "meridian_highport"
             sx, sy = station_rail_position(
                 world, "meridian_highport", snap["tick"] * dt
             )
-            assert b_ship["x"] == pytest.approx(sx, abs=1e-3)
-            assert b_ship["y"] == pytest.approx(sy, abs=1e-3)
+            offsets.append((b_ship["x"] - sx, b_ship["y"] - sy))
+        assert offsets[0][0] == pytest.approx(offsets[1][0], abs=1e-3)
+        assert offsets[0][1] == pytest.approx(offsets[1][1], abs=1e-3)
 
 
 @pytest.mark.asyncio
