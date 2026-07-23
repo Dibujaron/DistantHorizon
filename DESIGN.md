@@ -172,7 +172,10 @@ rich *this* run?"
   (Open: whether the drone captures alone or just opens the door for crew — see Open
   questions.) **Conventional guns exist but are short-range** — point-defense and knife-fight
   range, never a sniper's game — so the long-range duel is gunner-vs-gunner, piloted missiles
-  against point-defense, and closing to gun range is itself a commitment. You can kill a ship
+  against point-defense, and closing to gun range is itself a commitment. A gunner seat
+  drives **one weapon at a time** — fly a missile, or take a point-defense mount by the
+  stick; unmanned PD degrades to a weak automatic mode, so a manned mount is a real upgrade
+  but never the only defense. You can kill a ship
   or a station from the gunner's seat, but if you want it — hull, cargo, or the station
   itself — something has to board it. Boarding stays deferred as a *build* item, but it shapes
   deck plans, small-craft berths, and the autopilot API now. The rest of the engagement model
@@ -374,8 +377,8 @@ tech with a frame that happens to be a station.
 
 The link between the scales is **consoles**: sitting at the helm console binds your inputs to the
 ship's exterior controls (and your camera to the system view); the engineering console will bind
-to damage-control drones (later — see the seat test); a gunnery console binds you to a remotely
-piloted missile (M5). Getting out of your
+to damage-control drones (later — see the seat test); a gunnery console binds you to the ship's
+weapons — fly a missile or take a point-defense mount (M5). Getting out of your
 chair unbinds you and returns you to your walking body. "Zoom" in the UI is really a view/control
 mode switch, presented as a smooth camera zoom.
 
@@ -395,15 +398,16 @@ grid, rooms, door graph), console placements, docking ports, and hangar berths f
   - *Gunner via piloted missiles* — passes, because it **is** the piloting minigame with a new
     win condition: you fly the missile into the enemy ship, it blows up, you get another one —
     remotely, from a gunnery console aboard (see Careers; the gunner never leaves their seat).
-    Point-defense turrets shooting down incoming piloted missiles then makes gunner-vs-gunner
-    a dogfight, not a DPS check.
+    The seat drives one weapon at a time — fly a missile *or* take a point-defense mount
+    directly, with unmanned PD falling back to a weak auto mode — so gunner-vs-gunner, your
+    missile against their PD, is a dogfight, not a DPS check.
   - *Engineer as usually implemented* (route power, mop up fires, whack-a-mole repairs) —
     **fails**; it's a diner-dash minigame wearing a jumpsuit. We don't ship it just because FTL
-    has one. The first loop that might pass is the **drone foreman** (tentative): you don't
-    mop anything yourself — you direct several damage-control drones that work in parallel,
-    so the game is triage and prioritization under fire, not reflexes. Guns of Icarus's
-    engineer, promoted from wrench to foreman. The Sim (M5.5) is the testbed; until a loop
-    proves out there, ships simply don't need an engineer.
+    has one. The first loop that might pass is the **engineering officer** (tentative): you
+    don't mop anything yourself — you direct several damage-control drones that work in
+    parallel, so the game is triage and prioritization under fire, not reflexes (Guns of
+    Icarus's engineer, promoted from the wrench to the clipboard). The Sim (M5.5) is the
+    testbed; until the loop proves out there, ships simply don't need an engineer.
   - *Quartermaster/cargo* — the broker-and-loading side of the game, done on foot at stations;
     fine, because it doesn't pretend to be a combat seat.
 
@@ -488,7 +492,8 @@ The hull is the fixed part; what's inside is the loadout.
   tells you what she's rigged for. A module's interior is validated at module-design time (its
   cells are self-consistent; its doors land where its placement constraints promise), so
   loadout validation stays tag matching, never geometry analysis: the hull fixes the corridor
-  skeleton and the slot openings; the module guarantees its own insides.
+  skeleton and the slot openings; the module guarantees its own insides. (This conservative
+  split is the working model, not settled — see Open questions.)
 - **Exteriors decompose the same way.** A hull sprite is the parts-vocabulary composition
   (M3.5's pipeline) plus **mount points**, and exterior-visible modules — engines above all,
   the atmospheric fin package, eventually hardpoint weapons — contribute their own parts to
@@ -719,7 +724,7 @@ what makes the game developable by agents rather than merely reviewable.
   disposable arena universes, 1v1 up to 3v3 *ships* — each ship crewed to its class's crew
   capacity, so big hulls can put ~18 a side while a pair of Sparrows makes a duel — pilots
   flying while gunners fly missiles, the first real test of several seats playing at once,
-  and the testbed for the drone-foreman engineering loop (see the seat test). Scoring: kills
+  and the testbed for the engineering-officer loop (see the seat test). Scoring: kills
   win points; a **capture by boarding wins the match's real prize** — submission over
   destruction, taught from the first mode. Diegetically it's **sim hours** (docs/lore.md,
   Ships): spacers train like the mission specialists they descend from, so the mode is
@@ -780,6 +785,12 @@ what makes the game developable by agents rather than merely reviewable.
   leaderboard enough at launch?
 - **Module catalog:** what's the actual module list, tier structure, and per-module config
   surface — and how do we tune for "taste over solvedness" (see Ship customization) in practice?
+- **How much interior can a module rewrite?** The working model (see Ship customization) is
+  conservative: the hull author designates modulable slot regions, the fixed remainder
+  guarantees connectivity, and a module only rewrites its own slot. It'd be slicker if a
+  module could modify the interior in *any* way — but that endangers other modules' ability
+  to connect, and it forces a real definition of "corridor," which is extra-vague right now.
+  Either way the hull author has to mark what's modulable. Hash out with the M4 build.
 - **Exterior composition at runtime:** module swaps must show on the hull (see Ship
   customization). V1 direction: the client layers pre-rendered part sprites at hull mount
   points — it's already fully data-driven — while the full composer stays an authoring-time
@@ -805,9 +816,9 @@ what makes the game developable by agents rather than merely reviewable.
   shared universe have a lifespan of its own (a season that eventually winds down), and how are
   crews matched into one (public browser, friends-only, region)?
 - **Combat direction:** the weapons canon is settled (remote-piloted missiles and boarding
-  drones, short-range guns — see Careers) and the Sim (M5.5) is the lab, but real opens
-  remain: point-defense manning (automated v1; when does a manned PD seat pass the seat
-  test?); netcode at missile closing velocities (15 Hz snapshots + extrapolation is proven
+  drones; short-range guns; one gunner seat driving one weapon at a time, with weak-auto PD
+  when unmanned — see Careers) and the Sim (M5.5) is the lab, but real opens remain:
+  netcode at missile closing velocities (15 Hz snapshots + extrapolation is proven
   for trading, unproven for terminal approach — the M5 gunnery range is the cheap test);
   whether a boarding drone captures alone or opens the door for crew (the Trust theme says
   strangers crossing your airlock should be a big deal); where the attacker's
@@ -825,9 +836,10 @@ what makes the game developable by agents rather than merely reviewable.
   established several manufacturers' looks, which carry over, plus a few new ones. A
   manufacturer is then a parts sub-vocabulary + palette, and "who built your ship" becomes
   visible at a glance.
-- **Is there an engineering game worth having?** The drone-foreman loop (see the seat test) is
-  the current candidate: several damage-control drones working in parallel, so the seat is
-  triage and prioritization, not whack-a-mole. Prove it in the Sim, or keep the role cut.
+- **Is there an engineering game worth having?** The engineering officer (see the seat test)
+  is the current candidate: directing several damage-control drones working in parallel, so
+  the seat is triage and prioritization, not whack-a-mole. Prove it in the Sim, or keep the
+  role cut.
 - **Planetside landing & the surface:** free flight over 2D terrain is a dead end and stays
   one — so what happens between "burn for the planet" and "standing on the pad"? Near-term
   answer (committed): landing is *docking* — a surface pad is a station whose berth requires
