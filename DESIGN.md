@@ -163,24 +163,27 @@ rich *this* run?"
   matched-velocity standoffs, and the Pirates!/age-of-sail model suggests the payoff is
   submission and cargo, not destruction: force the victim to cut thrust, board or demand tribute.
   Fuel and delta-v become the strategic currency of both sides. The weapons canon *is* settled:
-  **missiles destroy, boarders capture, and everything dangerous is remotely piloted.** A
-  missile is a drone with a warhead, flown by a human gunner from a console aboard the
-  launching ship — "you get another one" is meant literally; the missile dies, the gunner
-  doesn't. Boarding is the same system with a different terminal verb: a **boarding drone**
-  latches and breaches instead of detonating, and what walks the victim's corridors is the
-  operator's teleoperated chassis — your drone is a character in someone else's deck plan.
-  (Open: whether the drone captures alone or just opens the door for crew — see Open
-  questions.) **Conventional guns exist but are short-range** — point-defense and knife-fight
+  **missiles destroy, boarders capture — and only the missile is flown remotely.** A missile
+  is a drone with a warhead, flown by a human gunner from a console aboard the launching
+  ship — "you get another one" is meant literally; the missile dies, the gunner doesn't.
+  (Remote control isn't free, though: candidate mechanic — control lag grows with range,
+  which would feel appropriately wild as a missile pilot — and jamming probably exists
+  someday.) A **boarding pod** is the same fly-it-in minigame with people inside: remote
+  steering can be lagged or jammed, and capture needs bodies aboard anyway, so somebody in
+  the pod is steering it — and if that's not you, you're packed in behind the pilot,
+  sweating. That's the point: boarding is the game's going-over-the-side moment
+  (docs/themes.md, Panic), real on both sides of the hatch.
+  **Conventional guns exist but are short-range** — point-defense and knife-fight
   range, never a sniper's game — so the long-range duel is gunner-vs-gunner, piloted missiles
   against point-defense, and closing to gun range is itself a commitment. A gunner seat
   drives **one weapon at a time** — fly a missile, or take a point-defense mount by the
   stick; unmanned PD degrades to a weak automatic mode, so a manned mount is a real upgrade
   but never the only defense. You can kill a ship
   or a station from the gunner's seat, but if you want it — hull, cargo, or the station
-  itself — something has to board it. Boarding stays deferred as a *build* item, but it shapes
-  deck plans, small-craft berths, and the autopilot API now. The rest of the engagement model
-  still needs design work — which is what the Sim (M5.5) is for: iterate combat in ten-minute
-  matches, not three-hour runs.
+  itself — somebody has to go over and take it. Boarding lands with M5 and is the Sim's
+  top-scoring win (see Milestones); it shapes deck plans, small-craft berths, and the
+  autopilot API now. The rest of the engagement model still needs design work — which is
+  what the Sim (M5.5) is for: iterate combat in ten-minute matches, not three-hour runs.
 
 ## Stations, factions, and cargo
 
@@ -713,12 +716,13 @@ what makes the game developable by agents rather than merely reviewable.
   deck and on the hull.*
 - **M5 — Small craft, missiles, boarding:** shuttle berthed in a freighter; launch, fly,
   recover; the piloted missile as the same system with a warhead (remote gunnery console —
-  see Careers); the **boarding drone** for real — latch, breach, walk the target's corridors,
-  a capture verb; and the game's first damage model (hull integrity, ship destruction).
+  see Careers); the **boarding pod** for real — fly it over crewed, latch, breach, walk the
+  target's corridors, a capture verb; and the game's first damage model (hull integrity,
+  ship destruction).
   Missiles and *especially* boarding must work before the Sim — boarding is the high-score
   win and the game's designed panic beat (docs/themes.md, Panic). Shuttling crew in to a
   congested station stays a bonus, not critical. *Exit: the gunnery range — park a ship, fly
-  missiles into target hulks, then put a boarding drone through a hulk's airlock.*
+  missiles into target hulks, then put a crewed boarding pod through a hulk's airlock.*
 - **M5.5 — The Sim (deathmatch):** the first *game* built on missiles and boarding,
   deliberately thin: lobby flow (create/join a match, crew up, pick hull + loadout),
   disposable arena universes, 1v1 up to 3v3 *ships* — each ship crewed to its class's crew
@@ -815,17 +819,17 @@ what makes the game developable by agents rather than merely reviewable.
   also direct trade, crew transfer, and (once combat exists) piracy against each other? Does a
   shared universe have a lifespan of its own (a season that eventually winds down), and how are
   crews matched into one (public browser, friends-only, region)?
-- **Combat direction:** the weapons canon is settled (remote-piloted missiles and boarding
-  drones; short-range guns; one gunner seat driving one weapon at a time, with weak-auto PD
-  when unmanned — see Careers) and the Sim (M5.5) is the lab, but real opens remain:
-  netcode at missile closing velocities (15 Hz snapshots + extrapolation is proven
+- **Combat direction:** the weapons canon is settled (remote-piloted missiles; crewed
+  boarding pods; short-range guns; one gunner seat driving one weapon at a time, with
+  weak-auto PD when unmanned — see Careers) and the Sim (M5.5) is the lab, but real opens
+  remain: netcode at missile closing velocities (15 Hz snapshots + extrapolation is proven
   for trading, unproven for terminal approach — the M5 gunnery range is the cheap test);
-  whether a boarding drone captures alone or opens the door for crew (the Trust theme says
-  strangers crossing your airlock should be a big deal); where the attacker's
-  going-over-the-side dread comes from when the boarder is a teleoperated chassis (candidates:
-  closing to grapple range is mutual gun range, and a drone operator's attention is fully
-  committed — their own ship and body sit undefended while they fly the breach); and
-  engagement tuning so matches reward delta-v thinking, per Panic's real-urgency rule.
+  whether missile control lag scales with range (the candidate reason remote works for
+  warheads but not boarders — and a feel question: wild is good, unflyable isn't); jamming,
+  someday, and what it does to the gunner seat's fun; boarding-party extraction and failure
+  (the latched pod is presumably the ride home; in the run world a failed boarding is real
+  deaths and robot bills, which is probably the right amount of terrifying); and engagement
+  tuning so matches reward delta-v thinking, per Panic's real-urgency rule.
 - **Art pipeline:** procedural, parts-based vector art — hulls and station exteriors assembled
   from a drawn parts vocabulary by data + seed (the station-exterior plan, extended to ships),
   authored and iterated by agents through the screenshot loop, so nobody hand-pixel-arts every
