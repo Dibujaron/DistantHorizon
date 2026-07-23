@@ -4,28 +4,26 @@ One space, not two: docking moors the ship's deck onto the station
 concourse (airlock to airlock, ids namespaced s{ship_id}:*), everyone in
 the composite walks one shared plan, and undocking splits bodies by tile
 ownership. Composite geometry cheat-sheet lives in
-docs/superpowers/plans/2026-07-16-m3.1-stitched-interiors.md; the walk-leg
-math and draining helpers below (_airlock_center_x, _mooring_dx,
-_wait_for_own_position) mirror test_m3_trade.py's, duplicated per-file
-rather than imported -- the same convention test_m2_interior.py follows.
-World numbers come from server/worlds/m1_system.json: spawn station
-meridian_highport, three berths.
+docs/superpowers/plans/2026-07-16-m3.1-stitched-interiors.md. Cross-deck
+walking is driven by the BFS `walk_to_console` driver (walk.py, twin of
+server/test/walk.gleam) against the composite plan the server sent -- no
+hardcoded composite row/column math, since berth assignment and ship
+rotation are never assumed. World numbers come from
+server/worlds/m1_system.json: spawn station meridian_highport, three
+berths.
 """
+
+import asyncio
+import contextlib
 
 import pytest
 
 from dh_client import AuthError, DHClient
+from walk import walk_to_console
 
 pytestmark = pytest.mark.asyncio
 
 STATION_SPACE = "station:meridian_highport"
-CONCOURSE_FLOOR_Y = 7.2  # a y >= here is safely on the concourse floor (rows 6..8)
-
-
-def _airlock_center_x(mooring_dx: int) -> float:
-    """Composite x-center of a ship's airlock column: the sparrow spawns at
-    ship-local x=5, so the airlock column is mooring_dx + 5, center + 0.5."""
-    return float(mooring_dx + 5) + 0.5
 
 
 def _mooring_dx(space: dict, ship_id: int) -> int:
@@ -36,32 +34,36 @@ def _mooring_dx(space: dict, ship_id: int) -> int:
     raise AssertionError(f"ship {ship_id} not moored in space {space.get('space')!r}")
 
 
-async def _wait_for_own_position(
-    client: DHClient,
-    space: str,
-    predicate,
-    max_messages: int = 120,
-    strict_space: bool = True,
-):
-    """Drain `walkers` until our own character's position satisfies
-    `predicate`. With `strict_space` (default) every frame must be for
-    `space` -- proving no dock/undock swapped us into another space
-    mid-walk. 120 messages is 8 s at 15 Hz walkers, several times over the
-    longest single leg here (~5 tiles, ~1.7 s of walking at 3 tiles/s)."""
-    me = None
-    for _ in range(max_messages):
-        message = await client.next_walkers()
-        if message.get("space") != space:
-            if strict_space:
-                raise AssertionError(
-                    f"walkers space changed to {message.get('space')!r}; "
-                    f"expected {space!r} throughout"
-                )
-            continue
-        me = client.character_in(message, client.character_id)
-        if me is not None and predicate(me):
-            return me
-    raise AssertionError(f"character never reached expected position; last: {me}")
+@contextlib.asynccontextmanager
+async def _kept_drained(client: DHClient):
+    """Keep `client`'s incoming queue emptied out for the duration of the
+    `with` body, discarding whatever arrives -- walkers/snapshots stream to
+    every connected client regardless of who's doing something slow, and a
+    cross-composite BFS walk on another client (`walk_to_console` can take
+    many seconds on a large station) would otherwise let this client's
+    unread queue grow past `recv_type`'s 1000-frame skip cap before the
+    next explicit read. Twin of test_m2_interior.py's helper of the same
+    name; only wrap spans where nothing on `client` is being read for
+    real."""
+    stop = asyncio.Event()
+
+    async def _drain() -> None:
+        while not stop.is_set():
+            try:
+                await asyncio.wait_for(client.recv(), timeout=0.05)
+            except asyncio.TimeoutError:
+                continue
+            except Exception:
+                return
+
+    task = asyncio.create_task(_drain())
+    try:
+        yield
+    finally:
+        stop.set()
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await task
 
 
 async def _login(name: str) -> tuple[DHClient, dict, dict]:
@@ -81,11 +83,11 @@ async def test_login_space_is_the_station_composite(server):
         # Our ship is moored at a berth and our seat is namespaced to it.
         moorings = {g["ship_id"]: g for g in space["moorings"]}
         assert ship_id in moorings
-        assert space["you"]["seat"] == f"s{ship_id}:helm_main"
+        assert space["you"]["seat"] == f"s{ship_id}:helm"
         # The composite plan carries both our helm and the concourse broker.
         console_ids = {c["id"] for c in space["plan"]["consoles"]}
-        assert f"s{ship_id}:helm_main" in console_ids
-        assert "broker_main" in console_ids
+        assert f"s{ship_id}:helm" in console_ids
+        assert any(c["kind"] == "broker" for c in space["plan"]["consoles"])
     finally:
         await client.close()
 
@@ -114,30 +116,26 @@ async def test_undock_splits_by_tile(server):
     try:
         stayer, stayer_welcome, stayer_login_space = await _login("m31_stayer")
         try:
-            # The stayer walks off their own ship onto the concourse floor:
-            # east to clear the single-tile airlock pinch (column derived
-            # from their own login mooring), then south onto the floor --
-            # mirrors test_m3_trade.py's _descend_to_broker legs.
+            # The stayer walks off their own ship onto the concourse floor,
+            # driven by the BFS driver to a station console (never namespaced
+            # to a ship, so reaching it proves they're off *any* ship's
+            # moored tiles) rather than any hardcoded airlock/composite math.
             assert (await stayer.stand())["ok"]
-            stayer_airlock_x = _airlock_center_x(
-                _mooring_dx(stayer_login_space, stayer_welcome["ship_id"])
+            broker_id = next(
+                c["id"] for c in stayer_login_space["plan"]["consoles"]
+                if c["kind"] == "broker"
             )
-            await stayer.move(1, 0)
-            await _wait_for_own_position(
-                stayer, STATION_SPACE, lambda me: me.x >= stayer_airlock_x - 0.1
-            )
-            await stayer.move(0, 1)
-            await _wait_for_own_position(
-                stayer, STATION_SPACE, lambda me: me.y >= 7.2
-            )
-            await stayer.move(0, 0)
+            async with _kept_drained(pilot):
+                await walk_to_console(
+                    stayer, STATION_SPACE, stayer_login_space["plan"], broker_id
+                )
 
             # The pilot undocks: pilot leaves in their own ship space, the
             # stayer stays ashore, crew membership (cargo feed) untouched.
             assert (await pilot.undock())["ok"]
             pilot_space = await pilot.next_space()
             assert pilot_space["space"] == f"ship:{pilot_welcome['ship_id']}"
-            assert pilot_space["you"]["seat"] == "helm_main"
+            assert pilot_space["you"]["seat"] == "helm"
             stayer_space = await stayer.next_space()
             assert stayer_space["space"] == STATION_SPACE
             mooring_ships = {g["ship_id"] for g in stayer_space["moorings"]}
