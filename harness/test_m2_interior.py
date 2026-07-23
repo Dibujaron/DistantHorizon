@@ -187,7 +187,7 @@ async def _kept_drained(client: DHClient):
 
 async def test_spawn_state(server):
     """Login spawns a character seated at their own namespaced helm in the
-    station composite; welcome still carries the full sparrow class doc."""
+    station composite; welcome still carries the full test-fixture class doc."""
     async with DHClient(name="m2t1") as client:
         welcome = await client.login("gale_spawn", "pw_gale")
         ship_id = welcome["ship_id"]
@@ -198,7 +198,7 @@ async def test_spawn_state(server):
         ship_class = welcome["ship_class"]
         assert client.ship_class == ship_class
         assert ship_class["schema"] == 3
-        assert ship_class["id"] == "sparrow"
+        assert ship_class["id"] == "test_fixture"
 
         # v3: one flat deck of 3x3-glyph rows; consoles carry a deck index;
         # spawn is {deck, tile}. helm (1,2) and cargo (6,1) are the fixture's.

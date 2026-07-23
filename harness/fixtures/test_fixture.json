@@ -1,7 +1,7 @@
 {
   "schema": 3,
-  "id": "sparrow",
-  "name": "CV-7 Sparrow",
+  "id": "test_fixture",
+  "name": "Harness Test Fixture",
   "decks": [
     {
       "name": "Main",

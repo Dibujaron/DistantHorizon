@@ -35,9 +35,15 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+HARNESS_DIR = Path(__file__).resolve().parent
+REPO_ROOT = HARNESS_DIR.parent
 SERVER_DIR = REPO_ROOT / "server"
 SERVER_LOG_PATH = SERVER_DIR / ".test_server.log"
+# Test-only ship class: a small, stable fixture hull the whole sim spawns from
+# (via DH_SHIP_CLASS). Deliberately lives here under the harness, NOT in
+# server/shipclasses/ (the real ship registry), so it can't be mistaken for a
+# shipped ship. Absolute path since the server runs with cwd=server/. (#33)
+TEST_SHIP_CLASS = HARNESS_DIR / "fixtures" / "test_fixture.json"
 
 HOST = "127.0.0.1"
 # Dedicated test port so a stray dev/"production" server on the default
@@ -115,7 +121,7 @@ def server():
     env.pop("DH_WORLD", None)  # use the server's own default world doc
     env["DATABASE_URL"] = UNREACHABLE_DATABASE_URL  # force accept-all; see module docstring
     env["DH_PORT"] = str(TEST_PORT)  # dedicated test port; see module docstring
-    env["DH_SHIP_CLASS"] = "shipclasses/sparrow.json"  # small stable test ship (#33)
+    env["DH_SHIP_CLASS"] = TEST_SHIP_CLASS.as_posix()  # test-only fixture hull; see TEST_SHIP_CLASS (#33)
 
     log_file = open(SERVER_LOG_PATH, "w", encoding="utf-8")
     proc = subprocess.Popen(
