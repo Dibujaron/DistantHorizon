@@ -1,9 +1,18 @@
-"""Layout-robust single-deck walk driver for the pytest harness (#33), the
-Python twin of server/test/walk.gleam + the sim_test follower. BFS a route over
-the composite plan the server handed us (the `space` message's `plan`), then
-drive to it with move input, steering toward tile centres and trimming
-perpendicular drift first so the radius-0.3 collision circle never clips a
-diagonal wall on a turn."""
+"""Single-deck walk driver for the pytest harness (#33), the Python twin of
+server/test/walk.gleam + the sim_test follower. BFS a route over the composite
+plan the server handed us (the `space` message's `plan`), then drive to it with
+move input, steering toward tile centres and trimming perpendicular drift first
+to keep the radius-0.3 collision circle off a diagonal wall on a turn.
+
+Robustness and its limit: the route survives berth translation and the fixed
+90-degrees-CCW mooring rotation because every tile comes from the wire `plan`,
+never hardcoded geometry. But `tile_walkable` models only the server's
+tile-CENTRE voidness, NOT its per-tile EDGE model (walls/doors/fixtures on tile
+boundaries -- decorated interiors, #28/#36). So a BFS path that crosses a hull
+perimeter or leaves a wall-mounted console can route straight through an edge
+the server actually blocks, wedging the walker. Keep cross-hull walks short and
+run against the deterministic test fixture; a stall fails fast (see `_follow`)
+rather than hanging."""
 from __future__ import annotations
 from collections import deque
 
@@ -60,11 +69,19 @@ async def _follow(client, space: str, path: list[tuple[int, int]], max_stall_fra
     15 Hz; 150 is a wide margin over any legitimate approach."""
     i = 0
     stall = 0
+    missing = 0
     while i < len(path):
         walkers = await client.next_walkers(space)
         me = client.character_in(walkers, client.character_id)
         if me is None:
+            missing += 1
+            if missing > 2000:
+                raise AssertionError(
+                    f"character {client.character_id} vanished from {space} "
+                    f"walkers mid-walk (waypoint {i}/{len(path)})"
+                )
             continue
+        missing = 0
         tx, ty = path[i]
         dx = tx + 0.5 - me.x
         dy = ty + 0.5 - me.y

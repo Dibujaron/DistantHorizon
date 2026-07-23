@@ -49,8 +49,6 @@ from test_m1_flight import (  # shared station-frame helpers
 
 pytestmark = pytest.mark.asyncio
 
-WALK_SPEED = 3.0  # tiles/s, matches character.gleam
-
 SPAWN_STATION = "meridian_highport"
 SPAWN_STATION_SPACE = f"station:{SPAWN_STATION}"
 
@@ -286,7 +284,8 @@ async def test_stand_walk_collide(server):
             assert s.seat is None
         ys = [s.y for s in samples]
         assert ys == sorted(ys)   # y only advanced (pushed +y)
-        assert samples[-1].y == samples[-2].y  # pinned: last two samples frozen
+        # The pin itself is proven by the for/else above not firing (the loop
+        # only breaks once a sample stops advancing in y); no extra assert here.
 
 
 async def test_seat_rules(server):

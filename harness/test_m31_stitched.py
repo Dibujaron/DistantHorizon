@@ -26,14 +26,6 @@ pytestmark = pytest.mark.asyncio
 STATION_SPACE = "station:meridian_highport"
 
 
-def _mooring_dx(space: dict, ship_id: int) -> int:
-    """The dx of `ship_id`'s mooring in a `space` message (its berth offset)."""
-    for mooring in space["moorings"]:
-        if mooring["ship_id"] == ship_id:
-            return int(mooring["dx"])
-    raise AssertionError(f"ship {ship_id} not moored in space {space.get('space')!r}")
-
-
 @contextlib.asynccontextmanager
 async def _kept_drained(client: DHClient):
     """Keep `client`'s incoming queue emptied out for the duration of the
