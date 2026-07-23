@@ -134,9 +134,10 @@ grace window (see ../DESIGN.md) is an example already in the design: your ship's
 frantic burn but thirty seconds of route math about which port can sell you a new signatory in time.
 
 But the honest version of this theme admits that some moments really are immediate. If somebody is shooting at you, urgently
-shooting back is good, actually. Combat is where the dial flips, and boarding is where it slams over: a boarding drone cutting
-through your airlock is the age-of-sail moment — the navy lieutenant waiting to go over the side onto an enemy deck, minutes of
-dread and then seconds of everything at once. We want that feeling, on both sides of the hatch.
+shooting back is good, actually. Combat is where the dial flips, and boarding is where it slams over: a boarding pod cutting
+through your airlock is the age-of-sail moment, and the boarders are *in* the pod — packed behind their pilot like a navy
+lieutenant waiting to go over the side onto an enemy deck, minutes of dread and then seconds of everything at once. We want
+that feeling, on both sides of the hatch.
 
 The rule that keeps both halves honest: **urgency must be real, never manufactured.** No alarm-noise fake pressure, no timers
 that punish thinking when the physics would allow it; a crisis's tempo is set by the actual speed of the actual thing — a
