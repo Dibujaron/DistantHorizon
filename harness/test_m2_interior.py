@@ -6,8 +6,8 @@ Runs against a real server spawned by the `server` fixture in
 whole suite runs). Each test opens its own DHClient connection(s).
 
 M3.1 stitched interiors: there is no `board`/`disembark` any more. Login
-lands a character seated at their own namespaced helm ("s{ship}:helm_main")
-in the *station composite* -- the concourse with every docked ship's deck
+lands a character seated at their own namespaced helm ("s{ship}:helm") in
+the *station composite* -- the concourse with every docked ship's deck
 moored on at a berth. Crossing between a ship deck and the concourse is
 plain `move` input in one shared space; the 15 Hz `walkers` feed (not the
 old `interior`/`concourse` messages) carries everyone in it. Positions are
@@ -19,19 +19,16 @@ carrying the same server `tick` as snapshots. Tests never sleep-and-hope;
 they drain the walkers/snapshot streams until a condition holds, bounded in
 server ticks or message counts, so a stalled server fails fast.
 
-Composite geometry (verified by server/test/sim_test.gleam; y-down, tile
-units): berth assignment is seed-random among free berths (free_berth in
-sim.gleam), so a ship's mooring offset is never assumed -- tests derive it
-from the `space` message's `moorings` list (`_mooring_dx`/`_helm_center`
-below). A ship-local tile (tx, ty) lands at composite (tx + dx, ty + dy) for
-its mooring's (dx, dy): helm_main tile (1,2), cargo_main (6,1), and the
-airlock/spawn tile [5,4] all shift by the same offset. A ship's airlock
-column in the composite is mooring_dx + 5, center + 0.5. The concourse floor
-is composite rows 6..8, unaffected by berth (only the column shifts). Walk
-speed 3.0 tiles/s, character radius 0.3. Composite row 2 moors the ship's
-".########." row into columns dx+1..dx+10, so a character walking east down
-it pins where its circle meets the wall tile x=dx+10: center x = dx+10 - 0.3,
-give or take one 0.05-tile step.
+Collision/geometry checks never hardcode composite coordinates -- berth
+assignment is seed-random among free berths (free_berth in sim.gleam), so a
+ship's mooring offset is never assumed. Instead tests drive characters with
+the BFS `walk_to_console` driver (walk.py) against the composite `plan` the
+`space` message carries, and check collision with `circle_walkable`/
+`tile_walkable` (deckplan.py) against that same plan. The stand/walk/collide
+test walks onto the ship's cargo console, then keeps pushing south
+(composite +y, the direction with the most open run from that tile) until
+the character pins against a hull wall, sampling positions along the way.
+Walk speed 3.0 tiles/s, character radius 0.3 (character.gleam).
 """
 
 from __future__ import annotations
@@ -53,21 +50,9 @@ from test_m1_flight import (  # shared station-frame helpers
 pytestmark = pytest.mark.asyncio
 
 WALK_SPEED = 3.0  # tiles/s, matches character.gleam
-CHAR_RADIUS = 0.3  # tiles, matches character.gleam
 
 SPAWN_STATION = "meridian_highport"
 SPAWN_STATION_SPACE = f"station:{SPAWN_STATION}"
-
-def _airlock_center_x(mooring_dx: int) -> float:
-    """Composite x-center of a ship's airlock column (sparrow spawn x=5)."""
-    return float(mooring_dx + 5) + 0.5
-
-
-def _mooring_dx(space: dict, ship_id: int) -> int:
-    for mooring in space["moorings"]:
-        if mooring["ship_id"] == ship_id:
-            return int(mooring["dx"])
-    raise AssertionError(f"ship {ship_id} not moored in space {space.get('space')!r}")
 
 
 def _helm_center(space: dict, ship_id: int) -> tuple[float, float]:
@@ -258,7 +243,10 @@ async def test_stand_walk_collide(server):
         char_id = client.character_id
         space = await client.next_space()
         plan = space["plan"]
-        assert (await client.stand())["ok"] is True
+        stood = await client.stand()
+        assert stood["ok"] is True
+        assert stood["reason"] is None
+        assert stood["seat"] is None
 
         # Drive onto the cargo tile via the plan the server sent, then keep
         # pushing south (composite +y): from the cargo tile the plan shows
@@ -272,11 +260,17 @@ async def test_stand_walk_collide(server):
         # frozen.
         await client.move(0.0, 1.0)
         samples: list[CharacterView] = []
-        me = await walk_until_own(client, SPAWN_STATION_SPACE, lambda m: True)
+        # Seed the sampling tick from a raw walkers read (walk_until_own only
+        # returns a CharacterView, not the frame's tick).
+        walkers = await client.next_walkers(SPAWN_STATION_SPACE)
+        me = client.character_in(walkers, char_id)
+        assert me is not None
+        tick = walkers["tick"]
         samples.append(me)
         prev = me
         for _ in range(40):
-            later = await walkers_after_ticks(client, SPAWN_STATION_SPACE, 0, TICK_RATE // 2)
+            later = await walkers_after_ticks(client, SPAWN_STATION_SPACE, tick, TICK_RATE // 2)
+            tick = later["tick"]
             m = client.character_in(later, char_id)
             samples.append(m)
             if m.y == prev.y:
