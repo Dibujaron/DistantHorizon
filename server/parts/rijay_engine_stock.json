@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "id": "rijay.engine.stock",
+  "name": "Rijay original engine",
+  "kind": "engine",
+  "size": "m",
+  "mass": 4.0,
+  "provides": { "engine": 1 },
+  "requires": { "power": 4 },
+  "thrust": 6820.0,
+  "torque": 19840.0,
+  "sprite": "engine_rijay"
+}

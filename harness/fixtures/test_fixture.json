@@ -27,6 +27,11 @@
       ]
     }
   ],
+  "mass": 120.0,
+  "provides": { "power": 10 },
+  "requires": { "engine": 1 },
+  "mounts": [ { "id": "engine_center", "kind": "engine", "size": "m" } ],
+  "default_loadout": { "parts": { "engine_center": "rijay.engine.consol_patch" } },
   "cargo": {
     "capacity": 40,
     "handling": "breakbulk"

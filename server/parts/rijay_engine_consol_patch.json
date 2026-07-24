@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "id": "rijay.engine.consol_patch",
+  "name": "Consol patch engine",
+  "kind": "engine",
+  "size": "m",
+  "mass": 0.0,
+  "provides": { "engine": 1 },
+  "requires": { "power": 3 },
+  "thrust": 4800.0,
+  "torque": 21600.0,
+  "sprite": "engine_consol"
+}
