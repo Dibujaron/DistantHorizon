@@ -1,4 +1,5 @@
 import dh_server/hull
+import dh_server/shipclass
 import gleam/dict
 import gleam/string
 
@@ -95,4 +96,42 @@ pub fn non_positive_mass_is_rejected_test() {
        \"decks\": [ { \"name\": \"M\", \"grid\": [\"###\", \"# #\", \"###\"] } ],
        \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" } }"
   let assert Error(_) = hull.decode(bad)
+}
+
+pub fn unknown_cargo_handling_is_rejected_test() {
+  let bad =
+    "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\", \"mass\": 1.0,
+       \"decks\": [ { \"name\": \"M\", \"grid\": [\"###\", \"# #\", \"###\"] } ],
+       \"cargo\": { \"capacity\": 0, \"handling\": \"antigrav\" } }"
+  let assert Error(_) = hull.decode(bad)
+}
+
+pub fn missing_cargo_block_is_rejected_test() {
+  let bad =
+    "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\", \"mass\": 1.0,
+       \"decks\": [ { \"name\": \"M\", \"grid\": [\"###\", \"# #\", \"###\"] } ] }"
+  let assert Error(_) = hull.decode(bad)
+}
+
+pub fn dock_standoff_reads_the_authored_value_test() {
+  let doc =
+    "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\", \"mass\": 1.0,
+       \"dock_standoff\": 42.0,
+       \"decks\": [ { \"name\": \"M\", \"grid\": [\"###\", \"# #\", \"###\"] } ],
+       \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" } }"
+  let assert Ok(h) = hull.decode(doc)
+  assert h.dock_standoff == 42.0
+}
+
+pub fn dock_standoff_defaults_when_omitted_test() {
+  let doc =
+    "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\", \"mass\": 1.0,
+       \"decks\": [ { \"name\": \"M\", \"grid\": [\"###\", \"# #\", \"###\"] } ],
+       \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" } }"
+  let assert Ok(h) = hull.decode(doc)
+  assert h.dock_standoff == shipclass.default_dock_standoff
+}
+
+pub fn garbage_input_is_rejected_test() {
+  let assert Error(_) = hull.decode("not json")
 }

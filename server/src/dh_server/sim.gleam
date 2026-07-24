@@ -1129,7 +1129,7 @@ fn handle_trade(
                       // resolved numbers; a ship with no fit has neither, so
                       // there is nothing to load it through.
                       case fit_for(state, s.id) {
-                        Error(Nil) -> fail("ship_not_docked")
+                        Error(Nil) -> fail("no_fit")
                         Ok(fit) ->
                           case
                             cargo.transfer_rate(

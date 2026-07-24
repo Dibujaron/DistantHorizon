@@ -69,3 +69,37 @@ pub fn helm_console_is_found_test() {
   let assert Ok(console) = shipclass.helm_console(a_class())
   assert console.kind == "helm"
 }
+
+// `shipclass.gleam` carries a SECOND, independent copy of the "derived pallet
+// count beats the authored capacity" rule in `ship_class_decoder` (the
+// `from_plan` copy above is separate code). These two decode through the wire
+// path, with authored capacity and derived pallet count deliberately set to
+// DIFFERENT numbers, so either copy diverging or being deleted fails them —
+// unlike `decode_encode_round_trips_test`, whose fixture has capacity 1 and
+// one pallet and so can't tell "derived" from "authored" apart.
+
+pub fn capacity_derives_from_pallet_tiles_on_decode_test() {
+  let doc =
+    "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\",
+       \"decks\": [ { \"name\": \"Main\", \"grid\": [
+         \"#h#######\", \"#   p  p#\", \"#########\",
+         \"#########\", \"=Q     p#\", \"#########\" ] } ],
+       \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" },
+       \"flight\": { \"accel\": 40.0, \"turn_rate\": 180.0 } }"
+  let assert Ok(c) = shipclass.decode(doc)
+  // Three `p` tiles beat the authored capacity of 0.
+  assert c.cargo_capacity == 3
+}
+
+pub fn capacity_falls_back_to_authored_value_when_no_pallets_are_drawn_test() {
+  let doc =
+    "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\",
+       \"decks\": [ { \"name\": \"Main\", \"grid\": [
+         \"#h#######\", \"#       #\", \"#########\",
+         \"#########\", \"=Q      #\", \"#########\" ] } ],
+       \"cargo\": { \"capacity\": 10, \"handling\": \"breakbulk\" },
+       \"flight\": { \"accel\": 40.0, \"turn_rate\": 180.0 } }"
+  let assert Ok(c) = shipclass.decode(doc)
+  // No `p` tiles drawn: falls back to the authored capacity of 10.
+  assert c.cargo_capacity == 10
+}

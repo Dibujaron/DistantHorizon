@@ -10,10 +10,7 @@
 import dh_server/composite
 import dh_server/deckplan
 import dh_server/glyphs
-import dh_server/hull
-import dh_server/module
 import dh_server/noise
-import dh_server/part
 import dh_server/protocol
 import dh_server/shipclass
 import dh_server/sim
@@ -28,20 +25,9 @@ import gleam/list
 import gleam/option.{type Option, Some}
 import walk
 
-/// The content registries `sim.start` now takes, read from disk once per sim.
-/// `modules` is empty until M4 iteration 2 authors the Mockingbird's — an empty
-/// module registry resolves every hull with zero modules, which is the normal
-/// case, not an error.
-fn test_sim_args() {
-  let assert Ok(hulls) = hull.load_all("shipclasses")
-  let assert Ok(modules) = module.load_all("modules")
-  let assert Ok(parts) = part.load_all("parts")
-  #(hulls, modules, parts, glyphs.default(), "mockingbird")
-}
-
 fn start_sim() -> process.Subject(sim.Msg) {
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  let #(hulls, modules, parts, reg, spawn_hull) = test_sim_args()
+  let #(hulls, modules, parts, reg, spawn_hull) = fit.sim_args()
   let assert Ok(started) = sim.start(w, hulls, modules, parts, reg, spawn_hull)
   started.data
 }

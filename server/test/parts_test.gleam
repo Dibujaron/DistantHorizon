@@ -2,6 +2,7 @@ import dh_server/glyphs
 import dh_server/hull
 import dh_server/loadout
 import dh_server/part
+import dh_server/shipclass
 import gleam/dict
 
 pub fn shipped_parts_load_test() {
@@ -31,6 +32,7 @@ pub fn uncarved_mockingbird_flies_at_the_pre_m4_constants_test() {
   assert fit.class.flight.accel == 40.0
   assert fit.class.flight.turn_rate == 180.0
   assert fit.class.cargo_capacity == 60
+  assert fit.class.handling == shipclass.BreakBulk
 }
 
 pub fn the_stock_engine_trades_turn_for_thrust_test() {
