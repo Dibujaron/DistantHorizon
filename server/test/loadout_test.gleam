@@ -24,7 +24,7 @@ const hull_doc = "{
   \"requires\": { \"engine\": 1 },
   \"slots\": [ { \"digit\": 1, \"id\": \"bay\", \"name\": \"Bay\" } ],
   \"mounts\": [ { \"id\": \"engine_center\", \"kind\": \"engine\", \"size\": \"m\" } ],
-  \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" },
+  \"cargo\": { \"capacity\": 7, \"handling\": \"breakbulk\" },
   \"decks\": [ { \"name\": \"Main\", \"grid\": [
     \"####=#\",
     \"# h Q#\",
@@ -35,8 +35,36 @@ const hull_doc = "{
   ] } ]
 }"
 
+// The same hull with the corridor's helm glyph removed. A resolved class MUST
+// carry a helm console, so on this hull the console can only come from a
+// module — which is exactly the engine's headline promise under test.
+const hull_no_helm_doc = "{
+  \"schema\": 3,
+  \"id\": \"testhull\",
+  \"name\": \"Test Hull\",
+  \"mass\": 96.0,
+  \"provides\": { \"power\": 10 },
+  \"requires\": { \"engine\": 1 },
+  \"slots\": [ { \"digit\": 1, \"id\": \"bay\", \"name\": \"Bay\" } ],
+  \"mounts\": [ { \"id\": \"engine_center\", \"kind\": \"engine\", \"size\": \"m\" } ],
+  \"cargo\": { \"capacity\": 7, \"handling\": \"breakbulk\" },
+  \"decks\": [ { \"name\": \"Main\", \"grid\": [
+    \"####=#\",
+    \"#   Q#\",
+    \"#### #\",
+    \"#### #\",
+    \"#    #\",
+    \"1##1##\"
+  ] } ]
+}"
+
 fn a_hull() -> hull.Hull {
   let assert Ok(h) = hull.decode(hull_doc)
+  h
+}
+
+fn a_hull_without_a_helm() -> hull.Hull {
+  let assert Ok(h) = hull.decode(hull_no_helm_doc)
   h
 }
 
@@ -74,15 +102,59 @@ fn registries(
   #(by_id, dict.from_list([#("test.engine", an_engine())]))
 }
 
-fn fit_of(mods: List(module.Module), lo: loadout.Loadout) {
+fn fit_on(h: hull.Hull, mods: List(module.Module), lo: loadout.Loadout) {
   let #(m, p) = registries(mods)
-  loadout.resolve(glyphs.default(), a_hull(), m, p, lo)
+  loadout.resolve(glyphs.default(), h, m, p, lo)
+}
+
+fn fit_of(mods: List(module.Module), lo: loadout.Loadout) {
+  fit_on(a_hull(), mods, lo)
 }
 
 fn bay_loadout(module_id: String) -> loadout.Loadout {
   loadout.Loadout(hull: "testhull", modules: [#("bay", module_id)], parts: [
     #("engine_center", "test.engine"),
   ])
+}
+
+pub fn a_module_supplies_its_own_wall_console_test() {
+  // THE promise the module engine exists to keep: install a cockpit and the
+  // helm console exists because the glyph does. `h` is an EDGE glyph — a
+  // wall-mounted console operated from the floor tile it faces — so this only
+  // works if the stamp writes the tile's edge characters, not just its centre.
+  //
+  // The hull here has no helm of its own, and a resolved class without one is
+  // rejected, so the console cannot leak in from anywhere but the module.
+  let cockpit =
+    a_module("m.cockpit", "0.0", "{}", "[\"###\", \"# h\", \"###\"]")
+  let bare = a_module("m.bare", "0.0", "{}", "[\"   \", \"   \", \"   \"]")
+  let h = a_hull_without_a_helm()
+
+  let assert Ok(fit) = fit_on(h, [cockpit, bare], bay_loadout("m.cockpit"))
+  let assert Ok(helm) = deckplan.find_console_of_kind(fit.class.plan, "helm")
+  // Derived from the stamped map, at the bay tile whose east wall it is.
+  assert helm.deck == 0
+  assert #(helm.x, helm.y) == #(0, 1)
+
+  // The control: the same hull and the same slot, a module that draws nothing,
+  // and the class no longer has a helm at all.
+  let assert Error(e) = fit_on(h, [cockpit, bare], bay_loadout("m.bare"))
+  assert e == "invalid_resolved_plan:no console of kind \"helm\""
+}
+
+pub fn the_stamp_writes_edges_in_the_right_orientation_test() {
+  // An ASYMMETRIC patch: a door on the NORTH edge only, walls elsewhere. A
+  // symmetric fixture could not catch a transposed row/column in the block
+  // copy — north sits at (row 0, col 1) and west at (row 1, col 0), so
+  // swapping them would put this door on the west wall instead.
+  let m = a_module("m.door", "0.0", "{}", "[\"#=#\", \"# #\", \"###\"]")
+  let assert Ok(fit) = fit_of([m], bay_loadout("m.door"))
+  let assert Ok(g) = deckplan.deck_at(fit.class.plan, 0)
+  let assert Ok(c) = deckplan.cell_at_xy(g, 0, 1)
+  // The hull authored this tile as #(Wall, Open, Wall, Wall); the module now
+  // owns all four sides of it.
+  assert c.edges
+    == #(deckplan.Door, deckplan.Wall, deckplan.Wall, deckplan.Wall)
 }
 
 pub fn void_cells_pass_through_test() {
@@ -117,22 +189,31 @@ pub fn default_for_is_the_hulls_authored_loadout_test() {
     ])
 }
 
-pub fn stamp_preserves_the_hull_slot_digit_test() {
-  let m = a_module("m.p", "0.0", "{}", "[\"   \", \" p \", \"   \"]")
+pub fn stamp_owns_the_ne_color_and_the_hull_owns_the_sw_slot_test() {
+  // The two data-carrying corners are asymmetric. The patch writes "4" into
+  // its NE corner and leaves its SW corner blank; the hull's bay tile has no
+  // colour digit and carries slot digit "1".
+  let m = a_module("m.p", "0.0", "{}", "[\"  4\", \" p \", \"   \"]")
   let assert Ok(fit) = fit_of([m], bay_loadout("m.p"))
   let assert Ok(g) = deckplan.deck_at(fit.class.plan, 0)
   let assert Ok(c) = deckplan.cell_at_xy(g, 0, 1)
+  // NE corner is module-owned: a module repaints the bay it is installed in.
+  assert c.color == option.Some(4)
   // SW corner is hull-owned: the tile is still in slot 1 after the stamp.
   assert c.slot == option.Some(1)
 }
 
 pub fn derived_capacity_follows_the_stamp_test() {
+  // The hull authors a distinctive fallback of 7, so "derived from the stamp"
+  // and "fell back to the hull" are told apart by the number itself.
   let empty = a_module("m.empty", "0.0", "{}", "[\"   \", \"   \", \"   \"]")
   let pallets =
     a_module("m.pallets", "0.0", "{}", "[\"      \", \" p  p \", \"      \"]")
   let assert Ok(a) = fit_of([empty, pallets], bay_loadout("m.empty"))
   let assert Ok(b) = fit_of([empty, pallets], bay_loadout("m.pallets"))
-  assert a.class.cargo_capacity == 0
+  // Nothing on the stamped map draws a pallet, so the hull's fallback stands.
+  assert a.class.cargo_capacity == 7
+  // Two pallets drawn by the module beat the fallback outright.
   assert b.class.cargo_capacity == 2
 }
 
@@ -228,4 +309,98 @@ pub fn oversized_part_is_rejected_test() {
   let assert Error(e) =
     loadout.resolve(glyphs.default(), a_hull(), mods, parts, lo)
   assert e == "mount_too_small:engine_center"
+}
+
+pub fn a_patch_running_off_the_grid_is_rejected_test() {
+  // Distinct from the wrong-slot case: the right-hand tile of this two-tile
+  // patch lands at x=2 on a two-tile-wide deck, so there is no cell to check
+  // its slot digit against at all.
+  let assert Ok(m) =
+    module.decode(
+      "{ \"schema\": 1, \"id\": \"m.overhang\", \"hull\": \"testhull\",
+         \"slot\": \"bay\", \"name\": \"M\",
+         \"patches\": [ { \"deck\": 0, \"x\": 1, \"y\": 1,
+                          \"grid\": [\"      \", \" p  p \", \"      \"] } ] }",
+    )
+  let assert Error(e) = fit_of([m], bay_loadout("m.overhang"))
+  assert e == "out_of_slot_bounds:m.overhang"
+}
+
+pub fn a_massless_fit_is_rejected_test() {
+  // Nothing forbids a negative module mass, and hull 96 + module -120 +
+  // engine 24 cancels exactly — flight numbers would divide by zero.
+  let ballast =
+    a_module("m.antimass", "-120.0", "{}", "[\"   \", \" p \", \"   \"]")
+  let assert Error(e) = fit_of([ballast], bay_loadout("m.antimass"))
+  assert e == "zero_mass"
+}
+
+// ------------------------------------------------------- content errors --
+//
+// These three reasons mean a DATA FILE is malformed, not that the player asked
+// for an illegal fit (see the `resolve` doc comment). They are pinned by exact
+// string so they cannot quietly drift into the player-facing refusal
+// vocabulary.
+
+pub fn a_hull_mount_with_a_junk_size_is_a_content_error_test() {
+  let assert Ok(h) =
+    hull.decode(
+      "{ \"schema\": 3, \"id\": \"testhull\", \"name\": \"T\", \"mass\": 96.0,
+         \"mounts\": [ { \"id\": \"engine_center\", \"kind\": \"engine\",
+                         \"size\": \"xl\" } ],
+         \"decks\": [ { \"name\": \"M\", \"grid\": [\"###\", \"# #\", \"###\"] } ],
+         \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" } }",
+    )
+  let lo =
+    loadout.Loadout(hull: "testhull", modules: [], parts: [
+      #("engine_center", "test.engine"),
+    ])
+  let #(mods, parts) = registries([])
+  let assert Error(e) = loadout.resolve(glyphs.default(), h, mods, parts, lo)
+  assert e == "mount_bad_size:engine_center"
+}
+
+pub fn a_part_with_a_junk_size_is_a_content_error_test() {
+  // `part.decode` rejects a bad size at load, so this arm is defence in depth
+  // against a Part reaching the engine another way; build the record directly.
+  let bad =
+    part.Part(
+      schema: 1,
+      id: "test.badsize",
+      name: "E",
+      kind: "engine",
+      size: "xl",
+      mass: 1.0,
+      provides: dict.from_list([#("engine", 1)]),
+      requires: dict.new(),
+      thrust: 1.0,
+      torque: 1.0,
+      sprite: option.None,
+    )
+  let lo =
+    loadout.Loadout(hull: "testhull", modules: [], parts: [
+      #("engine_center", "test.badsize"),
+    ])
+  let assert Error(e) =
+    loadout.resolve(
+      glyphs.default(),
+      a_hull(),
+      dict.new(),
+      dict.from_list([#("test.badsize", bad)]),
+      lo,
+    )
+  assert e == "part_bad_size:test.badsize"
+}
+
+pub fn a_patch_naming_a_deck_the_hull_lacks_is_a_content_error_test() {
+  // The test hull has exactly one deck; this module patches deck 9.
+  let assert Ok(m) =
+    module.decode(
+      "{ \"schema\": 1, \"id\": \"m.deck9\", \"hull\": \"testhull\",
+         \"slot\": \"bay\", \"name\": \"M\",
+         \"patches\": [ { \"deck\": 9, \"x\": 0, \"y\": 1,
+                          \"grid\": [\"   \", \" p \", \"   \"] } ] }",
+    )
+  let assert Error(e) = fit_of([m], bay_loadout("m.deck9"))
+  assert e == "patch_bad_deck:m.deck9"
 }

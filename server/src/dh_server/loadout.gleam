@@ -53,7 +53,40 @@ pub fn default_for(h: Hull) -> Loadout {
 
 /// Resolve a loadout onto a hull. `Error` carries a machine-readable reason
 /// (`"tag_deficit:power"`, `"out_of_slot_bounds:<module id>"`, …) that the
-/// `refit_result` wire message forwards verbatim.
+/// `refit_result` wire message forwards verbatim. The vocabulary is fixed and
+/// splits in two.
+///
+/// **Loadout refusals** — the engine legally saying no to an illegal fit.
+/// Every one of these is something a player can cause by asking for the wrong
+/// combination, and a client should render it as a refusal:
+///
+///   - `tag_deficit:<tag>` — pooled `provides` does not cover pooled `requires`
+///   - `out_of_slot_bounds:<module id>` — an overlay cell missed its slot
+///   - `mount_too_small:<mount id>` — the part outranks the mount
+///   - `duplicate_slot:<slot id>` — two modules named the same slot
+///   - `slot_not_on_hull:<slot id>` / `mount_not_on_hull:<mount id>`
+///   - `duplicate_mount:<mount id>` — two parts named the same mount
+///   - `unknown_module:<module id>` / `unknown_part:<part id>`
+///   - `module_wrong_hull:<module id>` / `module_wrong_slot:<module id>`
+///   - `mount_wrong_kind:<mount id>` — an engine on a gun mount
+///   - `loadout_wrong_hull:<hull id>` — the loadout is for another hull
+///   - `zero_mass` — the fit's total mass is not positive, so flight numbers
+///     would divide by zero
+///
+/// **Content errors** — a DATA FILE is wrong. These do not mean the player
+/// asked for something illegal; they mean a hull, part or module document is
+/// malformed and needs an author's attention. They are deliberately kept
+/// distinct rather than folded into the refusals above: reporting a hull with
+/// a junk `size` string as `mount_too_small` would disguise a content bug as a
+/// legal refit refusal, which is strictly worse than a loud unfamiliar reason.
+///
+///   - `mount_bad_size:<mount id>` — hull mount `size` outside `"s"|"m"|"l"`
+///   - `part_bad_size:<part id>` — part `size` outside `"s"|"m"|"l"`
+///   - `patch_bad_deck:<module id>` — a patch names a deck the hull lacks
+///   - `invalid_hull_plan:<parser message>` — the AUTHORED hull rows do not
+///     parse or validate
+///   - `invalid_resolved_plan:<parser message>` — the STAMPED rows do not
+///     parse or validate (e.g. the fit left the ship with no helm console)
 pub fn resolve(
   reg: glyphs.Registry,
   h: Hull,
@@ -173,7 +206,12 @@ fn check_tags(
     h.requires
     |> merge_all(list.map(fitted, fn(f) { { f.1 }.requires }))
     |> merge_all(list.map(mounted, fn(m) { { m.1 }.requires }))
-  list.try_fold(dict.to_list(requires), Nil, fn(_, entry) {
+  // Sorted by tag: `dict.to_list` has no specified order, and the losing tag
+  // travels to the player in the reason string, so an unsorted fold would name
+  // an arbitrary one of several deficits.
+  let needs =
+    dict.to_list(requires) |> list.sort(fn(a, b) { string.compare(a.0, b.0) })
+  list.try_fold(needs, Nil, fn(_, entry) {
     let #(tag, needed) = entry
     let supplied = case dict.get(provides, tag) {
       Ok(v) -> v
@@ -275,6 +313,13 @@ fn stamp_all(
 /// tile overwrites the hull's 3x3 block — **except its SW corner**, which stays
 /// the hull's because slot regions are hull-owned and a later refit has to
 /// find them again.
+///
+/// The two corners that carry data are therefore asymmetric, and deliberately
+/// so: the NE corner (the palette colour digit) IS overwritten — a module owns
+/// its own look, so a galley stamped into a bay repaints that bay — while the
+/// SW corner (the slot digit) is not, because the hull owns where its slots
+/// are. Everything else about the tile, all four edges included, is the
+/// module's.
 fn stamp(reg: glyphs.Registry, rows: List(String), p: Patch) -> List(String) {
   let base = list.map(rows, string.to_graphemes)
   let patch = list.map(p.rows, string.to_graphemes)
