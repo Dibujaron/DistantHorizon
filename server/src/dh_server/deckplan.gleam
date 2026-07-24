@@ -46,15 +46,20 @@ pub type Dir {
   W
 }
 
-/// One tile: what it IS at centre plus its four edges `#(n, e, s, w)`, and
-/// (from deck-plan v3.1) an optional decor glyph and an optional palette
-/// color index for that tile.
+/// One tile: what it IS at centre plus its four edges `#(n, e, s, w)`, an
+/// optional decor glyph, an optional palette colour index, and (M4) the hull
+/// SLOT this tile belongs to. Colour rides the NE corner, slot the SW corner
+/// — see `docs/deckplan-format.md`.
 pub type Cell {
   Cell(
     tile: Tile,
     edges: #(Edge, Edge, Edge, Edge),
     decor: option.Option(String),
     color: option.Option(Int),
+    /// Slot membership: the SW-corner hex digit selecting one of the hull's
+    /// slots (`docs/modules.md`), or `None` for fixed hull structure that no
+    /// module may overwrite.
+    slot: option.Option(Int),
   )
 }
 
@@ -144,7 +149,8 @@ pub fn parse_deck_with(
             parse_edge(reg, cell_at(cells_g, 3 * y + 1, 3 * x)),
           ),
           decor: parse_decor(reg, cell_at(cells_g, 3 * y + 1, 3 * x + 1)),
-          color: parse_color(cell_at(cells_g, 3 * y, 3 * x + 2)),
+          color: parse_hex_digit(cell_at(cells_g, 3 * y, 3 * x + 2)),
+          slot: parse_hex_digit(cell_at(cells_g, 3 * y + 2, 3 * x)),
         )
       })
     })
@@ -176,9 +182,9 @@ fn parse_decor(reg: glyphs.Registry, ch: String) -> option.Option(String) {
   }
 }
 
-/// The NE corner encodes colour as a single hex digit 0-f -> 0-15; anything
-/// else (blank, "#", junk) is uncoloured.
-fn parse_color(ch: String) -> option.Option(Int) {
+/// A corner hex digit 0-f -> 0-15; anything else (blank, "#", junk) is None.
+/// Both the NE corner (colour) and the SW corner (slot) use this encoding.
+fn parse_hex_digit(ch: String) -> option.Option(Int) {
   case int.base_parse(ch, 16) {
     Ok(n) if n >= 0 && n <= 15 -> Some(n)
     _ -> None
@@ -776,9 +782,13 @@ fn tile_block(g: DeckGrid, x: Int, y: Int) -> #(String, String, String) {
     Some(v) -> to_hex_digit(v)
     None -> corner(n, e)
   }
+  let sw = case cell.slot {
+    Some(v) -> to_hex_digit(v)
+    None -> corner(s, w)
+  }
   let top = corner(n, w) <> edge_glyph(n) <> ne
   let mid = edge_glyph(w) <> c <> edge_glyph(e)
-  let bot = corner(s, w) <> edge_glyph(s) <> corner(s, e)
+  let bot = sw <> edge_glyph(s) <> corner(s, e)
   #(top, mid, bot)
 }
 

@@ -26,11 +26,9 @@ SW  S  SE      (2,0)=SW  (2,1)=S   (2,2)=SE
 
 The parser reads **five positions**: the center, and the four edge-mids
 (N/E/S/W). The four corners carry no collision data (you never walk through a
-corner) and never change walkability — but the **NE corner** carries one more
-fact: a single hex digit `0`–`f` selects a slot in the 16-colour palette
-(`server/colors.json`) that tints the tile's decor. A blank, `#`, or any other
-non-hex character means uncoloured. NW/SW/SE remain purely cosmetic — draw `#`
-there for a tidy-looking hull, but they carry no data. Nothing is ever a
+corner) and never change walkability — but the **NE and SW corners** carry
+further facts (see "Colour" and "Slots" below). NW/SE remain purely cosmetic —
+draw `#` there for a tidy-looking hull, but they carry no data. Nothing is ever a
 syntax error; a blank simply means "no wall here."
 
 Each tile owns **all four of its own walls**. A partition between two rooms is
@@ -86,12 +84,11 @@ registry is the list.
   wall bunk, so bunks stack in a legible way; nothing currently checks this.
   Any edge char not in the registry parses as a generic fixture, so nothing
   is ever a syntax error.
-- **Corners**: NW/SW/SE are cosmetic — use `#` for a clean hull outline; the
+- **Corners**: NW/SE are cosmetic — use `#` for a clean hull outline; the
   renderer auto-joins wall corners, so a blank corner between two walls still
-  renders closed. **NE is not cosmetic**: it's the tile's colour digit (see
-  "Colour" below). Corners never carry collision data and decor never changes
-  walkability — `r`/`e`/`d`/`p` are walkable floor exactly like plain floor,
-  while `v`/`w`/edge-`d` (bunk) block like any other wall-fixture.
+  renders closed. **NE and SW are not cosmetic**: NE is the tile's colour digit
+  (see "Colour" below) and SW is its slot digit (see "Slots" below). Corners
+  never carry collision data and decor never changes walkability.
 
 ### Colour
 
@@ -105,6 +102,32 @@ non-hex character) renders its decor untinted. The palette rides the wire on
 the `welcome` message, the same way the glyph registry does, and the client
 applies the tint at render — colour is transport, not gameplay: it never
 affects walkability or collision.
+
+### Slots
+
+A tile's **SW corner** carries a hex digit `0`–`f` naming the hull **slot** the
+tile belongs to — the modulable regions a refit may overwrite (`docs/modules.md`).
+A blank, `#`, or any other non-hex character means "fixed hull structure": no
+module may touch that tile. The hull's `slots` table maps each digit to a slot
+id and human name. Slot regions are exactly as fluid as the hull author draws
+them — following a taper, non-rectangular, whatever — and there is no rectangle
+list anywhere.
+
+A module rewrites its slot completely — including *both* halves of any wall
+between two slot tiles, since both tiles are its own. The only edges it shares
+with the hull are the slot's **perimeter**, where the neighbouring tile is fixed
+structure. Two authoring rules follow, and neither is machine-checked:
+
+- **Leave the slot perimeter open by default.** Each tile owns all four of its
+  own walls and the collision rule ORs the two facing edges, so a module can put
+  a wall (`#` on its half) or a door (`=` on its half) anywhere along an open
+  perimeter — full freedom, no engine special case. A hull-side wall on the
+  perimeter is therefore a *deliberate structural declaration*: "no module ever
+  opens this", for a pressure bulkhead or a hold's fire wall. Draw one only
+  where you mean it.
+- **A stamp never overwrites the SW corner.** Slot regions are hull-owned, so
+  the resolved plan still carries them and a second refit finds the same
+  region.
 
 Console/dock/spawn glyphs are an **authoring** convenience: **the map is the
 single source of truth**, so a position can't drift from a separate list. At

@@ -406,7 +406,13 @@ fn compose_level(
           |> list.filter(fn(c) { c.tile != Void })
         case sources {
           [] ->
-            Ok(Cell(tile: Void, edges: open_edges(), decor: None, color: None))
+            Ok(Cell(
+              tile: Void,
+              edges: open_edges(),
+              decor: None,
+              color: None,
+              slot: None,
+            ))
           [one] -> Ok(one)
           _ -> Error("berth_blocked")
         }
@@ -536,7 +542,13 @@ fn cell(g: DeckGrid, x: Int, y: Int) -> deckplan.Cell {
   case deckplan.cell_at_xy(g, x, y) {
     Ok(c) -> c
     Error(Nil) ->
-      Cell(tile: Void, edges: open_edges(), decor: None, color: None)
+      Cell(
+        tile: Void,
+        edges: open_edges(),
+        decor: None,
+        color: None,
+        slot: None,
+      )
   }
 }
 
