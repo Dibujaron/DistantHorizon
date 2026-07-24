@@ -8,6 +8,7 @@ import dh_server/protocol
 import dh_server/ship
 import dh_server/shipclass
 import dh_server/world
+import fit
 import gleam/dict
 import gleam/dynamic/decode
 import gleam/json
@@ -16,8 +17,7 @@ import gleam/option.{None, Some}
 import gleam/string
 
 fn test_class() -> shipclass.ShipClass {
-  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
-  c
+  fit.mockingbird()
 }
 
 pub fn parse_login_test() {

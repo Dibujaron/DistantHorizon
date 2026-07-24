@@ -14,7 +14,6 @@ import gleam/json.{type Json}
 import gleam/list
 import gleam/result
 import gleam/string
-import simplifile
 
 /// How cargo physically gets aboard (DESIGN.md "Cargo handling"):
 /// break-bulk hulls load by robot stevedores anywhere; container hulls
@@ -76,30 +75,6 @@ pub type ShipClass {
     /// total mass — data now, not constants.
     flight: Flight,
   )
-}
-
-/// TEMPORARY (deleted in the sim-rewiring task): the pre-M4 global flight
-/// constants, so the old `load` path keeps producing a flyable class while the
-/// hull/loadout machinery lands around it. Real flight stats come from the
-/// fitted engine parts (`loadout.resolve`).
-const default_shim_flight = Flight(accel: 40.0, turn_rate: 180.0)
-
-/// Read and decode a ship class document from a file, using the built-in glyph
-/// legend. `path` is resolved relative to the process's working directory.
-pub fn load(path: String) -> Result(ShipClass, String) {
-  load_with(glyphs.default(), path)
-}
-
-/// `load`, but interpreting the deck grids with an explicit glyph registry —
-/// the runtime path threads the loaded `glyphs.json` here.
-pub fn load_with(reg: Registry, path: String) -> Result(ShipClass, String) {
-  use text <- result.try(
-    simplifile.read(path)
-    |> result.map_error(fn(err) {
-      "failed to read ship class file " <> path <> ": " <> string.inspect(err)
-    }),
-  )
-  decode_with(reg, text)
 }
 
 /// Decode a ship class document (built-in glyph legend), validating the deck
@@ -229,11 +204,11 @@ fn ship_class_decoder(reg: Registry) -> decode.Decoder(ShipClass) {
     default_dock_standoff,
     decode.float,
   )
-  use flight <- decode.optional_field(
-    "flight",
-    default_shim_flight,
-    flight_decoder(),
-  )
+  // Required, not optional: `encode` always writes it, so every document that
+  // legitimately exists carries it. There is no defaulting left to do now that
+  // the pre-M4 global constants are gone — a class without flight stats is a
+  // malformed document, and failing loudly beats an unflyable ship.
+  use flight <- decode.field("flight", flight_decoder())
   let #(capacity, handling) = cargo
   // Breakbulk hold capacity derives from cargo-pallet tiles on the deck
   // plan ("the map is the single source of truth", as with consoles/berths)

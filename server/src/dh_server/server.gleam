@@ -19,7 +19,6 @@ import dh_server/auth.{type Authenticator}
 import dh_server/glyphs
 import dh_server/palette
 import dh_server/protocol
-import dh_server/shipclass.{type ShipClass}
 import dh_server/sim
 import dh_server/world.{type World}
 import gleam/bytes_tree
@@ -44,13 +43,12 @@ pub fn start(
   port: Int,
   sim_subject: Subject(sim.Msg),
   world: World,
-  class: ShipClass,
   registry: glyphs.Registry,
   palette: palette.Palette,
   authenticator: Authenticator,
 ) -> Result(actor.Started(static_supervisor.Supervisor), actor.StartError) {
   mist.new(fn(req) {
-    route(req, sim_subject, world, class, registry, palette, authenticator)
+    route(req, sim_subject, world, registry, palette, authenticator)
   })
   |> mist.port(port)
   |> mist.bind(bind_address)
@@ -61,7 +59,6 @@ fn route(
   req: Request(Connection),
   sim_subject: Subject(sim.Msg),
   world: World,
-  class: ShipClass,
   registry: glyphs.Registry,
   palette: palette.Palette,
   authenticator: Authenticator,
@@ -77,7 +74,6 @@ fn route(
             conn,
             sim_subject,
             world,
-            class,
             registry,
             palette,
             authenticator,
@@ -109,7 +105,6 @@ fn handle_ws(
   conn: mist.WebsocketConnection,
   sim_subject: Subject(sim.Msg),
   world: World,
-  class: ShipClass,
   registry: glyphs.Registry,
   palette: palette.Palette,
   authenticator: Authenticator,
@@ -130,7 +125,6 @@ fn handle_ws(
         conn,
         sim_subject,
         world,
-        class,
         registry,
         palette,
         authenticator,
@@ -147,7 +141,6 @@ fn handle_client_text(
   conn: mist.WebsocketConnection,
   sim_subject: Subject(sim.Msg),
   world: World,
-  class: ShipClass,
   registry: glyphs.Registry,
   palette: palette.Palette,
   authenticator: Authenticator,
@@ -165,32 +158,52 @@ fn handle_client_text(
             Ok(account_id) ->
               case sim.add_player(sim_subject, username, client, 1000) {
                 Error(reason) -> {
+                  let detail = case reason {
+                    "station_full" -> "no free berth at the spawn station"
+                    // Anything else is a loadout/content refusal from
+                    // `loadout.resolve` — forwarded verbatim as the code.
+                    _ -> "could not fit a ship on the spawn hull"
+                  }
                   let _ =
                     mist.send_text_frame(
                       conn,
-                      protocol.encode_error(
-                        reason,
-                        "no free berth at the spawn station",
-                      ),
+                      protocol.encode_error(reason, detail),
                     )
                   session
                 }
-                Ok(#(ship_id, character_id)) -> {
-                  let _ =
-                    mist.send_text_frame(
-                      conn,
-                      protocol.encode_welcome(
-                        account_id,
-                        ship_id,
-                        character_id,
-                        world,
-                        class,
-                        registry,
-                        palette,
-                      ),
-                    )
-                  LoggedIn(client, ship_id, character_id)
-                }
+                // The `ship_class` in the welcome is the RESOLVED class of the
+                // ship just spawned for this connection (M4: a hull is per-ship
+                // data), so it is asked of the sim rather than held here.
+                Ok(#(ship_id, character_id)) ->
+                  case sim.ship_class(sim_subject, ship_id, 1000) {
+                    Error(Nil) -> {
+                      let _ =
+                        mist.send_text_frame(
+                          conn,
+                          protocol.encode_error(
+                            "no_fit",
+                            "the spawned ship has no resolved fit",
+                          ),
+                        )
+                      session
+                    }
+                    Ok(class) -> {
+                      let _ =
+                        mist.send_text_frame(
+                          conn,
+                          protocol.encode_welcome(
+                            account_id,
+                            ship_id,
+                            character_id,
+                            world,
+                            class,
+                            registry,
+                            palette,
+                          ),
+                        )
+                      LoggedIn(client, ship_id, character_id)
+                    }
+                  }
               }
             Error(auth.InvalidCredentials) -> {
               let _ =

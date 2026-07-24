@@ -10,11 +10,15 @@
 import dh_server/composite
 import dh_server/deckplan
 import dh_server/glyphs
+import dh_server/hull
+import dh_server/module
 import dh_server/noise
+import dh_server/part
 import dh_server/protocol
 import dh_server/shipclass
 import dh_server/sim
 import dh_server/world
+import fit
 import gleam/dynamic/decode
 import gleam/erlang/process
 import gleam/float
@@ -24,10 +28,21 @@ import gleam/list
 import gleam/option.{type Option, Some}
 import walk
 
+/// The content registries `sim.start` now takes, read from disk once per sim.
+/// `modules` is empty until M4 iteration 2 authors the Mockingbird's — an empty
+/// module registry resolves every hull with zero modules, which is the normal
+/// case, not an error.
+fn test_sim_args() {
+  let assert Ok(hulls) = hull.load_all("shipclasses")
+  let assert Ok(modules) = module.load_all("modules")
+  let assert Ok(parts) = part.load_all("parts")
+  #(hulls, modules, parts, glyphs.default(), "mockingbird")
+}
+
 fn start_sim() -> process.Subject(sim.Msg) {
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
-  let assert Ok(started) = sim.start(w, c)
+  let #(hulls, modules, parts, reg, spawn_hull) = test_sim_args()
+  let assert Ok(started) = sim.start(w, hulls, modules, parts, reg, spawn_hull)
   started.data
 }
 
@@ -562,7 +577,7 @@ pub fn login_lands_in_the_station_space_seated_at_own_helm_test() {
   // (rather than assume berth 0) so this stays correct if the seed or the
   // hash ever changes which berth ship 1 lands on.
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  let assert Ok(class) = shipclass.load("shipclasses/mockingbird.json")
+  let class = fit.mockingbird()
   let assert Ok(station) = world.get_station(w, "meridian_highport")
   let berth =
     expected_berth(
@@ -736,7 +751,7 @@ pub fn undock_frees_the_berth_test() {
 pub fn free_berth_is_seed_random_among_free_berths_test() {
   let s = start_sim()
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  let assert Ok(class) = shipclass.load("shipclasses/mockingbird.json")
+  let class = fit.mockingbird()
   let assert Ok(station) = world.get_station(w, "meridian_highport")
   let free_count = list.length(world.station_berths(station))
 

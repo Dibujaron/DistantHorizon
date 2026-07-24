@@ -1,5 +1,9 @@
-//// The simulation actor: owns the world (loaded once at startup), the ship
-//// class every ship uses, and the lists of player ships and characters. It
+//// The simulation actor: owns the world (loaded once at startup), the content
+//// registries (hulls, modules, parts) and the lists of player ships and
+//// characters. Since M4 a hull is PER-SHIP data: every ship carries its own
+//// resolved `loadout.Fit` in `fits`, keyed by ship id, and every consumer of
+//// what used to be one world-wide `ShipClass` looks its ship's fit up through
+//// `fit_for`. A ship whose fit is missing is skipped, never crashed on. It
 //// drives the 60 Hz tick loop by sending itself `Tick` messages via
 //// `process.send_after`, with drift correction (each tick is scheduled
 //// against the loop's fixed start time, so per-tick timer error never
@@ -45,13 +49,19 @@ import dh_server/character.{type Character}
 import dh_server/clock
 import dh_server/composite
 import dh_server/deckplan
+import dh_server/glyphs
+import dh_server/hull
+import dh_server/loadout
 import dh_server/market
+import dh_server/module
 import dh_server/noise
+import dh_server/part
 import dh_server/protocol
 import dh_server/ship.{type Ship}
 import dh_server/shipclass.{type ShipClass}
 import dh_server/stats
 import dh_server/world.{type World}
+import gleam/dict
 import gleam/erlang/process.{type Subject}
 import gleam/float
 import gleam/int
@@ -75,9 +85,10 @@ pub opaque type Msg {
   /// Advance the simulation by one step (self-scheduled).
   Tick
   /// A WebSocket connection has logged in: claim a free berth at the spawn
-  /// station (or refuse with `Error("station_full")`), spawn it a ship
-  /// docked there, a character seated at that ship's namespaced helm, and
-  /// register it for snapshots.
+  /// station (or refuse with `Error("station_full")`), resolve the spawn
+  /// hull's default loadout (or refuse with `loadout.resolve`'s own reason),
+  /// spawn it a ship docked there, a character seated at that ship's
+  /// namespaced helm, and register it for snapshots.
   AddPlayer(
     name: String,
     client: Subject(ClientMsg),
@@ -124,6 +135,8 @@ pub opaque type Msg {
     character_id: Int,
     reply: Subject(Result(market.Market, String)),
   )
+  /// The resolved class of one ship — the `welcome` frame's `ship_class`.
+  RequestShipClass(ship_id: Int, reply: Subject(Result(ShipClass, Nil)))
 }
 
 /// Messages the sim sends to connected client handler processes.
@@ -135,8 +148,11 @@ pub type ClientMsg {
 /// docked there, a character named `name` seated at its namespaced helm in
 /// the station composite, and register `client` to receive snapshots and
 /// walker updates for as long as its owning process lives. Returns
-/// `Ok(#(ship_id, character_id))`, or `Error("station_full")` when the
-/// spawn station has no free berth.
+/// `Ok(#(ship_id, character_id))`, `Error("station_full")` when the spawn
+/// station has no free berth, or a `loadout.resolve` refusal reason
+/// (`"unknown_hull:<id>"`, `"tag_deficit:<tag>"`, …) when the spawn hull's
+/// default loadout does not resolve — spawn refuses rather than falling back
+/// to some default hull.
 pub fn add_player(
   sim: Subject(Msg),
   name: String,
@@ -259,6 +275,18 @@ pub fn request_market(
   process.call(sim, waiting: timeout_ms, sending: RequestMarket(character_id, _))
 }
 
+/// The resolved `ShipClass` of `ship_id` (blocking call), or `Error(Nil)` if
+/// the sim has no fit for it — which since M4 is the only place the wire's
+/// `ship_class` can come from, because a hull is per-ship data and there is no
+/// single world-wide class to hand out any more.
+pub fn ship_class(
+  sim: Subject(Msg),
+  ship_id: Int,
+  timeout_ms: Int,
+) -> Result(ShipClass, Nil) {
+  process.call(sim, waiting: timeout_ms, sending: RequestShipClass(ship_id, _))
+}
+
 /// A registered listener: the subject to push to, the character it owns,
 /// and the monitor on its owning process that keys its removal.
 type Client {
@@ -281,7 +309,16 @@ type State {
   State(
     self: Subject(Msg),
     world: World,
-    class: ShipClass,
+    /// Every hull, module and part the world knows — the content registries.
+    hulls: dict.Dict(String, hull.Hull),
+    modules: dict.Dict(String, module.Module),
+    parts: dict.Dict(String, part.Part),
+    glyphs: glyphs.Registry,
+    /// The hull new ships spawn on.
+    spawn_hull: String,
+    /// Resolved fit per ship id. A ship without one cannot be simulated, so
+    /// spawn refuses rather than falling back to a default.
+    fits: List(#(Int, loadout.Fit)),
     ships: List(Ship),
     next_ship_id: Int,
     characters: List(Character),
@@ -299,16 +336,29 @@ type State {
   )
 }
 
+/// Start the simulation actor over the world and the content registries.
+/// `spawn_hull` names the hull in `hulls` that new ships are fitted from; every
+/// ship resolves its own `loadout.Fit` at spawn, so nothing here is a
+/// world-wide class any more.
 pub fn start(
   world: World,
-  class: ShipClass,
+  hulls: dict.Dict(String, hull.Hull),
+  modules: dict.Dict(String, module.Module),
+  parts: dict.Dict(String, part.Part),
+  registry: glyphs.Registry,
+  spawn_hull: String,
 ) -> Result(actor.Started(Subject(Msg)), actor.StartError) {
   actor.new_with_initialiser(1000, fn(subject) {
     let state =
       State(
         self: subject,
         world: world,
-        class: class,
+        hulls: hulls,
+        modules: modules,
+        parts: parts,
+        glyphs: registry,
+        spawn_hull: spawn_hull,
+        fits: [],
         ships: [],
         next_ship_id: 1,
         characters: [],
@@ -357,84 +407,98 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
               process.send(reply, Error("station_full"))
               actor.continue(state)
             }
-            Ok(berth) -> {
-              let t = int.to_float(state.tick) *. ship.dt
-              let new_ship =
-                ship.spawn_docked(
-                  state.next_ship_id,
-                  state.world,
-                  t,
-                  berth,
-                  state.class.dock_port_orientation,
-                  state.class.dock_standoff,
-                )
-              // Rebuild the spawn station's composite with the new mooring
-              // before placing the character in the composite frame.
-              let state =
-                rebuild_space(
-                  State(
-                    ..state,
-                    ships: [new_ship, ..state.ships],
-                    next_ship_id: state.next_ship_id + 1,
-                  ),
-                  state.world.spawn_station,
-                )
-              let assert Ok(space) =
-                find_space(state.spaces, state.world.spawn_station)
-              // The composite carries the moored (rotated + translated)
-              // console positions — look the helm up there by its
-              // namespaced id rather than re-deriving the transform.
-              let assert Ok(class_helm) =
-                deckplan.find_console_of_kind(state.class.plan, "helm")
-              let assert Ok(helm) =
-                deckplan.find_console(
-                  space.composite.plan,
-                  composite.namespace_id(new_ship.id, class_helm.id),
-                )
-              let #(hx, hy) = deckplan.tile_center(helm.x, helm.y)
-              let new_character =
-                character.Character(
-                  id: state.next_character_id,
-                  name: name,
-                  ship_id: new_ship.id,
-                  place: character.OnStation(state.world.spawn_station),
-                  x: hx,
-                  y: hy,
-                  // The composite helm console carries its composite deck.
-                  deck: helm.deck,
-                  // helm.id is already the namespaced composite id.
-                  seat: Some(helm.id),
-                  move_dx: 0.0,
-                  move_dy: 0.0,
-                )
-              let state =
-                State(
-                  ..state,
-                  characters: [new_character, ..state.characters],
-                  next_character_id: state.next_character_id + 1,
-                  clients: [
-                    Client(
-                      monitor: process.monitor(pid),
-                      subject: client,
-                      character_id: new_character.id,
-                    ),
-                    ..state.clients
-                  ],
-                )
-              process.send(reply, Ok(#(new_ship.id, new_character.id)))
-              // Everyone in the spawn station's space (including the new
-              // client) gets the new plan: a ship just moored on.
-              push_space(
-                state,
-                protocol.StationSpace(state.world.spawn_station),
-              )
-              io.println_error(
-                "client connected ("
-                <> int.to_string(list.length(state.clients))
-                <> ")",
-              )
-              actor.continue(state)
-            }
+            Ok(berth) ->
+              // The fit comes first: a ship whose loadout does not resolve is
+              // not simulable at all, so the login is refused with the
+              // resolver's own reason rather than spawned onto a fallback hull.
+              case default_fit(state, state.spawn_hull) {
+                Error(reason) -> {
+                  process.send(reply, Error(reason))
+                  actor.continue(state)
+                }
+                Ok(fit) -> {
+                  let ship_id = state.next_ship_id
+                  let t = int.to_float(state.tick) *. ship.dt
+                  let new_ship =
+                    ship.spawn_docked(
+                      ship_id,
+                      state.world,
+                      t,
+                      berth,
+                      fit.class.dock_port_orientation,
+                      fit.class.dock_standoff,
+                    )
+                  // Rebuild the spawn station's composite with the new mooring
+                  // before placing the character in the composite frame. The
+                  // fit is registered first: the rebuild reads it back out of
+                  // `fits` to stitch this ship's own plan into the composite.
+                  let state =
+                    rebuild_space(
+                      State(
+                        ..state,
+                        ships: [new_ship, ..state.ships],
+                        next_ship_id: ship_id + 1,
+                        fits: [#(ship_id, fit), ..state.fits],
+                      ),
+                      state.world.spawn_station,
+                    )
+                  let assert Ok(space) =
+                    find_space(state.spaces, state.world.spawn_station)
+                  // The composite carries the moored (rotated + translated)
+                  // console positions — look the helm up there by its
+                  // namespaced id rather than re-deriving the transform.
+                  let assert Ok(class_helm) =
+                    deckplan.find_console_of_kind(fit.class.plan, "helm")
+                  let assert Ok(helm) =
+                    deckplan.find_console(
+                      space.composite.plan,
+                      composite.namespace_id(new_ship.id, class_helm.id),
+                    )
+                  let #(hx, hy) = deckplan.tile_center(helm.x, helm.y)
+                  let new_character =
+                    character.Character(
+                      id: state.next_character_id,
+                      name: name,
+                      ship_id: new_ship.id,
+                      place: character.OnStation(state.world.spawn_station),
+                      x: hx,
+                      y: hy,
+                      // The composite helm console carries its composite deck.
+                      deck: helm.deck,
+                      // helm.id is already the namespaced composite id.
+                      seat: Some(helm.id),
+                      move_dx: 0.0,
+                      move_dy: 0.0,
+                    )
+                  let state =
+                    State(
+                      ..state,
+                      characters: [new_character, ..state.characters],
+                      next_character_id: state.next_character_id + 1,
+                      clients: [
+                        Client(
+                          monitor: process.monitor(pid),
+                          subject: client,
+                          character_id: new_character.id,
+                        ),
+                        ..state.clients
+                      ],
+                    )
+                  process.send(reply, Ok(#(new_ship.id, new_character.id)))
+                  // Everyone in the spawn station's space (including the new
+                  // client) gets the new plan: a ship just moored on.
+                  push_space(
+                    state,
+                    protocol.StationSpace(state.world.spawn_station),
+                  )
+                  io.println_error(
+                    "client connected ("
+                    <> int.to_string(list.length(state.clients))
+                    <> ")",
+                  )
+                  actor.continue(state)
+                }
+              }
           }
       }
     }
@@ -443,21 +507,28 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
       case find_character(state.characters, character_id) {
         Error(Nil) -> actor.continue(state)
         Ok(char) ->
-          case
-            char.place == character.Aboard
-            && character.is_at_helm(char, state.class.plan)
-          {
-            False -> actor.continue(state)
-            True -> {
-              let ships =
-                list.map(state.ships, fn(s) {
-                  case s.id == char.ship_id, s.dock {
-                    True, ship.Flying -> ship.set_controls(s, rotate, thrust)
-                    _, _ -> s
-                  }
-                })
-              actor.continue(State(..state, ships: ships))
-            }
+          // Helm gating reads the character's OWN ship's resolved plan; a ship
+          // with no fit is not simulable, so its helm simply does not answer.
+          case fit_for(state, char.ship_id) {
+            Error(Nil) -> actor.continue(state)
+            Ok(fit) ->
+              case
+                char.place == character.Aboard
+                && character.is_at_helm(char, fit.class.plan)
+              {
+                False -> actor.continue(state)
+                True -> {
+                  let ships =
+                    list.map(state.ships, fn(s) {
+                      case s.id == char.ship_id, s.dock {
+                        True, ship.Flying ->
+                          ship.set_controls(s, rotate, thrust)
+                        _, _ -> s
+                      }
+                    })
+                  actor.continue(State(..state, ships: ships))
+                }
+              }
           }
       }
     }
@@ -469,7 +540,7 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
           actor.continue(state)
         }
         False ->
-          with_helm_ship(state, character_id, reply, fn(state, found) {
+          with_helm_ship(state, character_id, reply, fn(state, found, fit) {
             let t = int.to_float(state.tick) *. ship.dt
             case
               ship.try_dock(
@@ -477,8 +548,8 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
                 state.world,
                 t,
                 free_berth(state, found.id, _),
-                state.class.dock_port_orientation,
-                state.class.dock_standoff,
+                fit.class.dock_port_orientation,
+                fit.class.dock_standoff,
               )
             {
               Error(reason) -> {
@@ -504,7 +575,7 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
                         // the body's ship deck -> its composite deck.
                         let #(rx, ry) =
                           composite.from_ship_frame(
-                            composite.plan_width(state.class.plan),
+                            composite.plan_width(fit.class.plan),
                             c.x,
                             c.y,
                           )
@@ -543,15 +614,28 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
             character.OnStation(station_id), Some(seat_id) ->
               case composite.parse_namespaced(seat_id) {
                 Error(Nil) -> fail("not_at_helm")
+                // The seat is namespaced by the ship it belongs to, so the
+                // console is resolved against THAT ship's own resolved plan.
                 Ok(#(target_ship_id, console_id)) ->
-                  case deckplan.find_console(state.class.plan, console_id) {
+                  case fit_for(state, target_ship_id) {
                     Error(Nil) -> fail("not_at_helm")
-                    Ok(console) if console.kind != "helm" -> fail("not_at_helm")
-                    Ok(_) ->
-                      case find_ship(state.ships, target_ship_id) {
-                        Error(Nil) -> fail("not_docked")
-                        Ok(target) ->
-                          handle_undock_split(state, station_id, target, reply)
+                    Ok(fit) ->
+                      case deckplan.find_console(fit.class.plan, console_id) {
+                        Error(Nil) -> fail("not_at_helm")
+                        Ok(console) if console.kind != "helm" ->
+                          fail("not_at_helm")
+                        Ok(_) ->
+                          case find_ship(state.ships, target_ship_id) {
+                            Error(Nil) -> fail("not_docked")
+                            Ok(target) ->
+                              handle_undock_split(
+                                state,
+                                station_id,
+                                target,
+                                fit,
+                                reply,
+                              )
+                          }
                       }
                   }
               }
@@ -702,7 +786,13 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
         })
         |> list.unique
       let state =
-        State(..state, clients: remaining, ships: ships, characters: characters)
+        State(
+          ..state,
+          clients: remaining,
+          ships: ships,
+          characters: characters,
+          fits: prune_fits(state.fits, ships),
+        )
       let state = list.fold(despawned_station_ids, state, rebuild_space)
       list.each(despawned_station_ids, fn(sid) {
         push_space(state, protocol.StationSpace(sid))
@@ -740,7 +830,50 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
       process.send(reply, result)
       actor.continue(state)
     }
+
+    RequestShipClass(ship_id, reply) -> {
+      process.send(
+        reply,
+        fit_for(state, ship_id) |> result.map(fn(f) { f.class }),
+      )
+      actor.continue(state)
+    }
   }
+}
+
+/// The resolved fit of one ship. Every consumer of the old single shared
+/// `state.class` goes through here: since M4 a hull is per-ship data, not a
+/// world-wide constant.
+fn fit_for(state: State, ship_id: Int) -> Result(loadout.Fit, Nil) {
+  case list.find(state.fits, fn(entry) { entry.0 == ship_id }) {
+    Ok(#(_, fit)) -> Ok(fit)
+    Error(Nil) -> Error(Nil)
+  }
+}
+
+/// Resolve the default loadout of `hull_id` — the fit a freshly spawned ship
+/// gets.
+fn default_fit(state: State, hull_id: String) -> Result(loadout.Fit, String) {
+  case dict.get(state.hulls, hull_id) {
+    Error(Nil) -> Error("unknown_hull:" <> hull_id)
+    Ok(h) ->
+      loadout.resolve(
+        state.glyphs,
+        h,
+        state.modules,
+        state.parts,
+        loadout.default_for(h),
+      )
+  }
+}
+
+/// Drop the fits of ships that no longer exist. A fit is per-ship data with
+/// exactly the ship's lifetime, so it is pruned wherever the ship list is.
+fn prune_fits(
+  fits: List(#(Int, loadout.Fit)),
+  ships: List(Ship),
+) -> List(#(Int, loadout.Fit)) {
+  list.filter(fits, fn(entry) { list.any(ships, fn(s) { s.id == entry.0 }) })
 }
 
 /// `RequestDock` pre-check: is this character already docked, seated at a
@@ -759,13 +892,17 @@ fn already_docked_at_helm(state: State, character_id: Int) -> Bool {
           case composite.parse_namespaced(seat_id) {
             Error(Nil) -> False
             Ok(#(target_ship_id, console_id)) ->
-              case deckplan.find_console(state.class.plan, console_id) {
+              case fit_for(state, target_ship_id) {
                 Error(Nil) -> False
-                Ok(console) if console.kind != "helm" -> False
-                Ok(_) ->
-                  case find_ship(state.ships, target_ship_id) {
+                Ok(fit) ->
+                  case deckplan.find_console(fit.class.plan, console_id) {
                     Error(Nil) -> False
-                    Ok(_) -> True
+                    Ok(console) if console.kind != "helm" -> False
+                    Ok(_) ->
+                      case find_ship(state.ships, target_ship_id) {
+                        Error(Nil) -> False
+                        Ok(_) -> True
+                      }
                   }
               }
           }
@@ -775,16 +912,18 @@ fn already_docked_at_helm(state: State, character_id: Int) -> Bool {
 }
 
 /// Helm-seat gating for `RequestDock`: resolve the character, require it to
-/// be aboard (flying) and seated at a helm-kind console, resolve its ship,
-/// then hand both to `next`. Replies `Error("not_at_helm")` /
-/// `Error("not_docked")` and leaves state untouched on any resolution
-/// failure. Called only after `already_docked_at_helm` rules out the
-/// already-docked case. (Undock has its own composite-frame gating.)
+/// be aboard (flying) and seated at a helm-kind console of its OWN ship's
+/// resolved plan, resolve that ship, then hand the ship and its fit to `next`.
+/// Replies `Error("not_at_helm")` / `Error("not_docked")` and leaves state
+/// untouched on any resolution failure — a ship with no fit answers
+/// `"not_at_helm"`, since without a resolved plan it has no helm to be at.
+/// Called only after `already_docked_at_helm` rules out the already-docked
+/// case. (Undock has its own composite-frame gating.)
 fn with_helm_ship(
   state: State,
   character_id: Int,
   reply: Subject(Result(Nil, String)),
-  next: fn(State, Ship) -> actor.Next(State, Msg),
+  next: fn(State, Ship, loadout.Fit) -> actor.Next(State, Msg),
 ) -> actor.Next(State, Msg) {
   case find_character(state.characters, character_id) {
     Error(Nil) -> {
@@ -792,21 +931,28 @@ fn with_helm_ship(
       actor.continue(state)
     }
     Ok(char) ->
-      case
-        char.place == character.Aboard
-        && character.is_at_helm(char, state.class.plan)
-      {
-        False -> {
+      case fit_for(state, char.ship_id) {
+        Error(Nil) -> {
           process.send(reply, Error("not_at_helm"))
           actor.continue(state)
         }
-        True ->
-          case find_ship(state.ships, char.ship_id) {
-            Error(Nil) -> {
-              process.send(reply, Error("not_docked"))
+        Ok(fit) ->
+          case
+            char.place == character.Aboard
+            && character.is_at_helm(char, fit.class.plan)
+          {
+            False -> {
+              process.send(reply, Error("not_at_helm"))
               actor.continue(state)
             }
-            Ok(found) -> next(state, found)
+            True ->
+              case find_ship(state.ships, char.ship_id) {
+                Error(Nil) -> {
+                  process.send(reply, Error("not_docked"))
+                  actor.continue(state)
+                }
+                Ok(found) -> next(state, found, fit)
+              }
           }
       }
   }
@@ -820,10 +966,11 @@ fn handle_undock_split(
   state: State,
   station_id: String,
   target: Ship,
+  fit: loadout.Fit,
   reply: Subject(Result(Nil, String)),
 ) -> actor.Next(State, Msg) {
   let t = int.to_float(state.tick) *. ship.dt
-  case ship.undock(target, state.world, t, state.class.dock_standoff) {
+  case ship.undock(target, state.world, t, fit.class.dock_standoff) {
     Error(reason) -> {
       process.send(reply, Error(reason))
       actor.continue(state)
@@ -839,7 +986,7 @@ fn handle_undock_split(
             c.place == character.OnStation(station_id)
             && composite.tile_on_mooring(
               mooring,
-              state.class.plan,
+              fit.class.plan,
               c.deck,
               c.x,
               c.y,
@@ -887,7 +1034,12 @@ fn handle_undock_split(
         |> list.unique
       let state =
         rebuild_space(
-          State(..state, ships: ships, characters: characters),
+          State(
+            ..state,
+            ships: ships,
+            characters: characters,
+            fits: prune_fits(state.fits, ships),
+          ),
           station_id,
         )
       let state = list.fold(despawned_station_ids, state, rebuild_space)
@@ -973,35 +1125,46 @@ fn handle_trade(
                     True -> {
                       let assert Ok(station) =
                         world.get_station(state.world, station_id)
-                      case
-                        cargo.transfer_rate(station.crane, state.class.handling)
-                      {
-                        Error(reason) -> fail(reason)
-                        Ok(rate) ->
-                          case find_market(state.markets, station_id) {
-                            Error(Nil) -> fail("not_sold_here")
-                            Ok(m) ->
-                              case buying {
-                                True ->
-                                  do_buy(
-                                    state,
-                                    m,
-                                    s,
-                                    commodity,
-                                    quantity,
-                                    rate,
-                                    reply,
-                                  )
-                                False ->
-                                  do_sell(
-                                    state,
-                                    m,
-                                    s,
-                                    commodity,
-                                    quantity,
-                                    rate,
-                                    reply,
-                                  )
+                      // Handling and hold size are the TRADING SHIP's own
+                      // resolved numbers; a ship with no fit has neither, so
+                      // there is nothing to load it through.
+                      case fit_for(state, s.id) {
+                        Error(Nil) -> fail("ship_not_docked")
+                        Ok(fit) ->
+                          case
+                            cargo.transfer_rate(
+                              station.crane,
+                              fit.class.handling,
+                            )
+                          {
+                            Error(reason) -> fail(reason)
+                            Ok(rate) ->
+                              case find_market(state.markets, station_id) {
+                                Error(Nil) -> fail("not_sold_here")
+                                Ok(m) ->
+                                  case buying {
+                                    True ->
+                                      do_buy(
+                                        state,
+                                        m,
+                                        s,
+                                        commodity,
+                                        quantity,
+                                        fit.class.cargo_capacity,
+                                        rate,
+                                        reply,
+                                      )
+                                    False ->
+                                      do_sell(
+                                        state,
+                                        m,
+                                        s,
+                                        commodity,
+                                        quantity,
+                                        rate,
+                                        reply,
+                                      )
+                                  }
                               }
                           }
                       }
@@ -1021,6 +1184,7 @@ fn do_buy(
   s: Ship,
   commodity: String,
   quantity: Int,
+  capacity: Int,
   rate: Float,
   reply: Subject(protocol.TradeResult),
 ) -> actor.Next(State, Msg) {
@@ -1041,14 +1205,7 @@ fn do_buy(
     Error(reason) -> fail(reason)
     Ok(#(updated_market, store)) ->
       case
-        cargo.begin_buy(
-          s,
-          commodity,
-          quantity,
-          store.price,
-          state.class.cargo_capacity,
-          rate,
-        )
+        cargo.begin_buy(s, commodity, quantity, store.price, capacity, rate)
       {
         // Ship-side rejection: the market change is discarded (never
         // committed to state), so stock is untouched.
@@ -1154,11 +1311,14 @@ fn replace_character(
   })
 }
 
-/// The deck plan under the character's feet: their flying ship's plan when
-/// aboard, the station's composite plan when standing in a station space.
+/// The deck plan under the character's feet: their flying ship's own resolved
+/// plan when aboard, the station's composite plan when standing in a station
+/// space. `Error(Nil)` when neither resolves (no fit for that ship, no such
+/// space) — callers skip the character rather than crash.
 fn plan_for(state: State, char: Character) -> Result(deckplan.DeckPlan, Nil) {
   case char.place {
-    character.Aboard -> Ok(state.class.plan)
+    character.Aboard ->
+      fit_for(state, char.ship_id) |> result.map(fn(f) { f.class.plan })
     character.OnStation(station_id) ->
       case find_space(state.spaces, station_id) {
         Error(Nil) -> Error(Nil)
@@ -1191,7 +1351,10 @@ fn find_space(
   list.find(spaces, fn(s) { s.station_id == station_id })
 }
 
-/// Ships docked at `station_id`, as composite inputs.
+/// Ships docked at `station_id`, as composite inputs — each contributing its
+/// OWN resolved plan, so a berth line of mixed hulls stitches correctly. A
+/// docked ship with no fit contributes no mooring rather than failing the
+/// rebuild.
 fn docked_ships_at(
   state: State,
   station_id: String,
@@ -1199,12 +1362,14 @@ fn docked_ships_at(
   list.filter_map(state.ships, fn(s) {
     case s.dock {
       ship.Docked(sid, berth) if sid == station_id ->
-        // M4 (multi-class refit): state.class.plan is the single-hull assumption.
-        Ok(composite.DockedShip(
-          ship_id: s.id,
-          berth: berth,
-          plan: state.class.plan,
-        ))
+        fit_for(state, s.id)
+        |> result.map(fn(fit) {
+          composite.DockedShip(
+            ship_id: s.id,
+            berth: berth,
+            plan: fit.class.plan,
+          )
+        })
       _ -> Error(Nil)
     }
   })
@@ -1395,14 +1560,17 @@ fn push_space(state: State, space_id: protocol.SpaceId) -> Nil {
 fn space_message_for(state: State, char: Character) -> Result(String, Nil) {
   case char.place {
     character.Aboard ->
-      Ok(protocol.encode_space(
-        protocol.ShipSpace(char.ship_id),
-        0,
-        state.class.plan,
-        [],
-        None,
-        char,
-      ))
+      fit_for(state, char.ship_id)
+      |> result.map(fn(fit) {
+        protocol.encode_space(
+          protocol.ShipSpace(char.ship_id),
+          0,
+          fit.class.plan,
+          [],
+          None,
+          char,
+        )
+      })
     character.OnStation(station_id) ->
       case find_space(state.spaces, station_id) {
         Error(Nil) -> Error(Nil)
@@ -1446,7 +1614,20 @@ fn run_tick(state: State) -> actor.Next(State, Msg) {
   let t = int.to_float(tick) *. ship.dt
   let ships =
     list.map(state.ships, fn(s) {
-      ship.step(s, state.world, t, state.class.dock_standoff)
+      // Standoff and flight performance are the ship's own resolved numbers.
+      // A ship with no fit is left exactly where it is rather than crashing
+      // the tick: a missing fit must never take the server down.
+      case fit_for(state, s.id) {
+        Error(Nil) -> s
+        Ok(fit) ->
+          ship.step(
+            s,
+            state.world,
+            t,
+            fit.class.dock_standoff,
+            fit.class.flight,
+          )
+      }
     })
   let characters =
     list.map(state.characters, fn(c) {
@@ -1508,12 +1689,7 @@ fn run_tick(state: State) -> actor.Next(State, Msg) {
         process.send(client.subject, SendText(snapshot))
       })
       broadcast_walkers(state.clients, characters, state.spaces, tick)
-      broadcast_cargo(
-        state.clients,
-        characters,
-        ships,
-        state.class.cargo_capacity,
-      )
+      broadcast_cargo(state.clients, characters, ships, state.fits)
       broadcast_markets(state.clients, characters, markets)
     }
     False -> Nil
@@ -1606,14 +1782,22 @@ fn broadcast_walkers(
 
 /// One `cargo` message per crewed ship, to its *crew* (by membership,
 /// wherever their bodies are — the quartermaster ashore watches the hold).
+/// Hold size is each ship's own resolved capacity; a ship with no fit is
+/// skipped rather than reported with somebody else's hold.
 fn broadcast_cargo(
   clients: List(Client),
   characters: List(Character),
   ships: List(Ship),
-  capacity: Int,
+  fits: List(#(Int, loadout.Fit)),
 ) -> Nil {
   let texts =
-    list.map(ships, fn(s) { #(s.id, protocol.encode_cargo(s, capacity)) })
+    list.filter_map(ships, fn(s) {
+      case list.find(fits, fn(entry) { entry.0 == s.id }) {
+        Error(Nil) -> Error(Nil)
+        Ok(#(_, fit)) ->
+          Ok(#(s.id, protocol.encode_cargo(s, fit.class.cargo_capacity)))
+      }
+    })
   list.each(clients, fn(client) {
     case find_character(characters, client.character_id) {
       Error(Nil) -> Nil

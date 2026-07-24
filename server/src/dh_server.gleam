@@ -2,19 +2,23 @@
 ////
 //// M1 scope: one star system loaded from a world document, per-player
 //// Newtonian ships flyable over WebSocket at ws://127.0.0.1:8484/ws.
-//// M2 adds walkable characters aboard a ship class loaded from a class
-//// document. See dh_server/protocol for the wire format.
+//// M2 adds walkable characters aboard a ship. M4 makes the hull per-ship: the
+//// content registries (hulls, modules, parts) load here at boot and every ship
+//// resolves its own fit from them. See dh_server/protocol for the wire format.
 
 import dh_server/accounts
 import dh_server/auth
 import dh_server/glyphs
+import dh_server/hull
+import dh_server/module
 import dh_server/palette
+import dh_server/part
 import dh_server/server
-import dh_server/shipclass
 import dh_server/sim
 import dh_server/stationclass
 import dh_server/world
 import envoy
+import gleam/dict
 import gleam/erlang/process
 import gleam/int
 import gleam/io
@@ -22,7 +26,13 @@ import gleam/string
 
 const default_world_path = "worlds/m1_system.json"
 
-const default_ship_class_path = "shipclasses/mockingbird.json"
+const default_hull_dir = "shipclasses"
+
+const module_dir = "modules"
+
+const part_dir = "parts"
+
+const default_hull_id = "mockingbird"
 
 const default_glyphs_path = "glyphs.json"
 
@@ -139,23 +149,55 @@ pub fn main() -> Nil {
       panic as { "failed to load world " <> world_path <> ": " <> err }
   }
 
-  let ship_class_path = case envoy.get("DH_SHIP_CLASS") {
-    Ok(path) -> path
-    Error(Nil) -> default_ship_class_path
-  }
-  let class = case shipclass.load_with(registry, ship_class_path) {
-    Ok(c) -> c
+  // The content registries: hulls, the interior modules that overlay them and
+  // the exterior parts that hang off them. Every ship resolves its own fit out
+  // of these (`loadout.resolve`), so a broken data file must stop the server at
+  // boot, loudly, rather than leave a half-fitted world flying.
+  let hulls = case hull.load_all(default_hull_dir) {
+    Ok(hs) -> hs
     Error(err) ->
       panic as {
-        "failed to load ship class " <> ship_class_path <> ": " <> err
+        "failed to load hulls from " <> default_hull_dir <> ": " <> err
       }
   }
-  io.println("loaded ship class \"" <> class.id <> "\" (" <> class.name <> ")")
+  // DH_SHIP_CLASS names ONE extra hull document to load and spawn from — the
+  // pytest harness points it at its own fixture hull (harness/fixtures/).
+  let #(hulls, spawn_hull) = case envoy.get("DH_SHIP_CLASS") {
+    Error(Nil) -> #(hulls, default_hull_id)
+    Ok(path) ->
+      case hull.load(path) {
+        Ok(h) -> #(dict.insert(hulls, h.id, h), h.id)
+        Error(err) -> panic as { "failed to load hull " <> path <> ": " <> err }
+      }
+  }
+  // An empty (or absent-of-content) module registry is normal: a hull with no
+  // modules installed resolves to its bare authored decks.
+  let modules = case module.load_all(module_dir) {
+    Ok(ms) -> ms
+    Error(err) ->
+      panic as { "failed to load modules from " <> module_dir <> ": " <> err }
+  }
+  let parts = case part.load_all(part_dir) {
+    Ok(ps) -> ps
+    Error(err) ->
+      panic as { "failed to load parts from " <> part_dir <> ": " <> err }
+  }
+  io.println(
+    "loaded "
+    <> int.to_string(dict.size(hulls))
+    <> " hulls, "
+    <> int.to_string(dict.size(modules))
+    <> " modules, "
+    <> int.to_string(dict.size(parts))
+    <> " parts; spawning on \""
+    <> spawn_hull
+    <> "\"",
+  )
 
   let authenticator = build_authenticator()
   let port = resolve_port()
 
-  case sim.start(world, class) {
+  case sim.start(world, hulls, modules, parts, registry, spawn_hull) {
     Error(e) -> io.println("failed to start sim: " <> string.inspect(e))
     Ok(sim_started) -> {
       let sim_subject = sim_started.data
@@ -164,7 +206,6 @@ pub fn main() -> Nil {
           port,
           sim_subject,
           world,
-          class,
           registry,
           color_palette,
           authenticator,

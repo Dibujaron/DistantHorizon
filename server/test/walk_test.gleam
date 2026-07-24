@@ -4,8 +4,8 @@
 
 import dh_server/composite
 import dh_server/deckplan
-import dh_server/shipclass
 import dh_server/world
+import fit
 import gleam/int
 import gleam/list
 import gleam/option.{Some}
@@ -15,7 +15,7 @@ import walk
 /// with one Mockingbird moored at `berth`.
 fn build_composite(berth: Int) -> #(deckplan.DeckPlan, Int) {
   let assert Ok(w) = world.load("worlds/m1_system.json")
-  let assert Ok(class) = shipclass.load("shipclasses/mockingbird.json")
+  let class = fit.mockingbird()
   let assert Ok(station) = world.get_station(w, "meridian_highport")
   let assert Some(concourse) = station.concourse
   let assert Ok(built) =

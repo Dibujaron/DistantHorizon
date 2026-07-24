@@ -7,6 +7,7 @@
 //// velocity, then the updated velocity advances the position.
 
 import dh_server/angle
+import dh_server/shipclass
 import dh_server/world.{type World}
 import gleam/dict.{type Dict}
 import gleam/float
@@ -15,14 +16,6 @@ import gleam/option.{type Option, None, Some}
 
 /// Simulation timestep in seconds (60 Hz).
 pub const dt = 0.016666666666666666
-
-/// Acceleration at full thrust, u/s^2, applied along the ship's heading.
-pub const main_accel = 40.0
-
-/// Turn rate at full rotate input, DEGREES/s (counter-clockwise positive) —
-/// a clean half-turn per second. Headings are degrees everywhere (config,
-/// wire, sim); only `cos`/`sin` below drop to radians.
-pub const turn_rate = 180.0
 
 /// Maximum speed relative to a station, u/s, allowed to dock.
 pub const max_dock_speed = 60.0
@@ -133,11 +126,18 @@ pub fn set_controls(ship: Ship, rotate: Float, thrust: Float) -> Ship {
   )
 }
 
-/// Advance a ship by one tick of `dt` at sim time `t` (the time at the end
-/// of this tick, used to evaluate rails and gravity). A docked ship is
-/// pinned to its station's analytic position/velocity and ignores its
-/// controls; a flying ship integrates thrust + gravity.
-pub fn step(ship: Ship, world: World, t: Float, standoff: Float) -> Ship {
+/// Advance a ship by one tick of `dt` at sim time `t`. A docked ship is pinned
+/// to its station's analytic position/velocity and ignores its controls; a
+/// flying ship integrates thrust + gravity. `flight` is the ship's RESOLVED
+/// performance (`loadout.resolve`) — acceleration and turn rate are per-ship
+/// loadout data since M4, not global constants.
+pub fn step(
+  ship: Ship,
+  world: World,
+  t: Float,
+  standoff: Float,
+  flight: shipclass.Flight,
+) -> Ship {
   case ship.dock {
     Docked(station_id, berth) -> {
       // Pinned to the berth's moored pose (station centre + berth offset +
@@ -149,12 +149,13 @@ pub fn step(ship: Ship, world: World, t: Float, standoff: Float) -> Ship {
       Ship(..ship, x: x, y: y, vx: vx, vy: vy)
     }
     Flying -> {
-      let heading = ship.heading +. ship.controls.rotate *. turn_rate *. dt
+      let heading =
+        ship.heading +. ship.controls.rotate *. flight.turn_rate *. dt
       let #(gx, gy) = world.gravity_at(world, ship.x, ship.y, t)
       // Thrust points along the heading; `cos`/`sin` need radians.
       let heading_rad = angle.deg_to_rad(heading)
-      let ax = ship.controls.thrust *. main_accel *. cos(heading_rad) +. gx
-      let ay = ship.controls.thrust *. main_accel *. sin(heading_rad) +. gy
+      let ax = ship.controls.thrust *. flight.accel *. cos(heading_rad) +. gx
+      let ay = ship.controls.thrust *. flight.accel *. sin(heading_rad) +. gy
       let vx = ship.vx +. ax *. dt
       let vy = ship.vy +. ay *. dt
       let x = ship.x +. vx *. dt
