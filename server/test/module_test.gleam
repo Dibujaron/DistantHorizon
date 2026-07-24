@@ -44,7 +44,10 @@ pub fn ragged_patch_is_rejected_test() {
     "{ \"schema\": 1, \"id\": \"a\", \"hull\": \"h\", \"slot\": \"s\",
     \"name\": \"A\", \"mass\": 1.0,
     \"patches\": [ { \"deck\": 0, \"x\": 0, \"y\": 0,
-      \"grid\": [\"###\", \"# #  \", \"###\"] } ] }"
+      \"grid\": [\"###\", \"##  ##\", \"###\"] } ] }"
+  // Row lengths 3/6/3: each is independently a legal multiple of 3, so this
+  // isolates the rectangularity check rather than tripping the
+  // every-row-is-a-multiple-of-3 check first.
   let assert Error(_) = module.decode(bad)
 }
 
