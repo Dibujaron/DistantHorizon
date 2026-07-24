@@ -874,12 +874,12 @@ and pass `flight: flight` into the `ShipClass(...)` it builds.
 pub fn from_plan_derives_capacity_from_pallets_test() {
   let reg = glyphs.default()
   let rows = [
-    "##########",
-    "#h       #",
-    "##########",
-    "##########",
-    "=Q      p#",
-    "##########",
+    "#h#######",
+    "#       #",
+    "#########",
+    "#########",
+    "=Q     p#",
+    "#########",
   ]
   let assert Ok(plan) = deckplan.from_rows(reg, [#("Main", rows)])
   let assert Ok(c) =
@@ -904,7 +904,7 @@ pub fn from_plan_requires_a_helm_test() {
   let reg = glyphs.default()
   let assert Ok(plan) =
     deckplan.from_rows(reg, [
-      #("Main", ["##########", "#        #", "##########"]),
+      #("Main", ["#########", "#       #", "#########"]),
     ])
   let assert Error(e) =
     shipclass.from_plan(
@@ -2346,12 +2346,12 @@ import dh_server/shipclass
 import gleam/json
 
 const rows = [
-  "##########",
-  "#h       #",
-  "##########",
-  "##########",
-  "=Q      p#",
-  "##########",
+  "#h#######",
+  "#       #",
+  "#########",
+  "#########",
+  "=Q     p#",
+  "#########",
 ]
 
 fn a_class() -> shipclass.ShipClass {
@@ -2382,7 +2382,7 @@ pub fn from_plan_requires_a_helm_test() {
   let reg = glyphs.default()
   let assert Ok(plan) =
     deckplan.from_rows(reg, [
-      #("Main", ["##########", "#        #", "##########"]),
+      #("Main", ["#########", "#       #", "#########"]),
     ])
   let assert Error(e) =
     shipclass.from_plan(
