@@ -67,18 +67,37 @@ pub fn load_all(dir: String) -> Result(Dict(String, Module), String) {
       case string.ends_with(entry, ".json") {
         True -> Ok(list.append(acc, [path]))
         False ->
-          case simplifile.read_directory(path) {
-            // Not a directory (or unreadable): skip it rather than fail the
-            // whole registry on a stray file.
-            Error(_) -> Ok(acc)
-            Ok(inner) ->
-              Ok(list.append(
-                acc,
-                inner
-                  |> list.filter(fn(n) { string.ends_with(n, ".json") })
-                  |> list.sort(string.compare)
-                  |> list.map(fn(n) { path <> "/" <> n }),
-              ))
+          case simplifile.is_directory(path) {
+            // A stray non-directory file: skip it rather than fail the
+            // whole registry.
+            Ok(False) -> Ok(acc)
+            // A genuine per-hull directory: read it, and propagate any
+            // error from that read instead of silently losing its modules.
+            Ok(True) ->
+              case simplifile.read_directory(path) {
+                Error(err) ->
+                  Error(
+                    "failed to list module directory "
+                    <> path
+                    <> ": "
+                    <> string.inspect(err),
+                  )
+                Ok(inner) ->
+                  Ok(list.append(
+                    acc,
+                    inner
+                      |> list.filter(fn(n) { string.ends_with(n, ".json") })
+                      |> list.sort(string.compare)
+                      |> list.map(fn(n) { path <> "/" <> n }),
+                  ))
+              }
+            Error(err) ->
+              Error(
+                "failed to check module directory "
+                <> path
+                <> ": "
+                <> string.inspect(err),
+              )
           }
       }
     }),

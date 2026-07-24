@@ -1,0 +1,3 @@
+This is a stray non-JSON, non-directory file at the top level of the
+fixture tree, used to prove that module.load_all's subdirectory walk
+skips it rather than erroring.

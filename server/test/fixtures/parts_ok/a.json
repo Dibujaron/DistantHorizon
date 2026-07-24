@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "id": "part.a",
+  "name": "Part A",
+  "kind": "engine",
+  "size": "s",
+  "mass": 1.0
+}

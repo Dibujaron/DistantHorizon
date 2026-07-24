@@ -1,6 +1,7 @@
 import dh_server/module
 import dh_server/part
 import gleam/dict
+import gleam/string
 
 const module_doc = "{
   \"schema\": 1,
@@ -30,12 +31,63 @@ pub fn decode_module_document_test() {
   assert p.rows == ["#h#", "#e ", "## "]
 }
 
-pub fn ragged_patch_is_rejected_test() {
+pub fn patch_row_count_not_multiple_of_three_is_rejected_test() {
   let bad =
     "{ \"schema\": 1, \"id\": \"a\", \"hull\": \"h\", \"slot\": \"s\",
     \"name\": \"A\", \"mass\": 1.0,
     \"patches\": [ { \"deck\": 0, \"x\": 0, \"y\": 0, \"grid\": [\"###\", \"# #\"] } ] }"
   let assert Error(_) = module.decode(bad)
+}
+
+pub fn ragged_patch_is_rejected_test() {
+  let bad =
+    "{ \"schema\": 1, \"id\": \"a\", \"hull\": \"h\", \"slot\": \"s\",
+    \"name\": \"A\", \"mass\": 1.0,
+    \"patches\": [ { \"deck\": 0, \"x\": 0, \"y\": 0,
+      \"grid\": [\"###\", \"# #  \", \"###\"] } ] }"
+  let assert Error(_) = module.decode(bad)
+}
+
+pub fn negative_origin_patch_is_rejected_test() {
+  let bad =
+    "{ \"schema\": 1, \"id\": \"a\", \"hull\": \"h\", \"slot\": \"s\",
+    \"name\": \"A\", \"mass\": 1.0,
+    \"patches\": [ { \"deck\": 0, \"x\": -3, \"y\": 0,
+      \"grid\": [\"###\", \"###\", \"###\"] } ] }"
+  let assert Error(_) = module.decode(bad)
+}
+
+pub fn zero_size_patch_is_rejected_test() {
+  let bad =
+    "{ \"schema\": 1, \"id\": \"a\", \"hull\": \"h\", \"slot\": \"s\",
+    \"name\": \"A\", \"mass\": 1.0,
+    \"patches\": [ { \"deck\": 0, \"x\": 0, \"y\": 0, \"grid\": [] } ] }"
+  let assert Error(_) = module.decode(bad)
+}
+
+pub fn load_all_walks_per_hull_subdirectories_test() {
+  let assert Ok(modules) = module.load_all("test/fixtures/modules_ok")
+  let assert Ok(m) = dict.get(modules, "testhull.cockpit.stock")
+  assert m.hull == "testhull"
+  assert m.slot == "cockpit"
+}
+
+pub fn load_all_rejects_duplicate_ids_across_hull_subdirectories_test() {
+  let assert Error(msg) = module.load_all("test/fixtures/modules_dup")
+  assert string.contains(msg, "dup.module")
+}
+
+pub fn part_load_all_indexes_by_id_test() {
+  let assert Ok(parts) = part.load_all("test/fixtures/parts_ok")
+  let assert Ok(a) = dict.get(parts, "part.a")
+  let assert Ok(b) = dict.get(parts, "part.b")
+  assert a.size == "s"
+  assert b.size == "m"
+}
+
+pub fn part_load_all_rejects_duplicate_ids_test() {
+  let assert Error(msg) = part.load_all("test/fixtures/parts_dup")
+  assert string.contains(msg, "dup.part")
 }
 
 const part_doc = "{

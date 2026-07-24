@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "id": "dup.module",
+  "hull": "hullB",
+  "slot": "cockpit",
+  "name": "Dup B",
+  "mass": 1.0,
+  "patches": []
+}
