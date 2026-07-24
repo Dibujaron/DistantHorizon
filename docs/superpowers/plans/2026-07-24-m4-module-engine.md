@@ -211,12 +211,18 @@ id and human name. Slot regions are exactly as fluid as the hull author draws
 them — following a taper, non-rectangular, whatever — and there is no rectangle
 list anywhere.
 
-Two authoring rules make the boundary work, and neither is machine-checked:
+A module rewrites its slot completely — including *both* halves of any wall
+between two slot tiles, since both tiles are its own. The only edges it shares
+with the hull are the slot's **perimeter**, where the neighbouring tile is fixed
+structure. Two authoring rules follow, and neither is machine-checked:
 
-- **Hull tiles bordering a slot leave their slot-facing edge open.** Each tile
-  owns all four of its own walls and the double-wall rule ORs them, so if a
-  corridor tile draws `#` toward a slot, no module can ever open a door there.
-  The module owns its side of that boundary.
+- **Leave the slot perimeter open by default.** Each tile owns all four of its
+  own walls and the collision rule ORs the two facing edges, so a module can put
+  a wall (`#` on its half) or a door (`=` on its half) anywhere along an open
+  perimeter — full freedom, no engine special case. A hull-side wall on the
+  perimeter is therefore a *deliberate structural declaration*: "no module ever
+  opens this", for a pressure bulkhead or a hold's fire wall. Draw one only
+  where you mean it.
 - **A stamp never overwrites the SW corner.** Slot regions are hull-owned, so
   the resolved plan still carries them and a second refit finds the same
   region.
@@ -2164,7 +2170,7 @@ Fixed hull structure (**no** digit): all void, every corridor and passage tile, 
 Edit `server/shipclasses/mockingbird.json`:
 
 1. For every tile in a slot region, put its digit in the tile's SW corner character (row `3y+2`, column `3x` of that deck's grid).
-2. **Empty each slot region**: inside a slot, every tile becomes plain walled floor — remove interior partitions, decor (`d`/`e`/`t`/`p`), and wall consoles (`h`) that a module will stamp back. Keep the slot's *outer* boundary walls on the hull tiles that own them, and make sure every hull tile bordering a slot leaves its slot-facing edge **open** (not `#`) wherever a module needs a door there — that boundary belongs to the module.
+2. **Empty each slot region**: inside a slot, every tile becomes plain open floor — remove interior partitions, decor (`d`/`e`/`t`/`p`), and wall consoles (`h`) that a module will stamp back. On the slot **perimeter**, the hull-side edges default to **open** (not `#`): the module supplies both the walls and the doors along its own boundary, so an unfitted slot reads as a bare open bay. Draw a hull-side perimeter wall only where the structure is genuinely fixed and no module should ever open it — the pressure boundary between the Lower hold and the bow ramp is the one place on this hull that plausibly qualifies. Everywhere else, leave it open.
 3. Add the new top-level fields:
 
 ```jsonc
@@ -2843,7 +2849,7 @@ The doc is the design; bring its concrete shapes in line with what shipped:
 - In "Data shapes", replace the sketched interior-module JSON with the real one (`patches` with `deck`/`x`/`y`/`grid`, not a whole `grid`), and the exterior part with the real one (`kind`/`size`/`thrust`/`torque`, not `flight: {thrust, handling}`).
 - In "Slots and mounts", note that a mount is currently `{id, kind, size}` — mount *geometry* arrives with client-side layering in iteration 2.
 - In "The M4 slice (iteration 1)", replace the bullet list with what actually landed and what moved to iterations 2 and 3 (see this plan's Scope section).
-- Add the two authoring rules from Task 1 Step 6 (hull tiles bordering a slot leave the facing edge open; a stamp never overwrites the SW corner).
+- Add the two authoring rules from Task 1 Step 6, with the reasoning: a module rewrites its slot completely including both halves of any interior partition; only the slot *perimeter* is shared with hull tiles, so the perimeter defaults to open (the module supplies its own walls and doors there) and a hull-side perimeter wall is a deliberate "no module ever opens this" declaration; and a stamp never overwrites the SW corner.
 - Record that flight is `thrust / total_mass` and `torque / total_mass`, hull dry mass plus every fitted module and part.
 
 - [ ] **Step 6: Update `DESIGN.md`**
