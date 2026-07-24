@@ -1,4 +1,5 @@
 import dh_server/deckplan
+import dh_server/glyphs
 import dh_server/shipclass
 import gleam/json
 import gleam/list
@@ -177,6 +178,59 @@ pub fn cargo_capacity_falls_back_to_authored_when_no_pallets_test() {
   // No pallet tiles at all — the authored capacity is used unchanged.
   let assert Ok(c) = shipclass.decode(valid_doc())
   assert c.cargo_capacity == 10
+}
+
+pub fn from_plan_derives_capacity_from_pallets_test() {
+  let reg = glyphs.default()
+  let rows = [
+    "#h#######",
+    "#       #",
+    "#########",
+    "#########",
+    "=Q     p#",
+    "#########",
+  ]
+  let assert Ok(plan) = deckplan.from_rows(reg, [#("Main", rows)])
+  let assert Ok(c) =
+    shipclass.from_plan(
+      reg,
+      "testhull",
+      "Test Hull",
+      3,
+      plan,
+      7,
+      shipclass.BreakBulk,
+      90.0,
+      20.0,
+      shipclass.Flight(accel: 40.0, turn_rate: 180.0),
+    )
+  // The single `p` tile on the map beats the authored fallback of 7.
+  assert c.cargo_capacity == 1
+  assert c.flight.accel == 40.0
+}
+
+pub fn from_plan_requires_a_helm_test() {
+  let reg = glyphs.default()
+  let assert Ok(plan) =
+    deckplan.from_rows(reg, [
+      #("Main", ["#########", "#       #", "#########"]),
+    ])
+  let assert Error(e) =
+    shipclass.from_plan(
+      reg,
+      "h",
+      "H",
+      3,
+      plan,
+      0,
+      shipclass.BreakBulk,
+      90.0,
+      20.0,
+      shipclass.Flight(accel: 1.0, turn_rate: 1.0),
+    )
+  // This is what makes a cockpit-less loadout illegal: the resolved map has to
+  // carry a helm, and a module supplies it by drawing the glyph.
+  assert e == "no console of kind \"helm\""
 }
 
 fn is_ok(result: Result(a, b)) -> Bool {
