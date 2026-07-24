@@ -19,6 +19,7 @@
 - Gleam has no `list.range` in the pinned stdlib — every module that needs one defines the local `fn range(from, to)` helper already used in `deckplan.gleam` and `composite.gleam`.
 - Run the server test suite from `server/`: `gleam test`. Run the harness from `harness/`: `python -m pytest <file> -v` (needs `$env:Path = "$env:USERPROFILE\scoop\shims;$env:Path"` for `gleam`).
 - Work happens on branch `feat/m4-modules` (worktree `.claude/worktrees/m4-modules`). Commit after every task.
+- **Every task ends with a green `gleam test`.** The task order is built around this: the hull document keeps a temporary `shipclass.load` shim (Task 3) until the sim resolves fits (Task 7), and the Mockingbird is carved last (Task 8) so the carve runs against live machinery instead of hiding behind unwired code. A task that cannot leave the suite green is a task that needs splitting differently — say so rather than committing red.
 
 ## Scope
 
@@ -775,7 +776,17 @@ Add `flight: Flight` as the last field of `ShipClass`:
 }
 ```
 
-Delete `pub fn load` and `pub fn load_with` (lines 66-82) — hull documents load through `hull.load` now; a `ShipClass` is only ever produced by `from_plan` or decoded from the wire.
+**Keep `load` / `load_with` for now.** They are the path `dh_server` and `sim` still use, and this task must leave the suite green — Task 7 deletes them once every ship resolves through a fit. They just need a `Flight` to build a `ShipClass` with, so add above them:
+
+```gleam
+/// TEMPORARY (deleted in the sim-rewiring task): the pre-M4 global flight
+/// constants, so the old `load` path keeps producing a flyable class while the
+/// hull/loadout machinery lands around it. Real flight stats come from the
+/// fitted engine parts (`loadout.resolve`).
+const default_shim_flight = Flight(accel: 40.0, turn_rate: 180.0)
+```
+
+and pass `flight: default_shim_flight` in the `ShipClass(...)` that `ship_class_decoder` builds when no `flight` field is present (the `decode.optional_field` default below does exactly this).
 
 Add the constructor:
 
@@ -838,7 +849,7 @@ And in `ship_class_decoder`, decode it back (the round-trip test depends on it):
 ```gleam
   use flight <- decode.optional_field(
     "flight",
-    Flight(accel: 0.0, turn_rate: 0.0),
+    default_shim_flight,
     flight_decoder(),
   )
 ```
@@ -855,27 +866,21 @@ fn flight_decoder() -> decode.Decoder(Flight) {
 
 and pass `flight: flight` into the `ShipClass(...)` it builds.
 
-- [ ] **Step 5: Retrain `shipclass_test.gleam`**
+- [ ] **Step 5: Add the `from_plan` tests**
 
-Every test in that file starts `shipclass.load("shipclasses/mockingbird.json")`, which no longer exists. Those assertions are really *hull* assertions and move to Task 6's resolve test. For now, replace the whole file with a wire-form round-trip that builds a class through `from_plan`:
+`shipclass_test.gleam`'s existing cases keep working — the `load` shim is still there — so this step only ADDS coverage for the new constructor. Task 7 retrains the file once the shim goes. Append:
 
 ```gleam
-import dh_server/deckplan
-import dh_server/glyphs
-import dh_server/shipclass
-import gleam/json
-
-const rows = [
-  "##########",
-  "#h       #",
-  "##########",
-  "##########",
-  "=Q      p#",
-  "##########",
-]
-
-fn a_class() -> shipclass.ShipClass {
+pub fn from_plan_derives_capacity_from_pallets_test() {
   let reg = glyphs.default()
+  let rows = [
+    "##########",
+    "#h       #",
+    "##########",
+    "##########",
+    "=Q      p#",
+    "##########",
+  ]
   let assert Ok(plan) = deckplan.from_rows(reg, [#("Main", rows)])
   let assert Ok(c) =
     shipclass.from_plan(
@@ -890,18 +895,17 @@ fn a_class() -> shipclass.ShipClass {
       20.0,
       shipclass.Flight(accel: 40.0, turn_rate: 180.0),
     )
-  c
-}
-
-pub fn from_plan_derives_capacity_from_pallets_test() {
-  // One `p` tile on the map beats the authored fallback of 7.
-  assert a_class().cargo_capacity == 1
+  // The single `p` tile on the map beats the authored fallback of 7.
+  assert c.cargo_capacity == 1
+  assert c.flight.accel == 40.0
 }
 
 pub fn from_plan_requires_a_helm_test() {
   let reg = glyphs.default()
   let assert Ok(plan) =
-    deckplan.from_rows(reg, [#("Main", ["##########", "#        #", "##########"])])
+    deckplan.from_rows(reg, [
+      #("Main", ["##########", "#        #", "##########"]),
+    ])
   let assert Error(e) =
     shipclass.from_plan(
       reg,
@@ -915,29 +919,18 @@ pub fn from_plan_requires_a_helm_test() {
       20.0,
       shipclass.Flight(accel: 1.0, turn_rate: 1.0),
     )
+  // This is what makes a cockpit-less loadout illegal: the resolved map has to
+  // carry a helm, and a module supplies it by drawing the glyph.
   assert e == "no console of kind \"helm\""
 }
-
-pub fn decode_encode_round_trips_test() {
-  let c = a_class()
-  let text = shipclass.encode(c) |> json.to_string
-  let assert Ok(c2) = shipclass.decode(text)
-  assert c == c2
-}
-
-pub fn helm_console_is_found_test() {
-  let assert Ok(console) = shipclass.helm_console(a_class())
-  assert console.kind == "helm"
-}
 ```
+
+Add `import dh_server/glyphs` to the file if it is not already there.
 
 - [ ] **Step 6: Run the tests**
 
 Run: `cd server; gleam test`
-Expected: the `hull_test` cases pass except `load_all_indexes_by_id_test`, which fails until Task 6 rewrites `mockingbird.json` — that is expected here. `sim.gleam`, `dh_server.gleam` and `protocol.gleam` will not compile yet either (they call the deleted `shipclass.load` and build `ShipClass` without `flight`); Task 8 fixes them. To keep this task's gate meaningful, temporarily verify only the new modules compile:
-
-Run: `cd server; gleam build 2>&1 | head -30`
-Expected: errors only in `sim.gleam` / `dh_server.gleam` (missing `shipclass.load`, missing `flight` field), none in `hull.gleam` / `shipclass.gleam` / `deckplan.gleam`.
+Expected: PASS, whole suite — every `hull_test` case plus the untouched existing suites. Keeping the `load` shim is what buys that: `sim`, `dh_server` and `protocol` still compile against the same API they always used.
 
 - [ ] **Step 7: Commit**
 
@@ -1344,7 +1337,7 @@ fn part_decoder() -> decode.Decoder(Part) {
 - [ ] **Step 5: Run the tests**
 
 Run: `cd server; gleam test`
-Expected: every `module_test` case passes. `sim.gleam`/`dh_server.gleam` still do not compile (Task 8).
+Expected: PASS, whole suite — the new documents are additive and nothing else references them yet.
 
 - [ ] **Step 6: Commit**
 
@@ -2006,9 +1999,459 @@ git commit -m "feat(loadout): overlay stamp, pooled-tag validator, resolved bake
 
 ---
 
-### Task 6: Carve the Mockingbird into a hull plus default modules
+### Task 6: Engine parts, flight numbers, and hull metadata
 
-The content task. Today's `mockingbird.json` becomes a hull whose slot regions are **empty walled space**, plus five modules that stamp back exactly what is there now. A golden test is the arbiter.
+Parts and the hull's non-slot metadata land *before* the sim rewiring, so that when Task 7 switches every ship to a resolved fit there is already something to resolve. The Mockingbird is not carved yet — she resolves here with **zero modules**, which is exactly the "hull with no slots is legal" case.
+
+**Files:**
+- Create: `server/parts/rijay_engine_consol_patch.json`
+- Create: `server/parts/rijay_engine_stock.json`
+- Modify: `server/shipclasses/mockingbird.json` (metadata only — no slot digits yet)
+- Modify: `harness/fixtures/test_fixture.json`
+- Test: `server/test/parts_test.gleam`
+
+**Interfaces:**
+- Consumes: `hull.load`, `part.load_all`, `loadout.resolve` (Task 5).
+- Produces: part ids `rijay.engine.consol_patch` (the default) and `rijay.engine.stock`; the Mockingbird hull gains `mass`, `provides`, `requires`, `mounts` and `default_loadout.parts`.
+
+- [ ] **Step 1: Author the Consol patch engine**
+
+Create `server/parts/rijay_engine_consol_patch.json`:
+
+```json
+{
+  "schema": 1,
+  "id": "rijay.engine.consol_patch",
+  "name": "Consol patch engine",
+  "kind": "engine",
+  "size": "m",
+  "mass": 0.0,
+  "provides": { "engine": 1 },
+  "requires": { "power": 3 },
+  "thrust": 4800.0,
+  "torque": 21600.0,
+  "sprite": "engine_consol"
+}
+```
+
+Every Mockingbird fit masses 120.0 — as an uncarved hull here (mass 120.0, no modules) and as a carved one after Task 8 (mass 96.0 + 24.0 of modules) — so this engine is exactly `accel = 40.0` and `turn_rate = 180.0`, the two constants `ship.gleam` carried before M4. Nothing about how she flies today changes.
+
+- [ ] **Step 2: Author the Rijay original**
+
+Create `server/parts/rijay_engine_stock.json`:
+
+```json
+{
+  "schema": 1,
+  "id": "rijay.engine.stock",
+  "name": "Rijay original engine",
+  "kind": "engine",
+  "size": "m",
+  "mass": 4.0,
+  "provides": { "engine": 1 },
+  "requires": { "power": 4 },
+  "thrust": 6820.0,
+  "torque": 19840.0,
+  "sprite": "engine_rijay"
+}
+```
+
+At a Mockingbird fit's resulting 124.0 total mass that is `accel = 55.0`, `turn_rate = 160.0` — stronger in a straight line, lazier in a turn. That contrast is the milestone's exit demo: swapping the patch for the original moves the flight stats in opposite directions, so it is a *choice*, not an upgrade.
+
+- [ ] **Step 3: Give the Mockingbird her hull metadata (no slots yet)**
+
+Add to the top level of `server/shipclasses/mockingbird.json`, leaving her `decks` completely untouched:
+
+```jsonc
+  "mass": 120.0,
+  "provides": { "power": 10 },
+  "requires": { "engine": 1 },
+  "mounts": [ { "id": "engine_center", "kind": "engine", "size": "m" } ],
+  "default_loadout": { "parts": { "engine_center": "rijay.engine.consol_patch" } }
+```
+
+Mass is 120.0 *here* because the hull is still the whole ship — nothing has been carved out into modules. Task 8 drops it to 96.0 as the five default modules take up the other 24.0, and the resolved total stays 120.0 either way. The old `shipclass.load` path (still live until Task 7) ignores these unknown fields, so the running server is unaffected.
+
+- [ ] **Step 4: Update the harness fixture hull**
+
+Every harness test spawns from `harness/fixtures/test_fixture.json`, so it needs mass and a default engine or its ships cannot resolve. Add to that file's top level (keeping everything else untouched):
+
+```jsonc
+  "mass": 120.0,
+  "provides": { "power": 10 },
+  "requires": { "engine": 1 },
+  "mounts": [ { "id": "engine_center", "kind": "engine", "size": "m" } ],
+  "default_loadout": { "parts": { "engine_center": "rijay.engine.consol_patch" } }
+```
+
+120.0 plus the patch engine's 0.0 keeps the fixture hull at exactly `accel = 40.0` / `turn_rate = 180.0`, so `harness/test_m1_flight.py`'s "~20 u for ~1 s of full thrust" assertions stay green untouched. The fixture declares no slots and no default modules until Task 10 — a hull with no slots is perfectly legal, it just cannot be refitted.
+
+- [ ] **Step 5: Write the test**
+
+Create `server/test/parts_test.gleam`:
+
+```gleam
+import dh_server/glyphs
+import dh_server/hull
+import dh_server/loadout
+import dh_server/module
+import dh_server/part
+import gleam/dict
+
+pub fn shipped_parts_load_test() {
+  let assert Ok(parts) = part.load_all("parts")
+  let assert Ok(patch) = dict.get(parts, "rijay.engine.consol_patch")
+  assert patch.kind == "engine"
+  assert patch.size == "m"
+  let assert Ok(stock) = dict.get(parts, "rijay.engine.stock")
+  assert stock.thrust >. patch.thrust
+  assert stock.torque <. patch.torque
+}
+
+/// The uncarved Mockingbird resolves with an engine and no modules at all —
+/// the "a hull with no slots is legal" case — at exactly the pre-M4 constants.
+pub fn uncarved_mockingbird_flies_at_the_pre_m4_constants_test() {
+  let assert Ok(h) = hull.load("shipclasses/mockingbird.json")
+  let assert Ok(parts) = part.load_all("parts")
+  let assert Ok(fit) =
+    loadout.resolve(glyphs.default(), h, dict.new(), parts, loadout.default_for(h))
+  assert fit.mass == 120.0
+  assert fit.class.flight.accel == 40.0
+  assert fit.class.flight.turn_rate == 180.0
+  assert fit.class.cargo_capacity == 60
+}
+
+pub fn the_stock_engine_trades_turn_for_thrust_test() {
+  let assert Ok(h) = hull.load("shipclasses/mockingbird.json")
+  let assert Ok(parts) = part.load_all("parts")
+  let swapped =
+    loadout.Loadout(
+      hull: "mockingbird",
+      modules: [],
+      parts: [#("engine_center", "rijay.engine.stock")],
+    )
+  let assert Ok(fit) =
+    loadout.resolve(glyphs.default(), h, dict.new(), parts, swapped)
+  assert fit.class.flight.accel == 55.0
+  assert fit.class.flight.turn_rate == 160.0
+}
+
+/// A hull that requires `{"engine": 1}` cannot resolve with nothing mounted —
+/// this is the pooled-tag rule doing the "she has to be able to move" job, not
+/// a special case in the engine.
+pub fn no_engine_is_refused_test() {
+  let assert Ok(h) = hull.load("shipclasses/mockingbird.json")
+  let bare = loadout.Loadout(hull: "mockingbird", modules: [], parts: [])
+  let assert Error(e) =
+    loadout.resolve(glyphs.default(), h, dict.new(), dict.new(), bare)
+  assert e == "tag_deficit:engine"
+}
+```
+
+Add `import dh_server/module` only if the compiler needs it; the tests above pass `dict.new()` for the module registry, so it may be unused — delete the import if so.
+
+- [ ] **Step 6: Run the server suite**
+
+Run: `cd server; gleam test`
+Expected: PASS, whole suite. The live server still boots through the old `shipclass.load` path — the Mockingbird's decks were not touched.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add server/parts server/shipclasses/mockingbird.json harness/fixtures/test_fixture.json server/test/parts_test.gleam
+git commit -m "feat(parts): Consol patch + Rijay original engines; hull flight metadata (#M4)"
+```
+
+---
+
+### Task 7: Per-ship fits in the sim
+
+Unwind the single shared `ShipClass`. Every ship gets its own resolved `Fit`; the registries load at boot; the temporary `shipclass.load` shim from Task 3 comes out.
+
+**Files:**
+- Modify: `server/src/dh_server/shipclass.gleam` (delete the `load`/`load_with` shim)
+- Modify: `server/test/shipclass_test.gleam`
+- Modify: `server/src/dh_server.gleam` (lines 13, 25, 142-152)
+- Modify: `server/src/dh_server/sim.gleam` (the `State` record at 280-299, `start` at 302-338, and every `state.class` reference — lines 368, 388, 448, 480, 507, 547, 762, 797, 826, 842, 977, 1049, 1161, 1202-1206, 1401, 1449, 1515)
+- Modify: `server/src/dh_server/server.gleam` (line 22 and its `ShipClass` plumbing)
+- Modify: `server/src/dh_server/ship.gleam` (constants at 19-25, `step` at 140-165)
+- Modify: `server/src/dh_server/protocol.gleam` (`encode_welcome` at 168-191)
+- Test: `server/test/ship_test.gleam`, `server/test/sim_test.gleam`
+
+**Interfaces:**
+- Consumes: `loadout.Fit`, `loadout.resolve`, `hull.load_all`, `module.load_all`, `part.load_all`.
+- Produces: `sim` holds `fits: List(#(Int, loadout.Fit))` keyed by ship id, plus `fn fit_for(state: State, ship_id: Int) -> Result(loadout.Fit, Nil)`.
+- Produces: `ship.step(ship, world, t, standoff, flight: shipclass.Flight) -> Ship` (new 5th parameter).
+
+- [ ] **Step 1: Move the flight constants out of `ship.gleam`**
+
+Delete `main_accel` (lines 19-20) and `turn_rate` (lines 22-25). Keep `dt`, `max_dock_speed`, `starting_wallet`.
+
+Change `step`'s signature and body:
+
+```gleam
+/// Advance a ship by one tick of `dt` at sim time `t`. A docked ship is pinned
+/// to its station's analytic position/velocity and ignores its controls; a
+/// flying ship integrates thrust + gravity. `flight` is the ship's RESOLVED
+/// performance (`loadout.resolve`) — acceleration and turn rate are per-ship
+/// loadout data since M4, not global constants.
+pub fn step(
+  ship: Ship,
+  world: World,
+  t: Float,
+  standoff: Float,
+  flight: shipclass.Flight,
+) -> Ship {
+```
+
+and inside the `Flying` branch:
+
+```gleam
+      let heading = ship.heading +. ship.controls.rotate *. flight.turn_rate *. dt
+      let #(gx, gy) = world.gravity_at(world, ship.x, ship.y, t)
+      let heading_rad = angle.deg_to_rad(heading)
+      let ax = ship.controls.thrust *. flight.accel *. cos(heading_rad) +. gx
+      let ay = ship.controls.thrust *. flight.accel *. sin(heading_rad) +. gy
+```
+
+Add `import dh_server/shipclass` to `ship.gleam`.
+
+- [ ] **Step 2: Update `ship_test.gleam`**
+
+Every `ship.step(...)` call in that file gains a flight argument. Add a helper at the top of the file and use it at each call site:
+
+```gleam
+fn test_flight() -> shipclass.Flight {
+  // The pre-M4 constants, so these tests keep asserting the same numbers.
+  shipclass.Flight(accel: 40.0, turn_rate: 180.0)
+}
+```
+
+Add `import dh_server/shipclass`. Any test that referenced `ship.main_accel` or `ship.turn_rate` uses `test_flight().accel` / `.turn_rate` instead.
+
+- [ ] **Step 3: Load the registries at boot**
+
+In `server/src/dh_server.gleam`, replace the single-class load (lines 25 and 142-152) with:
+
+```gleam
+const default_hull_dir = "shipclasses"
+
+const module_dir = "modules"
+
+const part_dir = "parts"
+
+const default_hull_id = "mockingbird"
+```
+
+and, where the class was loaded:
+
+```gleam
+  // DH_SHIP_CLASS names ONE extra hull document to load and spawn from — the
+  // pytest harness points it at its own fixture hull (harness/fixtures/).
+  let assert Ok(hulls) = case hull.load_all(default_hull_dir) {
+    Ok(hulls) -> Ok(hulls)
+    Error(err) -> panic as { "failed to load hulls: " <> err }
+  }
+  let #(hulls, spawn_hull) = case envoy.get("DH_SHIP_CLASS") {
+    Error(Nil) -> #(hulls, default_hull_id)
+    Ok(path) -> {
+      let assert Ok(h) = hull.load(path)
+      #(dict.insert(hulls, h.id, h), h.id)
+    }
+  }
+  let assert Ok(modules) = module.load_all(module_dir)
+  let assert Ok(parts) = part.load_all(part_dir)
+```
+
+Follow the file's existing error-reporting idiom for the failure branches rather than bare `panic` if one is already established there; the point is that a broken data file must stop the server at boot, loudly, not produce a half-fitted world.
+
+Pass `hulls`, `modules`, `parts`, `spawn_hull` into `sim.start` (and through `server.gleam`, which currently threads a `ShipClass`).
+
+`modules` will be an empty registry until Task 8 authors the Mockingbird's — that is fine and must not be treated as an error: an empty `server/modules/` directory resolves every hull with zero modules.
+
+Nothing loads a `ShipClass` from a file any more, so delete the Task 3 shim from `shipclass.gleam`: `pub fn load`, `pub fn load_with`, and the `default_shim_flight` constant, plus the `simplifile` import if it becomes unused. A `ShipClass` is now only ever produced by `from_plan` or decoded from the wire — which is the invariant that makes "a ship is its resolved fit" true rather than aspirational.
+
+- [ ] **Step 4: Give the sim per-ship fits**
+
+In `sim.gleam`, replace the `class: ShipClass` field of `State` with:
+
+```gleam
+    /// Every hull, module and part the world knows — the content registries.
+    hulls: dict.Dict(String, hull.Hull),
+    modules: dict.Dict(String, module.Module),
+    parts: dict.Dict(String, part.Part),
+    glyphs: glyphs.Registry,
+    /// The hull new ships spawn on.
+    spawn_hull: String,
+    /// Resolved fit per ship id. A ship without one cannot be simulated, so
+    /// spawn refuses rather than falling back to a default.
+    fits: List(#(Int, loadout.Fit)),
+```
+
+and add the lookup helper:
+
+```gleam
+/// The resolved fit of one ship. Every consumer of the old single shared
+/// `state.class` goes through here: since M4 a hull is per-ship data, not a
+/// world-wide constant.
+fn fit_for(state: State, ship_id: Int) -> Result(loadout.Fit, Nil) {
+  case list.find(state.fits, fn(entry) { entry.0 == ship_id }) {
+    Ok(#(_, fit)) -> Ok(fit)
+    Error(Nil) -> Error(Nil)
+  }
+}
+
+/// Resolve the default loadout of `hull_id` — the fit a freshly spawned ship
+/// gets.
+fn default_fit(state: State, hull_id: String) -> Result(loadout.Fit, String) {
+  case dict.get(state.hulls, hull_id) {
+    Error(Nil) -> Error("unknown_hull:" <> hull_id)
+    Ok(h) ->
+      loadout.resolve(
+        state.glyphs,
+        h,
+        state.modules,
+        state.parts,
+        loadout.default_for(h),
+      )
+  }
+}
+```
+
+Then work through each `state.class` site the compiler reports. The mechanical substitution is `state.class.<field>` → `fit.class.<field>` where `fit` comes from `fit_for(state, ship.id)`. Guidance per site group:
+
+- **Spawn (around line 368, 480):** resolve `default_fit(state, state.spawn_hull)` first, store it in `fits`, then use its `class.dock_port_orientation` / `class.dock_standoff`.
+- **Console/helm lookups (388, 448, 547, 762, 797, 842, 1161, 1401):** these are per-character; find the character's ship, then its fit, then `fit.class.plan`.
+- **Composite build (507, 1202-1206):** the docked ship's own `fit.class.plan` — the comment at 1202 saying `state.class.plan is the single-hull assumption` is exactly what this deletes; remove the comment with the assumption.
+- **Cargo (977, 1049, 1515):** `fit.class.handling` / `fit.class.cargo_capacity`.
+- **Ship stepping (1449):** `ship.step(s, state.world, t, fit.class.dock_standoff, fit.class.flight)`.
+- **Undock (826):** `fit.class.dock_standoff`.
+
+Where a fit lookup can fail (a ship id with no fit), treat it the same way the code already treats a missing ship: skip the ship rather than crashing the tick.
+
+Drop `fits` entries when a ship despawns, wherever the ship list is pruned.
+
+- [ ] **Step 5: Thread the resolved class into `welcome`**
+
+`protocol.encode_welcome` already takes a `ShipClass` — pass `fit.class` for the connecting player's ship. No signature change needed.
+
+- [ ] **Step 6: Retrain `shipclass_test.gleam`**
+
+Its four cases still call the deleted `shipclass.load`. They were really *hull* assertions; the hull-level ones now live in `hull_test`/`parts_test`, so what remains is the wire-form contract. Replace the file with:
+
+```gleam
+import dh_server/deckplan
+import dh_server/glyphs
+import dh_server/shipclass
+import gleam/json
+
+const rows = [
+  "##########",
+  "#h       #",
+  "##########",
+  "##########",
+  "=Q      p#",
+  "##########",
+]
+
+fn a_class() -> shipclass.ShipClass {
+  let reg = glyphs.default()
+  let assert Ok(plan) = deckplan.from_rows(reg, [#("Main", rows)])
+  let assert Ok(c) =
+    shipclass.from_plan(
+      reg,
+      "testhull",
+      "Test Hull",
+      3,
+      plan,
+      7,
+      shipclass.BreakBulk,
+      90.0,
+      20.0,
+      shipclass.Flight(accel: 40.0, turn_rate: 180.0),
+    )
+  c
+}
+
+pub fn from_plan_derives_capacity_from_pallets_test() {
+  // The single `p` tile on the map beats the authored fallback of 7.
+  assert a_class().cargo_capacity == 1
+}
+
+pub fn from_plan_requires_a_helm_test() {
+  let reg = glyphs.default()
+  let assert Ok(plan) =
+    deckplan.from_rows(reg, [
+      #("Main", ["##########", "#        #", "##########"]),
+    ])
+  let assert Error(e) =
+    shipclass.from_plan(
+      reg,
+      "h",
+      "H",
+      3,
+      plan,
+      0,
+      shipclass.BreakBulk,
+      90.0,
+      20.0,
+      shipclass.Flight(accel: 1.0, turn_rate: 1.0),
+    )
+  assert e == "no console of kind \"helm\""
+}
+
+pub fn decode_encode_round_trips_test() {
+  let c = a_class()
+  let text = shipclass.encode(c) |> json.to_string
+  let assert Ok(c2) = shipclass.decode(text)
+  assert c == c2
+}
+
+pub fn helm_console_is_found_test() {
+  let assert Ok(console) = shipclass.helm_console(a_class())
+  assert console.kind == "helm"
+}
+```
+
+- [ ] **Step 7: Fix `sim_test.gleam`**
+
+`sim.start` gains parameters. Add a helper at the top of `sim_test.gleam` that builds the registries from disk once and calls `start` with them:
+
+```gleam
+fn test_sim_args() {
+  let assert Ok(hulls) = hull.load_all("shipclasses")
+  let assert Ok(modules) = module.load_all("modules")
+  let assert Ok(parts) = part.load_all("parts")
+  #(hulls, modules, parts, glyphs.default(), "mockingbird")
+}
+```
+
+and update every `sim.start(world, class)` call to pass them.
+
+- [ ] **Step 7: Run the whole suite**
+
+Run: `cd server; gleam test`
+Expected: PASS, all suites.
+
+- [ ] **Step 8: Run the harness to prove the live server still works**
+
+Run: `cd harness; python -m pytest test_m1_flight.py test_m2_interior.py -v`
+Expected: PASS — the fixture hull resolves, ships spawn with 40 u/s² of thrust, interiors still walk.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add server/src server/test
+git commit -m "refactor(sim): per-ship resolved fits replace the single shared class (#M4)"
+```
+
+---
+
+### Task 8: Carve the Mockingbird into a hull plus default modules
+
+The content task, and the riskiest one — which is why it runs last, against live machinery: by now the server already resolves every ship through `loadout.resolve`, so a bad carve fails loudly and locally instead of hiding behind unwired code.
+
+Today's `mockingbird.json` gets slot digits and has its slot regions emptied to open floor; five modules stamp back exactly what is there now. A golden test against the frozen pre-M4 map is the arbiter.
 
 **Files:**
 - Create: `server/test/fixtures/mockingbird_authored.json` (frozen copy of today's map)
@@ -2149,7 +2592,7 @@ pub fn every_shipped_module_resolves_in_its_slot_test() {
 - [ ] **Step 3: Run to verify it fails**
 
 Run: `cd server; gleam test`
-Expected: FAIL — `modules` and `parts` directories do not exist yet.
+Expected: FAIL — `default_loadout_reproduces_the_authored_deck_test` fails because the hull has no slots and no modules yet, so the "resolved" plan is just the authored one with an empty loadout. (It may in fact *pass* trivially at this point, since an uncarved hull with no modules resolves to exactly the authored map. That is fine and expected — the test only becomes load-bearing once Step 5 empties the slot regions, and it must still pass then. `default_capacity_is_still_sixty_test` and the flight test pass from the start; they are regression anchors, not new behaviour.)
 
 - [ ] **Step 4: Choose the slot regions**
 
@@ -2171,21 +2614,16 @@ Edit `server/shipclasses/mockingbird.json`:
 
 1. For every tile in a slot region, put its digit in the tile's SW corner character (row `3y+2`, column `3x` of that deck's grid).
 2. **Empty each slot region**: inside a slot, every tile becomes plain open floor — remove interior partitions, decor (`d`/`e`/`t`/`p`), and wall consoles (`h`) that a module will stamp back. On the slot **perimeter**, the hull-side edges default to **open** (not `#`): the module supplies both the walls and the doors along its own boundary, so an unfitted slot reads as a bare open bay. Draw a hull-side perimeter wall only where the structure is genuinely fixed and no module should ever open it — the pressure boundary between the Lower hold and the bow ramp is the one place on this hull that plausibly qualifies. Everywhere else, leave it open.
-3. Add the new top-level fields:
+3. Change `"mass"` from the 120.0 Task 6 gave her to **96.0** — the five default modules account for the other 24.0, so every resolved fit still totals 120.0 and she still flies at exactly 40.0 / 180.0. Then add the new top-level fields (`provides`, `requires` and `mounts` are already there from Task 6 — do not duplicate them):
 
 ```jsonc
   "mass": 96.0,
-  "provides": { "power": 10 },
-  "requires": { "engine": 1 },
   "slots": [
     { "digit": 1, "id": "cockpit",      "name": "Cockpit" },
     { "digit": 2, "id": "forward_crew", "name": "Forward crew space" },
     { "digit": 3, "id": "commons",      "name": "Commons" },
     { "digit": 4, "id": "aft_crew",     "name": "Aft crew space" },
     { "digit": 5, "id": "hold",         "name": "Main hold" }
-  ],
-  "mounts": [
-    { "id": "engine_center", "kind": "engine", "size": "m" }
   ],
   "default_loadout": {
     "modules": {
@@ -2247,297 +2685,18 @@ Expected: `default_loadout_reproduces_the_authored_deck_test` PASSES. It will no
 cd server; gleam test 2>&1 | head -60
 ```
 
-The mismatch is always one of: a slot digit missing from a hull tile the module writes into (→ `out_of_slot_bounds`), a hull tile that kept decor the module also draws, or a hull boundary tile drawing `#` where the module needs a door.
+The mismatch is always one of: a slot digit missing from a hull tile the module writes into (→ `out_of_slot_bounds`), a hull tile that kept decor the module also draws, or a hull perimeter tile drawing `#` where the module needs a door.
 
-Note: `default_flight_matches_the_pre_m4_constants_test` and the parts directory come from Task 7 — it is expected to fail until then.
+- [ ] **Step 9: Run the harness — the carve must not move a single door**
 
-- [ ] **Step 9: Commit**
+Run: `cd harness; python -m pytest -v`
+Expected: PASS, unchanged. The walking tests are the real proof that the carve preserved her interior: they walk the Mockingbird's corridors and sit at her consoles, and they neither know nor care that five modules now supply those tiles.
+
+- [ ] **Step 10: Commit**
 
 ```bash
 git add server/shipclasses/mockingbird.json server/modules server/test/mockingbird_test.gleam
 git commit -m "feat(mockingbird): carve the hull into five slots + default modules (#M4)"
-```
-
----
-
-### Task 7: Engine parts, flight numbers, and the harness fixture hull
-
-**Files:**
-- Create: `server/parts/rijay_engine_consol_patch.json`
-- Create: `server/parts/rijay_engine_stock.json`
-- Modify: `harness/fixtures/test_fixture.json`
-- Test: `server/test/mockingbird_test.gleam` (already written in Task 6)
-
-**Interfaces:**
-- Produces: part ids `rijay.engine.consol_patch` (the default) and `rijay.engine.stock`.
-
-- [ ] **Step 1: Author the Consol patch engine**
-
-Create `server/parts/rijay_engine_consol_patch.json`:
-
-```json
-{
-  "schema": 1,
-  "id": "rijay.engine.consol_patch",
-  "name": "Consol patch engine",
-  "kind": "engine",
-  "size": "m",
-  "mass": 0.0,
-  "provides": { "engine": 1 },
-  "requires": { "power": 3 },
-  "thrust": 4800.0,
-  "torque": 21600.0,
-  "sprite": "engine_consol"
-}
-```
-
-The Mockingbird's default fit masses 120.0, so this is exactly `accel = 40.0` and `turn_rate = 180.0` — the two constants `ship.gleam` carried before M4. Nothing about how she flies today changes.
-
-- [ ] **Step 2: Author the Rijay original**
-
-Create `server/parts/rijay_engine_stock.json`:
-
-```json
-{
-  "schema": 1,
-  "id": "rijay.engine.stock",
-  "name": "Rijay original engine",
-  "kind": "engine",
-  "size": "m",
-  "mass": 4.0,
-  "provides": { "engine": 1 },
-  "requires": { "power": 4 },
-  "thrust": 6820.0,
-  "torque": 19840.0,
-  "sprite": "engine_rijay"
-}
-```
-
-At the default fit's 124.0 total mass that is `accel = 55.0`, `turn_rate = 160.0` — stronger in a straight line, lazier in a turn. That contrast is the milestone's exit demo: swapping the patch for the original moves the flight stats in opposite directions, so it is a *choice*, not an upgrade.
-
-- [ ] **Step 3: Update the harness fixture hull**
-
-Every harness test spawns from `harness/fixtures/test_fixture.json`, so it needs mass and a default engine or its ships cannot resolve. Add to that file's top level (keeping everything else untouched):
-
-```jsonc
-  "mass": 120.0,
-  "provides": { "power": 10 },
-  "requires": { "engine": 1 },
-  "mounts": [ { "id": "engine_center", "kind": "engine", "size": "m" } ],
-  "default_loadout": { "parts": { "engine_center": "rijay.engine.consol_patch" } }
-```
-
-120.0 plus the patch engine's 0.0 keeps the fixture hull at exactly `accel = 40.0` / `turn_rate = 180.0`, so `harness/test_m1_flight.py`'s "~20 u for ~1 s of full thrust" assertions stay green untouched. The fixture declares no slots and no default modules until Task 10 — a hull with no slots is perfectly legal, it just cannot be refitted.
-
-- [ ] **Step 4: Run the server suite**
-
-Run: `cd server; gleam test`
-Expected: all Task 6 tests PASS, including `default_flight_matches_the_pre_m4_constants_test`.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add server/parts harness/fixtures/test_fixture.json
-git commit -m "feat(parts): Consol patch + Rijay original engines; flight stats from data (#M4)"
-```
-
----
-
-### Task 8: Per-ship fits in the sim
-
-Unwind the single shared `ShipClass`. Every ship gets its own resolved `Fit`; the registries load at boot.
-
-**Files:**
-- Modify: `server/src/dh_server.gleam` (lines 13, 25, 142-152)
-- Modify: `server/src/dh_server/sim.gleam` (the `State` record at 280-299, `start` at 302-338, and every `state.class` reference — lines 368, 388, 448, 480, 507, 547, 762, 797, 826, 842, 977, 1049, 1161, 1202-1206, 1401, 1449, 1515)
-- Modify: `server/src/dh_server/server.gleam` (line 22 and its `ShipClass` plumbing)
-- Modify: `server/src/dh_server/ship.gleam` (constants at 19-25, `step` at 140-165)
-- Modify: `server/src/dh_server/protocol.gleam` (`encode_welcome` at 168-191)
-- Test: `server/test/ship_test.gleam`, `server/test/sim_test.gleam`
-
-**Interfaces:**
-- Consumes: `loadout.Fit`, `loadout.resolve`, `hull.load_all`, `module.load_all`, `part.load_all`.
-- Produces: `sim` holds `fits: List(#(Int, loadout.Fit))` keyed by ship id, plus `fn fit_for(state: State, ship_id: Int) -> Result(loadout.Fit, Nil)`.
-- Produces: `ship.step(ship, world, t, standoff, flight: shipclass.Flight) -> Ship` (new 5th parameter).
-
-- [ ] **Step 1: Move the flight constants out of `ship.gleam`**
-
-Delete `main_accel` (lines 19-20) and `turn_rate` (lines 22-25). Keep `dt`, `max_dock_speed`, `starting_wallet`.
-
-Change `step`'s signature and body:
-
-```gleam
-/// Advance a ship by one tick of `dt` at sim time `t`. A docked ship is pinned
-/// to its station's analytic position/velocity and ignores its controls; a
-/// flying ship integrates thrust + gravity. `flight` is the ship's RESOLVED
-/// performance (`loadout.resolve`) — acceleration and turn rate are per-ship
-/// loadout data since M4, not global constants.
-pub fn step(
-  ship: Ship,
-  world: World,
-  t: Float,
-  standoff: Float,
-  flight: shipclass.Flight,
-) -> Ship {
-```
-
-and inside the `Flying` branch:
-
-```gleam
-      let heading = ship.heading +. ship.controls.rotate *. flight.turn_rate *. dt
-      let #(gx, gy) = world.gravity_at(world, ship.x, ship.y, t)
-      let heading_rad = angle.deg_to_rad(heading)
-      let ax = ship.controls.thrust *. flight.accel *. cos(heading_rad) +. gx
-      let ay = ship.controls.thrust *. flight.accel *. sin(heading_rad) +. gy
-```
-
-Add `import dh_server/shipclass` to `ship.gleam`.
-
-- [ ] **Step 2: Update `ship_test.gleam`**
-
-Every `ship.step(...)` call in that file gains a flight argument. Add a helper at the top of the file and use it at each call site:
-
-```gleam
-fn test_flight() -> shipclass.Flight {
-  // The pre-M4 constants, so these tests keep asserting the same numbers.
-  shipclass.Flight(accel: 40.0, turn_rate: 180.0)
-}
-```
-
-Add `import dh_server/shipclass`. Any test that referenced `ship.main_accel` or `ship.turn_rate` uses `test_flight().accel` / `.turn_rate` instead.
-
-- [ ] **Step 3: Load the registries at boot**
-
-In `server/src/dh_server.gleam`, replace the single-class load (lines 25 and 142-152) with:
-
-```gleam
-const default_hull_dir = "shipclasses"
-
-const module_dir = "modules"
-
-const part_dir = "parts"
-
-const default_hull_id = "mockingbird"
-```
-
-and, where the class was loaded:
-
-```gleam
-  // DH_SHIP_CLASS names ONE extra hull document to load and spawn from — the
-  // pytest harness points it at its own fixture hull (harness/fixtures/).
-  let assert Ok(hulls) = case hull.load_all(default_hull_dir) {
-    Ok(hulls) -> Ok(hulls)
-    Error(err) -> panic as { "failed to load hulls: " <> err }
-  }
-  let #(hulls, spawn_hull) = case envoy.get("DH_SHIP_CLASS") {
-    Error(Nil) -> #(hulls, default_hull_id)
-    Ok(path) -> {
-      let assert Ok(h) = hull.load(path)
-      #(dict.insert(hulls, h.id, h), h.id)
-    }
-  }
-  let assert Ok(modules) = module.load_all(module_dir)
-  let assert Ok(parts) = part.load_all(part_dir)
-```
-
-Follow the file's existing error-reporting idiom for the failure branches rather than bare `panic` if one is already established there; the point is that a broken data file must stop the server at boot, loudly, not produce a half-fitted world.
-
-Pass `hulls`, `modules`, `parts`, `spawn_hull` into `sim.start` (and through `server.gleam`, which currently threads a `ShipClass`).
-
-- [ ] **Step 4: Give the sim per-ship fits**
-
-In `sim.gleam`, replace the `class: ShipClass` field of `State` with:
-
-```gleam
-    /// Every hull, module and part the world knows — the content registries.
-    hulls: dict.Dict(String, hull.Hull),
-    modules: dict.Dict(String, module.Module),
-    parts: dict.Dict(String, part.Part),
-    glyphs: glyphs.Registry,
-    /// The hull new ships spawn on.
-    spawn_hull: String,
-    /// Resolved fit per ship id. A ship without one cannot be simulated, so
-    /// spawn refuses rather than falling back to a default.
-    fits: List(#(Int, loadout.Fit)),
-```
-
-and add the lookup helper:
-
-```gleam
-/// The resolved fit of one ship. Every consumer of the old single shared
-/// `state.class` goes through here: since M4 a hull is per-ship data, not a
-/// world-wide constant.
-fn fit_for(state: State, ship_id: Int) -> Result(loadout.Fit, Nil) {
-  case list.find(state.fits, fn(entry) { entry.0 == ship_id }) {
-    Ok(#(_, fit)) -> Ok(fit)
-    Error(Nil) -> Error(Nil)
-  }
-}
-
-/// Resolve the default loadout of `hull_id` — the fit a freshly spawned ship
-/// gets.
-fn default_fit(state: State, hull_id: String) -> Result(loadout.Fit, String) {
-  case dict.get(state.hulls, hull_id) {
-    Error(Nil) -> Error("unknown_hull:" <> hull_id)
-    Ok(h) ->
-      loadout.resolve(
-        state.glyphs,
-        h,
-        state.modules,
-        state.parts,
-        loadout.default_for(h),
-      )
-  }
-}
-```
-
-Then work through each `state.class` site the compiler reports. The mechanical substitution is `state.class.<field>` → `fit.class.<field>` where `fit` comes from `fit_for(state, ship.id)`. Guidance per site group:
-
-- **Spawn (around line 368, 480):** resolve `default_fit(state, state.spawn_hull)` first, store it in `fits`, then use its `class.dock_port_orientation` / `class.dock_standoff`.
-- **Console/helm lookups (388, 448, 547, 762, 797, 842, 1161, 1401):** these are per-character; find the character's ship, then its fit, then `fit.class.plan`.
-- **Composite build (507, 1202-1206):** the docked ship's own `fit.class.plan` — the comment at 1202 saying `state.class.plan is the single-hull assumption` is exactly what this deletes; remove the comment with the assumption.
-- **Cargo (977, 1049, 1515):** `fit.class.handling` / `fit.class.cargo_capacity`.
-- **Ship stepping (1449):** `ship.step(s, state.world, t, fit.class.dock_standoff, fit.class.flight)`.
-- **Undock (826):** `fit.class.dock_standoff`.
-
-Where a fit lookup can fail (a ship id with no fit), treat it the same way the code already treats a missing ship: skip the ship rather than crashing the tick.
-
-Drop `fits` entries when a ship despawns, wherever the ship list is pruned.
-
-- [ ] **Step 5: Thread the resolved class into `welcome`**
-
-`protocol.encode_welcome` already takes a `ShipClass` — pass `fit.class` for the connecting player's ship. No signature change needed.
-
-- [ ] **Step 6: Fix `sim_test.gleam`**
-
-`sim.start` gains parameters. Add a helper at the top of `sim_test.gleam` that builds the registries from disk once and calls `start` with them:
-
-```gleam
-fn test_sim_args() {
-  let assert Ok(hulls) = hull.load_all("shipclasses")
-  let assert Ok(modules) = module.load_all("modules")
-  let assert Ok(parts) = part.load_all("parts")
-  #(hulls, modules, parts, glyphs.default(), "mockingbird")
-}
-```
-
-and update every `sim.start(world, class)` call to pass them.
-
-- [ ] **Step 7: Run the whole suite**
-
-Run: `cd server; gleam test`
-Expected: PASS, all suites.
-
-- [ ] **Step 8: Run the harness to prove the live server still works**
-
-Run: `cd harness; python -m pytest test_m1_flight.py test_m2_interior.py -v`
-Expected: PASS — the fixture hull resolves, ships spawn with 40 u/s² of thrust, interiors still walk.
-
-- [ ] **Step 9: Commit**
-
-```bash
-git add server/src server/test
-git commit -m "refactor(sim): per-ship resolved fits replace the single shared class (#M4)"
 ```
 
 ---
