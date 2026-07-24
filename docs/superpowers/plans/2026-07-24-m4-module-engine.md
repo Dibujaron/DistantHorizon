@@ -2849,12 +2849,18 @@ Add `import dh_server/loadout` to `protocol.gleam`, and document both messages i
 ```
 //// {"v":1,"type":"refit","modules":[{"slot","module"}...],
 ////  "parts":[{"mount","part"}...]} — replace the whole loadout; docked only.
-//// {"v":1,"type":"refit_result","ok":Bool,"reason":null|S} — reasons:
-////   not_docked | unknown_hull | loadout_wrong_hull | slot_not_on_hull |
+//// {"v":1,"type":"refit_result","ok":Bool,"reason":null|S} — LOADOUT
+////   REFUSALS (the player asked for an illegal fit): not_docked |
+////   hold_over_capacity | loadout_wrong_hull | slot_not_on_hull |
 ////   duplicate_slot | unknown_module | module_wrong_hull | module_wrong_slot |
 ////   mount_not_on_hull | duplicate_mount | unknown_part | mount_wrong_kind |
 ////   mount_too_small | out_of_slot_bounds:<module> | tag_deficit:<tag> |
-////   invalid_resolved_plan:<detail>
+////   zero_mass. CONTENT ERRORS (a data file is wrong, not the player):
+////   unknown_hull | mount_bad_size:<mount> | part_bad_size:<part> |
+////   patch_bad_deck:<module> | invalid_hull_plan:<detail> |
+////   invalid_resolved_plan:<detail>. `loadout.resolve` produces all but the
+////   first two verbatim; keep the two groups distinct in any UI, because a
+////   content error is a bug report, not a refit the player can fix.
 //// {"v":1,"type":"ship_fit","ship_id":N,"ship_class":{...},"loadout":{...}}
 ```
 
