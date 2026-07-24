@@ -1,0 +1,10 @@
+{
+  "schema": 3,
+  "id": "dupid",
+  "name": "Dup A",
+  "mass": 1.0,
+  "decks": [
+    { "name": "M", "grid": ["###", "# #", "###"] }
+  ],
+  "cargo": { "capacity": 0, "handling": "breakbulk" }
+}

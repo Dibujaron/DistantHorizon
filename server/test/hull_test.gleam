@@ -1,5 +1,6 @@
 import dh_server/hull
 import gleam/dict
+import gleam/string
 
 const doc = "{
   \"schema\": 3,
@@ -62,4 +63,36 @@ pub fn load_all_indexes_by_id_test() {
   let assert Ok(hulls) = hull.load_all("shipclasses")
   let assert Ok(mb) = dict.get(hulls, "mockingbird")
   assert mb.name == "Mockingbird"
+}
+
+pub fn load_all_rejects_duplicate_ids_test() {
+  let assert Error(msg) = hull.load_all("test/fixtures/duplicate_hulls")
+  assert string.contains(msg, "dupid")
+}
+
+pub fn duplicate_slot_id_is_rejected_test() {
+  let bad =
+    "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\", \"mass\": 1.0,
+       \"slots\": [ { \"digit\": 1, \"id\": \"a\", \"name\": \"A\" },
+                    { \"digit\": 2, \"id\": \"a\", \"name\": \"B\" } ],
+       \"decks\": [ { \"name\": \"M\", \"grid\": [\"###\", \"# #\", \"###\"] } ],
+       \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" } }"
+  let assert Error(_) = hull.decode(bad)
+}
+
+pub fn slot_digit_out_of_range_is_rejected_test() {
+  let bad =
+    "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\", \"mass\": 1.0,
+       \"slots\": [ { \"digit\": 16, \"id\": \"a\", \"name\": \"A\" } ],
+       \"decks\": [ { \"name\": \"M\", \"grid\": [\"###\", \"# #\", \"###\"] } ],
+       \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" } }"
+  let assert Error(_) = hull.decode(bad)
+}
+
+pub fn non_positive_mass_is_rejected_test() {
+  let bad =
+    "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\", \"mass\": 0.0,
+       \"decks\": [ { \"name\": \"M\", \"grid\": [\"###\", \"# #\", \"###\"] } ],
+       \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" } }"
+  let assert Error(_) = hull.decode(bad)
 }
