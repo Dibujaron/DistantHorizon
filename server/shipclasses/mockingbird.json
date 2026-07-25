@@ -248,7 +248,7 @@
     "parts": { "engine_center": "rijay.engine.consol_patch" }
   },
   "cargo": {
-    "capacity": 40,
+    "capacity": 60,
     "handling": "breakbulk"
   },
   "dock_port_orientation": 90.0,

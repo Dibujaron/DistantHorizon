@@ -159,8 +159,9 @@ from scratch should follow the rules above instead.
 One consequence of modules owning their slot outright: **a console inside a slot
 belongs to whichever module draws it.** The Mockingbird's bare hull has no
 consoles at all — her helm comes from the cockpit module and her cargo console
-from whichever hold module is fitted. Any future hold module must redraw that
-`c`, or the ship will not resolve.
+from whichever hold module is fitted. Only the **helm** is machine-checked
+(`shipclass.validate` rejects a fit with no `h`); a hold module that forgets its
+`c` still resolves, and simply leaves the crew with nowhere to work cargo.
 
 Console/dock/spawn glyphs are an **authoring** convenience: **the map is the
 single source of truth**, so a position can't drift from a separate list. At
