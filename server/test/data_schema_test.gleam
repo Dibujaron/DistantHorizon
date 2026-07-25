@@ -7,14 +7,14 @@ import simplifile
 
 // Reuses quest_schema_ffi's validate/2 — it is already schema-agnostic
 // (Dynamic schema, Dynamic value in; Result(Nil, String) out), so world and
-// ship-class documents ride the same jesse wiring quests use rather than
+// hull documents ride the same jesse wiring quests use rather than
 // standing up a second FFI entry point.
 @external(erlang, "quest_schema_ffi", "validate")
 fn validate_with_schema(schema: Dynamic, value: Dynamic) -> Result(Nil, String)
 
 const world_schema_path = "schemas/world.schema.json"
 
-const ship_class_schema_path = "schemas/ship_class.schema.json"
+const hull_schema_path = "schemas/hull.schema.json"
 
 const station_class_schema_path = "schemas/station_class.schema.json"
 
@@ -26,7 +26,7 @@ const glyphs_path = "glyphs.json"
 
 const worlds_dir = "worlds"
 
-const classes_dir = "shipclasses"
+const hulls_dir = "shipclasses"
 
 const module_schema_path = "schemas/module.schema.json"
 
@@ -94,8 +94,8 @@ pub fn all_worlds_match_schema_test() {
   assert_all_validate(world_schema_path, worlds_dir)
 }
 
-pub fn all_ship_classes_match_schema_test() {
-  assert_all_validate(ship_class_schema_path, classes_dir)
+pub fn all_hulls_match_schema_test() {
+  assert_all_validate(hull_schema_path, hulls_dir)
 }
 
 pub fn all_station_classes_match_schema_test() {
@@ -125,13 +125,19 @@ pub fn world_rejects_a_one_element_berth_test() {
   assert validate_with_schema(schema, invalid_world) != Ok(Nil)
 }
 
-pub fn ship_class_rejects_an_unknown_handling_value_test() {
-  let schema = read_json(ship_class_schema_path)
-  let invalid_class =
+pub fn hull_rejects_an_unknown_handling_value_test() {
+  let schema = read_json(hull_schema_path)
+  let hull_doc = fn(handling: String) {
     parse_json(
-      "{\"schema\": 1, \"id\": \"x\", \"name\": \"X\", \"grid\": {\"width\": 1, \"height\": 1}, \"walkable\": [\"#\"], \"rooms\": [], \"consoles\": [], \"spawn_tile\": [0, 0], \"cargo\": {\"capacity\": 1, \"handling\": \"magnets\"}}",
+      "{\"schema\": 3, \"id\": \"x\", \"name\": \"X\", \"decks\": [{\"name\": \"M\", \"grid\": [\"   \", \" Q \", \"   \"]}], \"cargo\": {\"capacity\": 1, \"handling\": \""
+      <> handling
+      <> "\"}}",
     )
-  assert validate_with_schema(schema, invalid_class) != Ok(Nil)
+  }
+  // The control: the same document with a legal handling value passes, so the
+  // refusal below is about `handling` and not about the rest of the document.
+  let assert Ok(Nil) = validate_with_schema(schema, hull_doc("breakbulk"))
+  assert validate_with_schema(schema, hull_doc("magnets")) != Ok(Nil)
 }
 
 /// The whole point of `additionalProperties: false`: the decoder would ignore

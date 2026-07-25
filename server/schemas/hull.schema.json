@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-06/schema#",
-  "$id": "https://distanthorizon.dev/schemas/ship_class.schema.json",
-  "title": "Ship class document",
-  "description": "A hull's multi-deck plan (deck-plan format v3, docs/deckplan-format.md) plus the cargo characteristics M3 trading needs. Derived from the Gleam decoders in server/src/dh_server/shipclass.gleam (ship_class_decoder/cargo_decoder/handling_decoder) and server/src/dh_server/deckplan.gleam (decoder, embedded at the top level via decode.then) — those decoders are the source of truth; this schema is documentation and a typo-catcher, not a substitute for them. additionalProperties is false at every object level even though the decoders themselves ignore unknown fields, precisely so this schema can catch typos the decoders would silently swallow.",
+  "$id": "https://distanthorizon.dev/schemas/hull.schema.json",
+  "title": "Hull document",
+  "description": "An authored HULL (server/shipclasses/*.json, schema 3): its multi-deck plan kept as raw text rows (deck-plan format v3, docs/deckplan-format.md), the slots modules overlay, the mounts parts hang on, its dry mass, its capability tags and the loadout it ships with (docs/modules.md). Derived from the Gleam decoders in server/src/dh_server/hull.gleam (hull_decoder/cargo_decoder/default_loadout_decoder/tags_decoder) — those decoders are the source of truth; this schema is documentation and a typo-catcher, not a substitute for them. A hull is NOT a resolved ship class: shipclass.gleam decodes the wire form loadout.resolve bakes out of a hull, which carries a required flight block a hull document must never have. additionalProperties is false at every object level even though the decoders themselves ignore unknown fields, precisely so this schema can catch typos the decoders would silently swallow.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -138,6 +138,7 @@
     },
     "slot": {
       "type": "object",
+      "description": "One modulable interior region. Both `digit` and `id` must be unique across a hull's slots — enforced by hull.validate, not by this schema: JSON Schema draft-06 has no way to say \"this property is unique across the items of an array\".",
       "additionalProperties": false,
       "required": ["digit", "id", "name"],
       "properties": {
