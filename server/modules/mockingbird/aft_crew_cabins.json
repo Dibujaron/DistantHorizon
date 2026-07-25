@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "id": "mockingbird.aft_crew.cabins",
+  "hull": "mockingbird",
+  "slot": "aft_crew",
+  "name": "Aft crew cabins",
+  "mass": 6.0,
+  "provides": { "berths": 4 },
+  "requires": { "power": 1 },
+  "patches": [
+    {
+      "deck": 0, "x": 3, "y": 15,
+      "grid": [
+        "####=##########   ######",
+        "wd   ##d  e   = . =e  dw",
+        "#    ##########   ######",
+        "#    ##########   ######",
+        "wd   ##d      = . =   dw",
+        "#    ##       #   #    #",
+        "#    ##       #   #    #",
+        "wd  e##d  e  e# . #e  dw",
+        "###############   ######",
+        "   ###            ###   ",
+        " . we= .  .  .  . =ew . ",
+        "   # #            # #   ",
+        "   # #            # #   ",
+        " . #d# .  .  .  . #d# . ",
+        "   ###            ###   "
+      ]
+    }
+  ]
+}

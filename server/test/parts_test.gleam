@@ -1,6 +1,7 @@
 import dh_server/glyphs
 import dh_server/hull
 import dh_server/loadout
+import dh_server/module
 import dh_server/part
 import dh_server/shipclass
 import gleam/dict
@@ -15,19 +16,16 @@ pub fn shipped_parts_load_test() {
   assert stock.torque <. patch.torque
 }
 
-/// The uncarved Mockingbird resolves with an engine and no modules at all —
-/// the "a hull with no slots is legal" case — at exactly the pre-M4 constants.
-pub fn uncarved_mockingbird_flies_at_the_pre_m4_constants_test() {
+/// The Mockingbird's default fit lands on exactly the pre-M4 constants — the
+/// mass arithmetic the carve rests on: 96.0 of hull, 24.0 of default modules
+/// and a massless Consol patch make the same 120.0 she flew at before M4 split
+/// her up. (`mockingbird_test` owns the deck-fidelity half of that promise.)
+pub fn the_mockingbird_default_fit_flies_at_the_pre_m4_constants_test() {
   let assert Ok(h) = hull.load("shipclasses/mockingbird.json")
+  let assert Ok(mods) = module.load_all("modules")
   let assert Ok(parts) = part.load_all("parts")
   let assert Ok(fit) =
-    loadout.resolve(
-      glyphs.default(),
-      h,
-      dict.new(),
-      parts,
-      loadout.default_for(h),
-    )
+    loadout.resolve(glyphs.default(), h, mods, parts, loadout.default_for(h))
   assert fit.mass == 120.0
   assert fit.class.flight.accel == 40.0
   assert fit.class.flight.turn_rate == 180.0
@@ -37,13 +35,13 @@ pub fn uncarved_mockingbird_flies_at_the_pre_m4_constants_test() {
 
 pub fn the_stock_engine_trades_turn_for_thrust_test() {
   let assert Ok(h) = hull.load("shipclasses/mockingbird.json")
+  let assert Ok(mods) = module.load_all("modules")
   let assert Ok(parts) = part.load_all("parts")
+  let base = loadout.default_for(h)
   let swapped =
-    loadout.Loadout(hull: "mockingbird", modules: [], parts: [
-      #("engine_center", "rijay.engine.stock"),
-    ])
+    loadout.Loadout(..base, parts: [#("engine_center", "rijay.engine.stock")])
   let assert Ok(fit) =
-    loadout.resolve(glyphs.default(), h, dict.new(), parts, swapped)
+    loadout.resolve(glyphs.default(), h, mods, parts, swapped)
   assert fit.class.flight.accel == 55.0
   assert fit.class.flight.turn_rate == 160.0
 }

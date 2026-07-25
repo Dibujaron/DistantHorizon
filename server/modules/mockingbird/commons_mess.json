@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "id": "mockingbird.commons.mess",
+  "hull": "mockingbird",
+  "slot": "commons",
+  "name": "Commons and mess",
+  "mass": 4.0,
+  "provides": { "galley": 1 },
+  "requires": { "power": 1 },
+  "patches": [
+    {
+      "deck": 0, "x": 3, "y": 9,
+      "grid": [
+        "      #######=####      ",
+        " .  . we  t     ew .  . ",
+        "      #          #      ",
+        "      #          #      ",
+        " .  . #e  t  e   # .  . ",
+        "      #          #      ",
+        "      #          #      ",
+        " .  . =          = .  . ",
+        "      #=##########      ",
+        "#######=###########=####",
+        "we        e  t  e     ew",
+        "#                      #",
+        "#                      #",
+        "wt        e  t  e     tw",
+        "#                      #",
+        "#                      #",
+        "we                    ew",
+        "####=###########=#######"
+      ]
+    }
+  ]
+}

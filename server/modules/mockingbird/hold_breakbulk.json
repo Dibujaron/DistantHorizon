@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "mockingbird.hold.breakbulk",
+  "hull": "mockingbird",
+  "slot": "hold",
+  "name": "Break-bulk hold",
+  "mass": 4.0,
+  "provides": {},
+  "requires": { "power": 1 },
+  "patches": [
+    {
+      "deck": 2, "x": 3, "y": 10,
+      "grid": [
+        "   ###                  ",
+        " . c               .  . ",
+        "   #                    ",
+        "   #                #   ",
+        " . #p     p  p  p  p# . ",
+        "   #                #   ",
+        "###                  ###",
+        "#p  p     p  p  p  p  p#",
+        "#                      #",
+        "#                      #",
+        "#p  p     p  p  p  p  p#",
+        "#                      #",
+        "#                      #",
+        "#p  p     p  p  p  p  p#",
+        "#                      #",
+        "#                      #",
+        "#p  p     p  p  p  p  p#",
+        "#                      #",
+        "#                      #",
+        "#p  p     p  p  p  p  p#",
+        "#                      #",
+        "#                      #",
+        "#p  p     p  p  p  p  p#",
+        "###                  ###",
+        "   #                #   ",
+        " . #p     p  p  p  p# . ",
+        "   #                #   ",
+        "   #                #   ",
+        " . #p     p  p  p  p# . ",
+        "   ###            ###   ",
+        "                 #      ",
+        " .  .  .  p  p  p# .  . ",
+        "         #########      "
+      ]
+    }
+  ]
+}
