@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-06/schema#",
+  "$id": "https://distanthorizon.dev/schemas/module.schema.json",
+  "title": "Interior module document",
+  "description": "A per-(hull, slot) hand-authored overlay stamped onto the hull's authored rows when the module is fitted, where a void cell leaves the hull untouched and any other cell overwrites it (docs/modules.md). Derived from the Gleam decoders in server/src/dh_server/module.gleam (module_decoder/patch_decoder) — that decoder is the source of truth; this schema is documentation and a typo-catcher, not a substitute for it. additionalProperties is false at every object level even though the decoder itself ignores unknown fields, precisely so this schema can catch typos the decoder would silently swallow. Modules are filed per hull as server/modules/<hull>/<id>.json, because an overlay is drawn against one hull's coordinate space and is never portable.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "hull", "slot", "name"],
+  "properties": {
+    "schema": { "type": "integer" },
+    "id": {
+      "type": "string",
+      "description": "Unique across every module directory (a duplicate id is a load error, not a last-one-wins)."
+    },
+    "hull": {
+      "type": "string",
+      "description": "The hull id this overlay is drawn for. A loadout naming this module on any other hull is refused with module_wrong_hull."
+    },
+    "slot": {
+      "type": "string",
+      "description": "The hull slot id it occupies — matched against the hull's slots table, and every non-void patch cell must land on that slot's SW digit."
+    },
+    "name": { "type": "string" },
+    "mass": {
+      "type": "number",
+      "description": "Optional field (decode.optional_field, default 0.0). Added to the hull's dry mass and every other fitted module and part; the fit's flight numbers are pooled engine thrust/torque over that total. Decoded with decode.float, so it must be written with a decimal point (4.0, not 4)."
+    },
+    "provides": { "$ref": "#/$defs/tags" },
+    "requires": { "$ref": "#/$defs/tags" },
+    "patches": {
+      "type": "array",
+      "description": "Optional field (decode.optional_field, default []). The rectangles of overlay this module stamps. A module with no patches is legal — it is then pure capability, contributing only mass and tags.",
+      "items": { "$ref": "#/$defs/patch" }
+    }
+  },
+  "$defs": {
+    "tags": {
+      "type": "object",
+      "description": "Optional field (decode.optional_field, default {}). A {tag: amount} object. Tags are open strings the engine only compares and sums (server/src/dh_server/hull.gleam tags_decoder); legality is sum(provides) >= sum(requires) pooled across the whole loadout.",
+      "additionalProperties": { "type": "integer" }
+    },
+    "patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deck", "x", "y", "grid"],
+      "properties": {
+        "deck": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index into the hull's decks. A deck the hull lacks is the content error patch_bad_deck."
+        },
+        "x": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "TILE (not character) x of the patch's top-left corner on that deck."
+        },
+        "y": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "TILE (not character) y of the patch's top-left corner on that deck."
+        },
+        "grid": {
+          "type": "array",
+          "description": "3*height rows of 3*width chars in the same per-cell format hulls use (docs/deckplan-format.md) — the field is named grid on the wire but is a Patch's rows in Gleam. Row count and each row's length must be positive, equal-length multiples of 3 (enforced by the Gleam decoder's validate step, not by this schema). A tile whose centre glyph is void passes the hull's tile through untouched; any other tile overwrites all of the hull's 3x3 block EXCEPT its SW corner, which stays the hull's slot digit.",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

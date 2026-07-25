@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-06/schema#",
+  "$id": "https://distanthorizon.dev/schemas/part.schema.json",
+  "title": "Exterior part document",
+  "description": "An exterior part (server/parts/<id>.json): the shared, cross-hull half of a loadout. A part hangs on a hull mount point of matching kind and sufficient size, contributes its mass and its capability tags, and — for engines — carries the thrust and torque that used to be global constants in ship.gleam (docs/modules.md). Derived from the Gleam decoder in server/src/dh_server/part.gleam (part_decoder) — that decoder is the source of truth; this schema is documentation and a typo-catcher, not a substitute for it. additionalProperties is false even though the decoder itself ignores unknown fields, precisely so this schema can catch typos the decoder would silently swallow.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "name", "kind", "size"],
+  "properties": {
+    "schema": { "type": "integer" },
+    "id": {
+      "type": "string",
+      "description": "Unique within server/parts (a duplicate id is a load error, not a last-one-wins)."
+    },
+    "name": { "type": "string" },
+    "kind": {
+      "type": "string",
+      "description": "What sort of mount takes it — \"engine\" for now. Must equal the mount's kind or the fit is refused with mount_wrong_kind. Free-form in the decoder, so left open here."
+    },
+    "size": {
+      "type": "string",
+      "enum": ["s", "m", "l"],
+      "description": "The ordered scale: a mount takes any part of its kind whose rank is at most the mount's. Anything else is the content error part_bad_size (server/src/dh_server/part.gleam size_rank, checked by part.decode after the field itself decodes as a plain string)."
+    },
+    "mass": {
+      "type": "number",
+      "description": "Optional field (decode.optional_field, default 0.0). Added to the hull's dry mass and every fitted module and part; the fit's flight numbers are pooled engine thrust/torque over that total. Decoded with decode.float, so it must be written with a decimal point (4.0, not 4)."
+    },
+    "provides": { "$ref": "#/$defs/tags" },
+    "requires": { "$ref": "#/$defs/tags" },
+    "thrust": {
+      "type": "number",
+      "description": "Optional field (decode.optional_field, default 0.0). Force along the heading; 0 for a non-engine part. Pooled across mounted parts and divided by the fit's total mass to give acceleration. Decoded with decode.float, so it must be written with a decimal point."
+    },
+    "torque": {
+      "type": "number",
+      "description": "Optional field (decode.optional_field, default 0.0). Turning authority; pooled and divided by the fit's total mass to give degrees/s. Decoded with decode.float, so it must be written with a decimal point."
+    },
+    "sprite": {
+      "type": "string",
+      "description": "Optional field (decode.optional_field, default None). The client's key for layering the part onto the hull at its mount; the layering itself lands in M4 iteration 2, and until then the client draws the whole-hull bake."
+    }
+  },
+  "$defs": {
+    "tags": {
+      "type": "object",
+      "description": "Optional field (decode.optional_field, default {}). A {tag: amount} object. Tags are open strings the engine only compares and sums (server/src/dh_server/hull.gleam tags_decoder); legality is sum(provides) >= sum(requires) pooled across the whole loadout.",
+      "additionalProperties": { "type": "integer" }
+    }
+  }
+}
