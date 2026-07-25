@@ -14,7 +14,7 @@
         "   #                      #   ",
         "   #                      #   ",
         " . h                      # . ",
-        "   #                      #   ",
+        "   #        1             #   ",
         "   #                      #   ",
         " . =Q                     # . ",
         "   #                      #   ",
@@ -30,6 +30,7 @@
   "mass": 120.0,
   "provides": { "power": 10 },
   "requires": { "engine": 1 },
+  "slots": [ { "digit": 1, "id": "bay", "name": "Bay" } ],
   "mounts": [ { "id": "engine_center", "kind": "engine", "size": "m" } ],
   "default_loadout": { "parts": { "engine_center": "rijay.engine.consol_patch" } },
   "cargo": {
