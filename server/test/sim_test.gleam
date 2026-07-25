@@ -17,6 +17,7 @@ import dh_server/noise
 import dh_server/protocol
 import dh_server/shipclass
 import dh_server/sim
+import dh_server/stationclass
 import dh_server/world
 import fit
 import gleam/dict
@@ -1305,4 +1306,84 @@ pub fn refit_that_would_break_the_composite_is_refused_test() {
   assert after == before
   // ...and no composite rebuild went out either.
   assert_no_space(client, 20)
+}
+
+// ------------------------------------- a durable fit vs a LATER dock (M4) --
+//
+// `composite_survives` pre-flights a refit against the ships docked at that
+// station AT THAT MOMENT, and a fit is durable, so the guarantee it buys
+// expires the moment the docked set changes: a hull refitted with the berth
+// line to herself can be joined afterwards, and the ship that arrives to find
+// there is no longer room is the one that has to be refused. `rebuild_space`
+// used to assert here, which would have taken the actor — and every connected
+// player — down with it.
+//
+// Like the refit fixture above, this drives a fixture rather than shipped
+// content: the fixture station packs two berths ONE tile apart, far tighter
+// than any station in `worlds/`, and the fixture hull's `shell` slot plates
+// over her fore and aft rows. Which of the two berths each ship draws is
+// seed-random (`free_berth`), so the collision is symmetric by construction —
+// the plated hull overlaps her neighbour's mooring from either side.
+
+const packed_hull = "dock_testbed"
+
+const packed_wide = [#("shell", "dock_testbed.shell.wide")]
+
+/// A sim on the packed-berth fixture station, spawning ships on the fixture
+/// hull. She carries no mounts, so no part registry is needed.
+fn start_packed_sim() -> process.Subject(sim.Msg) {
+  let assert Ok(classes) =
+    stationclass.load_dir("test/fixtures/dock_testbed_stationclasses")
+  let assert Ok(w) =
+    world.load_with(classes, "test/fixtures/dock_testbed_world.json")
+  let assert Ok(hulls) = hull.load_all("test/fixtures/dock_testbed_hulls")
+  let assert Ok(modules) = module.load_all("test/fixtures/dock_testbed_modules")
+  let assert Ok(started) =
+    sim.start(w, hulls, modules, dict.new(), glyphs.default(), packed_hull)
+  started.data
+}
+
+pub fn a_dock_that_would_break_the_composite_is_refused_test() {
+  let s = start_packed_sim()
+  let ada = process.new_subject()
+  let bo = process.new_subject()
+  let assert Ok(#(ship_a, char_a)) = sim.add_player(s, "ada", ada, 1000)
+  let assert Ok(#(ship_b, char_b)) = sim.add_player(s, "bo", bo, 1000)
+  // Two lean hulls moor side by side without touching, so the fixture station
+  // is one that works: what is refused below is the FIT, not the geometry.
+  let assert Ok(lean) = sim.ship_class(s, ship_b, 1000)
+
+  // Bo leaves. With the line to herself, Ada plates her shell — legal, and the
+  // pre-flight passes, because right now there is nobody to collide with.
+  let assert Ok(Nil) = sim.request_undock(s, char_b, 1000)
+  let assert Ok(Nil) = sim.request_refit(s, char_a, packed_wide, [], 1000)
+  let assert Ok(plated) = sim.ship_class(s, ship_a, 1000)
+  assert plated.plan != lean.plan
+
+  // Bo comes back to a berth line that no longer has room for her. Refused
+  // with the composite's own reason — a reason `dock_result` already
+  // publishes — instead of panicking the actor.
+  assert sim.request_dock(s, char_b, 1000) == Error("berth_blocked")
+
+  // Refused means refused: she is still flying (a refit would be answered if
+  // she were docked), still wearing what she left in, and the sim is still
+  // answering at all — which a panicked actor could not do.
+  assert sim.request_refit(s, char_b, packed_wide, [], 1000)
+    == Error("not_docked")
+  let assert Ok(after) = sim.ship_class(s, ship_b, 1000)
+  assert after == lean
+}
+
+pub fn a_login_onto_an_unknown_hull_is_refused_test() {
+  // `sim.start` takes the spawn hull id on trust — the registries are content,
+  // and a world booted against a hull registry that does not carry its spawn
+  // hull is a content error, not a player's illegal fit. The login is refused
+  // by name (the `unknown_hull:<id>` the wire block publishes) rather than
+  // spawning a ship with no fit behind it.
+  let assert Ok(w) = world.load("worlds/m1_system.json")
+  let #(hulls, modules, parts, reg, _spawn_hull) = fit.sim_args()
+  let assert Ok(started) =
+    sim.start(w, hulls, modules, parts, reg, "hull_that_never_shipped")
+  assert sim.add_player(started.data, "ada", process.new_subject(), 1000)
+    == Error("unknown_hull:hull_that_never_shipped")
 }

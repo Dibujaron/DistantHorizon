@@ -200,7 +200,10 @@ apart, because **a content error is a bug report, not a refit the player can fix
   being a fit that left the ship with no helm console). The refit handler adds `no_fit` and
   `unknown_hull:<id>`, plus `berth_blocked`, `unknown_berth` and `no_concourse_deck` from
   the composite pre-flight, where a refitted ship that would no longer stitch into her
-  station gets refused rather than committed.
+  station gets refused rather than committed. That pre-flight speaks only for the ships
+  docked there at that moment, and a fit is durable, so the same three reasons are answers
+  to a **dock** (and to a login) too: a hull refitted at one station can arrive at another
+  whose berth line has no room for her.
 
 Keeping them distinct is a deliberate cost: reporting a hull whose mount carries a junk
 `size` string as `mount_too_small` would disguise a content bug as a legal refusal, which
@@ -239,7 +242,7 @@ zero-thrust fit never reaches the sim.
 ## Data shapes
 
 These are the shipped shapes; the JSON schemas in `server/schemas/` (`module.schema.json`,
-`part.schema.json`, `ship_class.schema.json`) are checked against every document on disk by
+`part.schema.json`, `hull.schema.json`) are checked against every document on disk by
 `server/test/data_schema_test.gleam`, and the Gleam decoders they mirror are the source of
 truth for both.
 

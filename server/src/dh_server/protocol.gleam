@@ -79,8 +79,13 @@
 ////   pushed to its crew after a successful refit.
 ////
 //// dock_result reasons gain: "berths_full" | "no_berths" | "berth_blocked".
+//// A fit is durable and per-ship, so `berth_blocked` is a real answer to a
+//// DOCK and not only to a refit: a hull refitted at one station can arrive at
+//// another wearing a footprint that station's berth line has no room for.
 //// error codes gain: "station_full" (login refused: no free berth at the
-//// spawn station).
+//// spawn station), plus — for the same reason — any reason `loadout.resolve`
+//// or the composite build can produce, since a login both resolves the spawn
+//// hull's default fit and moors it.
 
 import dh_server/character.{type Character}
 import dh_server/composite

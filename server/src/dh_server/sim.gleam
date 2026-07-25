@@ -461,8 +461,12 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
                   // before placing the character in the composite frame. The
                   // fit is registered first: the rebuild reads it back out of
                   // `fits` to stitch this ship's own plan into the composite.
-                  let state =
-                    rebuild_space(
+                  // Adding a mooring CAN block a berth (the ships already
+                  // moored here wear their own durable fits), so the login is
+                  // refused with the composite's reason rather than panicking
+                  // the actor out from under everyone already aboard.
+                  case
+                    try_rebuild_space(
                       State(
                         ..state,
                         ships: [new_ship, ..state.ships],
@@ -471,61 +475,69 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
                       ),
                       state.world.spawn_station,
                     )
-                  let assert Ok(space) =
-                    find_space(state.spaces, state.world.spawn_station)
-                  // The composite carries the moored (rotated + translated)
-                  // console positions — look the helm up there by its
-                  // namespaced id rather than re-deriving the transform.
-                  let assert Ok(class_helm) =
-                    deckplan.find_console_of_kind(fit.class.plan, "helm")
-                  let assert Ok(helm) =
-                    deckplan.find_console(
-                      space.composite.plan,
-                      composite.namespace_id(new_ship.id, class_helm.id),
-                    )
-                  let #(hx, hy) = deckplan.tile_center(helm.x, helm.y)
-                  let new_character =
-                    character.Character(
-                      id: state.next_character_id,
-                      name: name,
-                      ship_id: new_ship.id,
-                      place: character.OnStation(state.world.spawn_station),
-                      x: hx,
-                      y: hy,
-                      // The composite helm console carries its composite deck.
-                      deck: helm.deck,
-                      // helm.id is already the namespaced composite id.
-                      seat: Some(helm.id),
-                      move_dx: 0.0,
-                      move_dy: 0.0,
-                    )
-                  let state =
-                    State(
-                      ..state,
-                      characters: [new_character, ..state.characters],
-                      next_character_id: state.next_character_id + 1,
-                      clients: [
-                        Client(
-                          monitor: process.monitor(pid),
-                          subject: client,
-                          character_id: new_character.id,
-                        ),
-                        ..state.clients
-                      ],
-                    )
-                  process.send(reply, Ok(#(new_ship.id, new_character.id)))
-                  // Everyone in the spawn station's space (including the new
-                  // client) gets the new plan: a ship just moored on.
-                  push_space(
-                    state,
-                    protocol.StationSpace(state.world.spawn_station),
-                  )
-                  io.println_error(
-                    "client connected ("
-                    <> int.to_string(list.length(state.clients))
-                    <> ")",
-                  )
-                  actor.continue(state)
+                  {
+                    Error(reason) -> {
+                      process.send(reply, Error(reason))
+                      actor.continue(state)
+                    }
+                    Ok(state) -> {
+                      let assert Ok(space) =
+                        find_space(state.spaces, state.world.spawn_station)
+                      // The composite carries the moored (rotated + translated)
+                      // console positions — look the helm up there by its
+                      // namespaced id rather than re-deriving the transform.
+                      let assert Ok(class_helm) =
+                        deckplan.find_console_of_kind(fit.class.plan, "helm")
+                      let assert Ok(helm) =
+                        deckplan.find_console(
+                          space.composite.plan,
+                          composite.namespace_id(new_ship.id, class_helm.id),
+                        )
+                      let #(hx, hy) = deckplan.tile_center(helm.x, helm.y)
+                      let new_character =
+                        character.Character(
+                          id: state.next_character_id,
+                          name: name,
+                          ship_id: new_ship.id,
+                          place: character.OnStation(state.world.spawn_station),
+                          x: hx,
+                          y: hy,
+                          // The composite helm console carries its composite deck.
+                          deck: helm.deck,
+                          // helm.id is already the namespaced composite id.
+                          seat: Some(helm.id),
+                          move_dx: 0.0,
+                          move_dy: 0.0,
+                        )
+                      let state =
+                        State(
+                          ..state,
+                          characters: [new_character, ..state.characters],
+                          next_character_id: state.next_character_id + 1,
+                          clients: [
+                            Client(
+                              monitor: process.monitor(pid),
+                              subject: client,
+                              character_id: new_character.id,
+                            ),
+                            ..state.clients
+                          ],
+                        )
+                      process.send(reply, Ok(#(new_ship.id, new_character.id)))
+                      // Everyone in the spawn station's space (including the new
+                      // client) gets the new plan: a ship just moored on.
+                      push_space(
+                        state,
+                        protocol.StationSpace(state.world.spawn_station),
+                      )
+                      io.println_error(
+                        "client connected ("
+                        <> int.to_string(list.length(state.clients))
+                        <> ")",
+                      )
+                      actor.continue(state)
+                    }
+                  }
                 }
               }
           }
@@ -587,45 +599,62 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
               }
               Ok(docked) -> {
                 let assert ship.Docked(station_id, _) = docked.dock
-                let state =
+                case
                   State(..state, ships: replace_ship(state.ships, docked))
-                  |> rebuild_space(station_id)
-                // Join: every crew body aboard steps into the composite frame,
-                // seats namespaced, positions offset by the new mooring.
-                let assert Ok(space) = find_space(state.spaces, station_id)
-                let assert Ok(mooring) =
-                  composite.find_mooring(space.composite, docked.id)
-                let characters =
-                  list.map(state.characters, fn(c) {
-                    case c.ship_id == docked.id && c.place == character.Aboard {
-                      False -> c
-                      True -> {
-                        // Ship frame -> moored (rotated) frame + offset, and
-                        // the body's ship deck -> its composite deck.
-                        let #(rx, ry) =
-                          composite.from_ship_frame(
-                            composite.plan_width(fit.class.plan),
-                            c.x,
-                            c.y,
-                          )
-                        character.Character(
-                          ..c,
-                          place: character.OnStation(station_id),
-                          x: rx +. int.to_float(mooring.dx),
-                          y: ry +. int.to_float(mooring.dy),
-                          deck: composite.composite_deck_of(mooring, c.deck),
-                          seat: option.map(c.seat, composite.namespace_id(
-                            docked.id,
-                            _,
-                          )),
-                        )
-                      }
-                    }
-                  })
-                let state = State(..state, characters: characters)
-                process.send(reply, Ok(Nil))
-                push_space(state, protocol.StationSpace(station_id))
-                actor.continue(state)
+                  |> try_rebuild_space(station_id)
+                {
+                  // A fit travels: this hull may be wearing a footprint that
+                  // was only ever pre-flighted against the station she was
+                  // refitted at, and it does not stitch HERE. Refuse with the
+                  // composite's own reason (`dock_result` publishes
+                  // `berth_blocked`) and leave her flying — nothing has been
+                  // committed at this point but a local `docked` value.
+                  Error(reason) -> {
+                    process.send(reply, Error(reason))
+                    actor.continue(state)
+                  }
+                  Ok(state) -> {
+                    // Join: every crew body aboard steps into the composite
+                    // frame, seats namespaced, positions offset by the new
+                    // mooring.
+                    let assert Ok(space) = find_space(state.spaces, station_id)
+                    let assert Ok(mooring) =
+                      composite.find_mooring(space.composite, docked.id)
+                    let characters =
+                      list.map(state.characters, fn(c) {
+                        case
+                          c.ship_id == docked.id && c.place == character.Aboard
+                        {
+                          False -> c
+                          True -> {
+                            // Ship frame -> moored (rotated) frame + offset, and
+                            // the body's ship deck -> its composite deck.
+                            let #(rx, ry) =
+                              composite.from_ship_frame(
+                                composite.plan_width(fit.class.plan),
+                                c.x,
+                                c.y,
+                              )
+                            character.Character(
+                              ..c,
+                              place: character.OnStation(station_id),
+                              x: rx +. int.to_float(mooring.dx),
+                              y: ry +. int.to_float(mooring.dy),
+                              deck: composite.composite_deck_of(mooring, c.deck),
+                              seat: option.map(c.seat, composite.namespace_id(
+                                docked.id,
+                                _,
+                              )),
+                            )
+                          }
+                        }
+                      })
+                    let state = State(..state, characters: characters)
+                    process.send(reply, Ok(Nil))
+                    push_space(state, protocol.StationSpace(station_id))
+                    actor.continue(state)
+                  }
+                }
               }
             }
           })
@@ -978,12 +1007,18 @@ fn handle_refit(
 /// is. A relocated mooring shifts the whole footprint, which can then collide
 /// with the concourse or block its own docking tube.
 ///
-/// `rebuild_space` asserts on a failed build, so the refit verb pre-flights the
-/// same build against the PROSPECTIVE fits here and refuses
-/// (`berth_blocked` / `unknown_berth` / `no_concourse_deck`) rather than
-/// committing a fit that would then panic the actor out from under every
-/// connected player. The two cases `rebuild_space` treats as no-ops — no such
-/// station, or a station with no concourse — cannot panic, so they pass.
+/// `rebuild_space` cannot refuse on the commit path — it keeps the old space
+/// — so the refit verb pre-flights the same build against the PROSPECTIVE fits
+/// here and refuses (`berth_blocked` / `unknown_berth` / `no_concourse_deck`)
+/// rather than committing a fit whose station would then be left rendering a
+/// composite that no longer matches what is moored in it. The two cases
+/// `rebuild_space` treats as no-ops — no such station, or a station with no
+/// concourse — have nothing to fail, so they pass.
+///
+/// This buys a guarantee about the ships docked here AT THIS MOMENT, and no
+/// more: the fit it commits is durable, so a hull that arrives later can find
+/// the berth line no longer fits her. That case belongs to the dock verb,
+/// which re-checks the same build on arrival.
 fn composite_survives(
   state: State,
   ship_id: Int,
@@ -1015,7 +1050,7 @@ fn composite_survives(
 /// a `ship_fit` carrying the new class, wherever their bodies are.
 ///
 /// Only reached once `composite_survives` has already built this exact
-/// composite, so `rebuild_space`'s assertion cannot fire on the refit path.
+/// composite, so the rebuild here cannot fail.
 fn commit_refit(
   state: State,
   ship_id: Int,
@@ -1659,96 +1694,124 @@ fn free_indices_from(index: Int, count: Int, taken: List(Int)) -> List(Int) {
 /// Rebuild `station_id`'s composite from the ships in `state`, bump its
 /// epoch, and translate every body standing in that space by the frame
 /// shift (uniform: berth-relative layout is stable, only the normalization
-/// shift moves). Panics only if the rebuild fails, which world validation +
-/// berth spacing make impossible for authored layouts.
-fn rebuild_space(state: State, station_id: String) -> State {
+/// shift moves). `Error` carries `composite.build`'s own reason
+/// (`berth_blocked` / `unknown_berth` / `no_concourse_deck`); the two cases
+/// with nothing to rebuild — no such station, or a station with no concourse
+/// — are `Ok` with the state untouched.
+///
+/// Fallible on purpose. Since M4 a fit is DURABLE and per-ship: a ship
+/// refitted at one station can fly to another and dock there wearing a
+/// footprint that station's berth geometry was never pre-flighted against, so
+/// "the build always succeeds" is not an invariant the sim may assert on.
+/// Callers that ADD a mooring (login, dock) take the `Result` and refuse with
+/// the reason; callers that only REMOVE one go through `rebuild_space`.
+fn try_rebuild_space(
+  state: State,
+  station_id: String,
+) -> Result(State, String) {
   case world.get_station(state.world, station_id) {
-    Error(Nil) -> state
+    Error(Nil) -> Ok(state)
     Ok(station) ->
       case station.concourse {
-        None -> state
-        Some(concourse) -> {
-          let assert Ok(built) =
+        None -> Ok(state)
+        Some(concourse) ->
+          case
             composite.build(
               concourse,
               world.station_berths(station),
               docked_ships_at(state, station_id),
             )
-          let old_composite = case find_space(state.spaces, station_id) {
-            Ok(old) -> Some(old.composite)
-            Error(Nil) -> None
+          {
+            Error(reason) -> Error(reason)
+            Ok(built) -> Ok(rebuilt_state(state, station_id, built))
           }
-          let #(old_dx, old_dy) = case old_composite {
-            Some(old) -> #(old.concourse_dx, old.concourse_dy)
-            None -> #(0, 0)
-          }
-          let shift_x = int.to_float(built.concourse_dx - old_dx)
-          let shift_y = int.to_float(built.concourse_dy - old_dy)
-          // A body standing on a ship mooring that just despawned lands in
-          // void on the new composite (its tiles are gone). Rather than
-          // leave it soft-locked — character.step rejects every move out of
-          // a non-walkable circle — snap it to the concourse spawn tile,
-          // dropping any now-ghost seat and pending move input.
-          let #(spawn_tx, spawn_ty) = built.plan.spawn_tile
-          let #(spawn_x, spawn_y) = deckplan.tile_center(spawn_tx, spawn_ty)
-          let characters =
-            list.map(state.characters, fn(c) {
-              case c.place == character.OnStation(station_id) {
-                False -> c
-                True -> {
-                  // Deck indices shift as ships dock/undock; remap the body's
-                  // composite deck onto the new composite before checking it.
-                  let new_deck = case old_composite {
-                    Some(old) -> composite.remap_deck(old, built, c.deck)
-                    None -> c.deck
-                  }
-                  let moved =
-                    character.Character(
-                      ..c,
-                      x: c.x +. shift_x,
-                      y: c.y +. shift_y,
-                      deck: new_deck,
-                    )
-                  case
-                    character.can_stand_at(
-                      built.plan,
-                      moved.deck,
-                      moved.x,
-                      moved.y,
-                    )
-                  {
-                    True -> moved
-                    False ->
-                      character.Character(
-                        ..moved,
-                        x: spawn_x,
-                        y: spawn_y,
-                        // Re-floor onto the concourse plane, whatever index it
-                        // landed at for this composite.
-                        deck: built.plan.spawn_deck,
-                        seat: None,
-                        move_dx: 0.0,
-                        move_dy: 0.0,
-                      )
-                  }
-                }
-              }
-            })
-          let epoch = case find_space(state.spaces, station_id) {
-            Ok(old) -> old.epoch + 1
-            Error(Nil) -> 1
-          }
-          let spaces =
-            list.map(state.spaces, fn(s) {
-              case s.station_id == station_id {
-                True -> StationSpace(station_id, epoch, built)
-                False -> s
-              }
-            })
-          State(..state, characters: characters, spaces: spaces)
-        }
       }
   }
+}
+
+/// `try_rebuild_space` for the callers that cannot possibly have created a
+/// collision: undock and despawn only ever REMOVE a mooring, and the refit
+/// commit rebuilds a composite `composite_survives` has already built. Nothing
+/// there is refusable, so a failure keeps the space exactly as it stands
+/// rather than taking the actor down with it.
+fn rebuild_space(state: State, station_id: String) -> State {
+  try_rebuild_space(state, station_id) |> result.unwrap(state)
+}
+
+/// Install a freshly built composite as `station_id`'s space: re-floor the
+/// bodies standing in it and bump the epoch.
+fn rebuilt_state(
+  state: State,
+  station_id: String,
+  built: composite.Composite,
+) -> State {
+  let old_composite = case find_space(state.spaces, station_id) {
+    Ok(old) -> Some(old.composite)
+    Error(Nil) -> None
+  }
+  let #(old_dx, old_dy) = case old_composite {
+    Some(old) -> #(old.concourse_dx, old.concourse_dy)
+    None -> #(0, 0)
+  }
+  let shift_x = int.to_float(built.concourse_dx - old_dx)
+  let shift_y = int.to_float(built.concourse_dy - old_dy)
+  // A body standing on a ship mooring that just despawned lands in
+  // void on the new composite (its tiles are gone). Rather than
+  // leave it soft-locked — character.step rejects every move out of
+  // a non-walkable circle — snap it to the concourse spawn tile,
+  // dropping any now-ghost seat and pending move input.
+  let #(spawn_tx, spawn_ty) = built.plan.spawn_tile
+  let #(spawn_x, spawn_y) = deckplan.tile_center(spawn_tx, spawn_ty)
+  let characters =
+    list.map(state.characters, fn(c) {
+      case c.place == character.OnStation(station_id) {
+        False -> c
+        True -> {
+          // Deck indices shift as ships dock/undock; remap the body's
+          // composite deck onto the new composite before checking it.
+          let new_deck = case old_composite {
+            Some(old) -> composite.remap_deck(old, built, c.deck)
+            None -> c.deck
+          }
+          let moved =
+            character.Character(
+              ..c,
+              x: c.x +. shift_x,
+              y: c.y +. shift_y,
+              deck: new_deck,
+            )
+          case
+            character.can_stand_at(built.plan, moved.deck, moved.x, moved.y)
+          {
+            True -> moved
+            False ->
+              character.Character(
+                ..moved,
+                x: spawn_x,
+                y: spawn_y,
+                // Re-floor onto the concourse plane, whatever index it
+                // landed at for this composite.
+                deck: built.plan.spawn_deck,
+                seat: None,
+                move_dx: 0.0,
+                move_dy: 0.0,
+              )
+          }
+        }
+      }
+    })
+  let epoch = case find_space(state.spaces, station_id) {
+    Ok(old) -> old.epoch + 1
+    Error(Nil) -> 1
+  }
+  let spaces =
+    list.map(state.spaces, fn(s) {
+      case s.station_id == station_id {
+        True -> StationSpace(station_id, epoch, built)
+        False -> s
+      }
+    })
+  State(..state, characters: characters, spaces: spaces)
 }
 
 /// Push a personalized `space` message to every client whose character is

@@ -1,0 +1,32 @@
+{
+  "schema": 2,
+  "name": "Dock testbed system",
+  "seed": 20260724,
+  "commodities": [],
+  "bodies": [
+    {
+      "id": "anchor",
+      "name": "Anchor",
+      "kind": "planet",
+      "parent": null,
+      "orbit": null,
+      "radius": 100.0,
+      "mu": 1000.0
+    }
+  ],
+  "stations": [
+    {
+      "id": "packed_berths",
+      "name": "Packed Berths",
+      "class": "dock_testbed",
+      "parent": "anchor",
+      "orbit": {
+        "radius": 500.0,
+        "period_s": 100000.0,
+        "phase": 0.0
+      },
+      "market": []
+    }
+  ],
+  "spawn_station": "packed_berths"
+}

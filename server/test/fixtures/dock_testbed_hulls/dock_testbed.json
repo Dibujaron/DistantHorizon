@@ -1,0 +1,37 @@
+{
+  "schema": 3,
+  "id": "dock_testbed",
+  "name": "Dock testbed",
+  "mass": 10.0,
+  "slots": [
+    {
+      "digit": 1,
+      "id": "shell",
+      "name": "Shell"
+    }
+  ],
+  "decks": [
+    {
+      "name": "Main",
+      "grid": [
+        "         ",
+        " .  .  . ",
+        "1  1  1  ",
+        "         ",
+        "=Q      h",
+        "         ",
+        "         ",
+        " .  .  . ",
+        "1  1  1  "
+      ]
+    }
+  ],
+  "cargo": {
+    "capacity": 4,
+    "handling": "breakbulk"
+  },
+  "dock_standoff": 4.0,
+  "default_loadout": {
+    "modules": {}
+  }
+}
