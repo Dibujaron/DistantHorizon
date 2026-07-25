@@ -10,13 +10,16 @@
 import dh_server/composite
 import dh_server/deckplan
 import dh_server/glyphs
+import dh_server/hull
 import dh_server/loadout
+import dh_server/module
 import dh_server/noise
 import dh_server/protocol
 import dh_server/shipclass
 import dh_server/sim
 import dh_server/world
 import fit
+import gleam/dict
 import gleam/dynamic/decode
 import gleam/erlang/process
 import gleam/float
@@ -1195,8 +1198,8 @@ pub fn refit_that_would_strand_cargo_is_refused_test() {
   // Buy one unit more than the tank hold could ever carry. Units still
   // inbound count: they already have a reserved berth in the hold.
   let tank = resolved(tank_modules, default_parts)
-  let buy =
-    sim.request_buy(s, char, "machinery", tank.class.cargo_capacity + 1, 1000)
+  let bought = tank.class.cargo_capacity + 1
+  let buy = sim.request_buy(s, char, "machinery", bought, 1000)
   assert buy.ok
 
   let assert Ok(before) = sim.ship_class(s, ship_id, 1000)
@@ -1206,10 +1209,100 @@ pub fn refit_that_would_strand_cargo_is_refused_test() {
   let assert Ok(after) = sim.ship_class(s, ship_id, 1000)
   assert after == before
 
+  // The guard is a SUM of two terms, so pin them one at a time: nothing had
+  // landed yet above, so that refusal was carried entirely by the in-flight
+  // units. Let every unit arrive — no transfers left — and it must be refused
+  // again, this time on the hold alone.
+  let _ =
+    wait_for_cargo(
+      client,
+      fn(c) { c.transfers == 0 && c.hold == [#("machinery", bought)] },
+      600,
+    )
+  assert sim.request_refit(s, char, tank_modules, default_parts, 1000)
+    == Error("hold_over_capacity")
+
   // The refusal is about the CARGO, not the loadout: a refit the hold does
   // fit in still goes through (and a whole-loadout refit is idempotent).
   let assert Ok(Nil) =
     sim.request_refit(s, char, default_modules, default_parts, 1000)
   let assert Ok(unchanged) = sim.ship_class(s, ship_id, 1000)
   assert unchanged == before
+}
+
+// -------------------------------------------- refit vs the composite (M4) --
+//
+// A refit CAN move a ship relative to her berth: the mooring tile is re-derived
+// from the STAMPED map, so a module that draws docking geometry inside its own
+// slot relocates it and shifts the whole hull. `rebuild_space` asserts, so the
+// verb has to pre-flight the build and refuse instead.
+//
+// No bundled Mockingbird module draws such a glyph — that is content practice,
+// not an engine rule, and content practice is exactly what a guard must not
+// depend on — so this drives a fixture hull instead of shipping a spawn-glyph
+// module in `server/modules`. Her `muster` bay draws an `s` spawn tile in the
+// bay and floors the tile that the resulting docking tube would have to run
+// through.
+
+const testbed_hull = "refit_testbed"
+
+const testbed_hull_dir = "test/fixtures/refit_testbed_hulls"
+
+const testbed_module_dir = "test/fixtures/refit_testbed_modules"
+
+const testbed_muster = [#("bay", "refit_testbed.bay.muster")]
+
+/// A sim whose ships spawn on the refit testbed hull, from the fixture
+/// registries. She carries no mounts, so no part registry is needed.
+fn start_testbed_sim() -> process.Subject(sim.Msg) {
+  let assert Ok(w) = world.load("worlds/m1_system.json")
+  let assert Ok(hulls) = hull.load_all(testbed_hull_dir)
+  let assert Ok(modules) = module.load_all(testbed_module_dir)
+  let assert Ok(started) =
+    sim.start(w, hulls, modules, dict.new(), glyphs.default(), testbed_hull)
+  started.data
+}
+
+/// What `modules` resolves to on the testbed hull — the same bake the sim's
+/// refit runs, so a test can show a loadout is legal before showing the
+/// STATION is what refuses it.
+fn testbed_fit(
+  modules: List(#(String, String)),
+) -> Result(loadout.Fit, String) {
+  let assert Ok(hulls) = hull.load_all(testbed_hull_dir)
+  let assert Ok(mods) = module.load_all(testbed_module_dir)
+  let assert Ok(h) = dict.get(hulls, testbed_hull)
+  loadout.resolve(
+    glyphs.default(),
+    h,
+    mods,
+    dict.new(),
+    loadout.Loadout(hull: testbed_hull, modules: modules, parts: []),
+  )
+}
+
+pub fn refit_that_would_break_the_composite_is_refused_test() {
+  let s = start_testbed_sim()
+  let client = process.new_subject()
+  let assert Ok(#(ship_id, char)) = sim.add_player(s, "ada", client, 1000)
+  let assert Ok(before) = sim.ship_class(s, ship_id, 1000)
+  let #(_space, _epoch) = receive_space_for(client, station_space)
+
+  // The muster bay is a perfectly LEGAL fit — it resolves, and it moves the
+  // mooring tile, because the map is the single source of truth about where a
+  // ship moors.
+  let assert Ok(muster) = testbed_fit(testbed_muster)
+  assert muster.class.plan.spawn_tile != before.plan.spawn_tile
+
+  // It is the STATION it breaks: moored from her new tile, the hull sits in
+  // the path of her own docking tube. Refused up front rather than committed
+  // and then panicked on inside the rebuild.
+  assert sim.request_refit(s, char, testbed_muster, [], 1000)
+    == Error("berth_blocked")
+
+  // She is still wearing the fit she docked in...
+  let assert Ok(after) = sim.ship_class(s, ship_id, 1000)
+  assert after == before
+  // ...and no composite rebuild went out either.
+  assert_no_space(client, 20)
 }

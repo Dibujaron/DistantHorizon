@@ -58,16 +58,22 @@
 ////   {"v":1,"type":"stats",...}
 ////   {"v":1,"type":"refit_result","ok":Bool,"reason":null|S} — LOADOUT
 ////   REFUSALS (the player asked for an illegal fit): not_docked |
-////   hold_over_capacity | no_fit | loadout_wrong_hull | slot_not_on_hull |
+////   hold_over_capacity | loadout_wrong_hull | slot_not_on_hull |
 ////   duplicate_slot | unknown_module | module_wrong_hull | module_wrong_slot |
 ////   mount_not_on_hull | duplicate_mount | unknown_part | mount_wrong_kind |
 ////   mount_too_small | out_of_slot_bounds:<module> | tag_deficit:<tag> |
 ////   zero_mass. CONTENT ERRORS (a data file is wrong, not the player):
-////   unknown_hull | mount_bad_size:<mount> | part_bad_size:<part> |
-////   patch_bad_deck:<module> | invalid_hull_plan:<detail> |
-////   invalid_resolved_plan:<detail>. `loadout.resolve` produces all but the
-////   first three verbatim; keep the two groups distinct in any UI, because a
-////   content error is a bug report, not a refit the player can fix.
+////   no_fit | unknown_hull:<id> | mount_bad_size:<mount> |
+////   part_bad_size:<part> | patch_bad_deck:<module> |
+////   invalid_hull_plan:<detail> | invalid_resolved_plan:<detail> |
+////   berth_blocked | unknown_berth | no_concourse_deck. The refit handler
+////   itself emits `not_docked`, `hold_over_capacity`, `no_fit` and
+////   `unknown_hull:<id>`; the last three content errors come from the
+////   composite pre-flight (the refitted ship would no longer stitch into her
+////   station, so the refit is refused rather than committed); `loadout.resolve`
+////   produces every other reason verbatim. Keep the two groups distinct in any
+////   UI, because a content error is a bug report, not a refit the player can
+////   fix.
 ////   {"v":1,"type":"ship_fit","ship_id":N,"ship_class":{...},"loadout":{...}}
 ////   — the ship's newly resolved class and the loadout that produced it,
 ////   pushed to its crew after a successful refit.

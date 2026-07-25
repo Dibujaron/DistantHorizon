@@ -298,8 +298,9 @@ pub fn ship_class(
 /// Replace the character's ship's whole loadout (blocking call). Docked only
 /// and free in this iteration — a later one adds shipyard stations, a refit
 /// console to walk to and a bill. `Error` carries `"not_docked"`,
-/// `"hold_over_capacity"`, or `loadout.resolve`'s own reason verbatim; a
-/// refused refit leaves the ship exactly as it was.
+/// `"hold_over_capacity"`, `composite.build`'s reason from the pre-flight, or
+/// `loadout.resolve`'s own reason verbatim; a refused refit leaves the ship
+/// exactly as it was.
 pub fn request_refit(
   sim: Subject(Msg),
   character_id: Int,
@@ -878,12 +879,16 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
 /// from anywhere in the station's space.
 ///
 /// Every refusal path replies and returns the state UNCHANGED. The new fit is
-/// resolved in full — and the hold measured against it — before a single field
-/// is written back, so there is no window in which a refused refit could leave
-/// a half-applied ship behind.
+/// resolved in full — the hold measured against it, and the station's composite
+/// pre-flighted with it — before a single field is written back, so there is no
+/// window in which a refused refit could leave a half-applied ship behind.
 ///
 /// The hull is taken from the ship's CURRENT loadout, never from the message: a
 /// refit changes what she is fitted with, never which hull she is.
+///
+/// `not_docked` is also the answer to a missing character or ship — degenerate
+/// conditions that are not really about dock state, but for which there is
+/// nothing truer to tell a client.
 fn handle_refit(
   state: State,
   character_id: Int,
@@ -940,7 +945,21 @@ fn handle_refit(
                             // acceptable failure mode: sell down first.
                             True -> fail("hold_over_capacity")
                             False ->
-                              commit_refit(state, s.id, station_id, fit, reply)
+                              case
+                                composite_survives(state, s.id, station_id, fit)
+                              {
+                                // The composite's own reason travels to the
+                                // player verbatim too.
+                                Error(reason) -> fail(reason)
+                                Ok(Nil) ->
+                                  commit_refit(
+                                    state,
+                                    s.id,
+                                    station_id,
+                                    fit,
+                                    reply,
+                                  )
+                              }
                           }
                       }
                   }
@@ -951,12 +970,52 @@ fn handle_refit(
   }
 }
 
+/// Would `station_id`'s composite still stitch together with `ship_id` wearing
+/// `fit`? A refit CAN move a ship relative to her berth: the mooring tile is
+/// re-derived from the STAMPED map, and a module is free to draw a docking port
+/// or a spawn glyph inside its own slot region — `loadout.check_bounds` only
+/// asks that an overlay cell land on that slot's digit, never which glyph it
+/// is. A relocated mooring shifts the whole footprint, which can then collide
+/// with the concourse or block its own docking tube.
+///
+/// `rebuild_space` asserts on a failed build, so the refit verb pre-flights the
+/// same build against the PROSPECTIVE fits here and refuses
+/// (`berth_blocked` / `unknown_berth` / `no_concourse_deck`) rather than
+/// committing a fit that would then panic the actor out from under every
+/// connected player. The two cases `rebuild_space` treats as no-ops — no such
+/// station, or a station with no concourse — cannot panic, so they pass.
+fn composite_survives(
+  state: State,
+  ship_id: Int,
+  station_id: String,
+  fit: loadout.Fit,
+) -> Result(Nil, String) {
+  let prospective = State(..state, fits: replace_fit(state.fits, ship_id, fit))
+  case world.get_station(state.world, station_id) {
+    Error(Nil) -> Ok(Nil)
+    Ok(station) ->
+      case station.concourse {
+        None -> Ok(Nil)
+        Some(concourse) ->
+          composite.build(
+            concourse,
+            world.station_berths(station),
+            docked_ships_at(prospective, station_id),
+          )
+          |> result.replace(Nil)
+      }
+  }
+}
+
 /// Apply a resolved refit: swap the ship's entry in `fits`, then rebuild the
 /// station's composite through the same `rebuild_space` + `push_space` path
 /// dock/undock use. The rebuild is not optional — the composite stitches each
 /// docked ship's own plan in, so a refit that changed only the fit would leave
 /// everyone aboard and ashore rendering the old deck. The ship's crew also get
 /// a `ship_fit` carrying the new class, wherever their bodies are.
+///
+/// Only reached once `composite_survives` has already built this exact
+/// composite, so `rebuild_space`'s assertion cannot fire on the refit path.
 fn commit_refit(
   state: State,
   ship_id: Int,
