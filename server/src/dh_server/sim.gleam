@@ -31,10 +31,11 @@
 //// with `Error("station_full")` when none is free), spawns it a ship docked
 //// there, a character seated at that ship's namespaced helm in the station
 //// composite, and registers it for snapshots in one call.
-//// `helm`/`dock`/`undock`/`move`/`sit`/`stand`/`buy`/`sell` are all routed
-//// by character id. Helm control (`SetControls`, dock) additionally
+//// `helm`/`dock`/`undock`/`move`/`sit`/`stand`/`buy`/`sell`/`refit` are all
+//// routed by character id. Helm control (`SetControls`, dock) additionally
 //// requires the body to be aboard (flying); undock requires being seated at
-//// a docked ship's namespaced helm in the station composite.
+//// a docked ship's namespaced helm in the station composite; `refit` requires
+//// only that the character's ship is docked, and re-resolves her fit in place.
 ////
 //// The sim monitors each handler process and, on exit (cleanly or by
 //// crashing), removes its character and despawns any ship left with zero
@@ -137,6 +138,13 @@ pub opaque type Msg {
   )
   /// The resolved class of one ship — the `welcome` frame's `ship_class`.
   RequestShipClass(ship_id: Int, reply: Subject(Result(ShipClass, Nil)))
+  /// Replace the character's ship's WHOLE loadout (docked only, free).
+  RequestRefit(
+    character_id: Int,
+    modules: List(#(String, String)),
+    parts: List(#(String, String)),
+    reply: Subject(Result(Nil, String)),
+  )
 }
 
 /// Messages the sim sends to connected client handler processes.
@@ -285,6 +293,26 @@ pub fn ship_class(
   timeout_ms: Int,
 ) -> Result(ShipClass, Nil) {
   process.call(sim, waiting: timeout_ms, sending: RequestShipClass(ship_id, _))
+}
+
+/// Replace the character's ship's whole loadout (blocking call). Docked only
+/// and free in this iteration — a later one adds shipyard stations, a refit
+/// console to walk to and a bill. `Error` carries `"not_docked"`,
+/// `"hold_over_capacity"`, or `loadout.resolve`'s own reason verbatim; a
+/// refused refit leaves the ship exactly as it was.
+pub fn request_refit(
+  sim: Subject(Msg),
+  character_id: Int,
+  modules: List(#(String, String)),
+  parts: List(#(String, String)),
+  timeout_ms: Int,
+) -> Result(Nil, String) {
+  process.call(sim, waiting: timeout_ms, sending: RequestRefit(
+    character_id,
+    modules,
+    parts,
+    _,
+  ))
 }
 
 /// A registered listener: the subject to push to, the character it owns,
@@ -838,7 +866,141 @@ fn handle(state: State, msg: Msg) -> actor.Next(State, Msg) {
       )
       actor.continue(state)
     }
+
+    RequestRefit(character_id, modules, parts, reply) ->
+      handle_refit(state, character_id, modules, parts, reply)
   }
+}
+
+/// Replace one ship's whole loadout. Docked only and free: shipyard stations,
+/// a refit console to walk to, per-station part catalogs and the bill are a
+/// later iteration's job, so any crew member of a moored ship can refit her
+/// from anywhere in the station's space.
+///
+/// Every refusal path replies and returns the state UNCHANGED. The new fit is
+/// resolved in full — and the hold measured against it — before a single field
+/// is written back, so there is no window in which a refused refit could leave
+/// a half-applied ship behind.
+///
+/// The hull is taken from the ship's CURRENT loadout, never from the message: a
+/// refit changes what she is fitted with, never which hull she is.
+fn handle_refit(
+  state: State,
+  character_id: Int,
+  modules: List(#(String, String)),
+  parts: List(#(String, String)),
+  reply: Subject(Result(Nil, String)),
+) -> actor.Next(State, Msg) {
+  let fail = fn(reason) {
+    process.send(reply, Error(reason))
+    actor.continue(state)
+  }
+  case find_character(state.characters, character_id) {
+    Error(Nil) -> fail("not_docked")
+    Ok(char) ->
+      case find_ship(state.ships, char.ship_id) {
+        Error(Nil) -> fail("not_docked")
+        Ok(s) ->
+          case s.dock {
+            // Dockside work: you do not swap an engine under way.
+            ship.Flying -> fail("not_docked")
+            ship.Docked(station_id, _) ->
+              case fit_for(state, s.id) {
+                // A ship with no resolved fit has no hull id to refit onto.
+                // Unreachable while spawn refuses an unresolvable loadout, but
+                // answered rather than crashed on.
+                Error(Nil) -> fail("no_fit")
+                Ok(current) -> {
+                  let lo =
+                    loadout.Loadout(
+                      hull: current.loadout.hull,
+                      modules: modules,
+                      parts: parts,
+                    )
+                  case dict.get(state.hulls, lo.hull) {
+                    Error(Nil) -> fail("unknown_hull:" <> lo.hull)
+                    Ok(h) ->
+                      case
+                        loadout.resolve(
+                          state.glyphs,
+                          h,
+                          state.modules,
+                          state.parts,
+                          lo,
+                        )
+                      {
+                        // The resolver's reason travels to the player verbatim.
+                        Error(reason) -> fail(reason)
+                        Ok(fit) ->
+                          case
+                            cargo.hold_total(s) + cargo.incoming_total(s)
+                            > fit.class.cargo_capacity
+                          {
+                            // Silently deleting a player's cargo is not an
+                            // acceptable failure mode: sell down first.
+                            True -> fail("hold_over_capacity")
+                            False ->
+                              commit_refit(state, s.id, station_id, fit, reply)
+                          }
+                      }
+                  }
+                }
+              }
+          }
+      }
+  }
+}
+
+/// Apply a resolved refit: swap the ship's entry in `fits`, then rebuild the
+/// station's composite through the same `rebuild_space` + `push_space` path
+/// dock/undock use. The rebuild is not optional — the composite stitches each
+/// docked ship's own plan in, so a refit that changed only the fit would leave
+/// everyone aboard and ashore rendering the old deck. The ship's crew also get
+/// a `ship_fit` carrying the new class, wherever their bodies are.
+fn commit_refit(
+  state: State,
+  ship_id: Int,
+  station_id: String,
+  fit: loadout.Fit,
+  reply: Subject(Result(Nil, String)),
+) -> actor.Next(State, Msg) {
+  let state =
+    State(..state, fits: replace_fit(state.fits, ship_id, fit))
+    |> rebuild_space(station_id)
+  process.send(reply, Ok(Nil))
+  push_ship_fit(state, ship_id, fit)
+  push_space(state, protocol.StationSpace(station_id))
+  actor.continue(state)
+}
+
+fn replace_fit(
+  fits: List(#(Int, loadout.Fit)),
+  ship_id: Int,
+  fit: loadout.Fit,
+) -> List(#(Int, loadout.Fit)) {
+  list.map(fits, fn(entry) {
+    case entry.0 == ship_id {
+      True -> #(ship_id, fit)
+      False -> entry
+    }
+  })
+}
+
+/// Push a `ship_fit` to one ship's *crew* — by membership, wherever their
+/// bodies are, the same scope `cargo` uses: the quartermaster at the broker
+/// watches the deck change too.
+fn push_ship_fit(state: State, ship_id: Int, fit: loadout.Fit) -> Nil {
+  let text = protocol.encode_ship_fit(ship_id, fit.class, fit.loadout)
+  list.each(state.clients, fn(client) {
+    case find_character(state.characters, client.character_id) {
+      Error(Nil) -> Nil
+      Ok(char) ->
+        case char.ship_id == ship_id {
+          True -> process.send(client.subject, SendText(text))
+          False -> Nil
+        }
+    }
+  })
 }
 
 /// The resolved fit of one ship. Every consumer of the old single shared

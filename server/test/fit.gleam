@@ -53,3 +53,12 @@ pub fn resolve_default(hull_id: String) -> loadout.Fit {
 pub fn mockingbird() -> shipclass.ShipClass {
   resolve_default(default_hull).class
 }
+
+/// The fit an arbitrary loadout resolves to against the on-disk registries —
+/// what the sim's `refit` would produce for the same message, so refit tests
+/// can state their expectations in resolved numbers instead of magic ones.
+pub fn resolve_loadout(lo: loadout.Loadout) -> Result(loadout.Fit, String) {
+  let #(hulls, modules, parts, reg, _) = sim_args()
+  let assert Ok(h) = dict.get(hulls, lo.hull)
+  loadout.resolve(reg, h, modules, parts, lo)
+}

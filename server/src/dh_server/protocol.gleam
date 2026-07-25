@@ -14,6 +14,8 @@
 ////   {"v":1,"type":"sell","commodity":S,"quantity":N}
 ////   {"v":1,"type":"get_market"}
 ////   {"v":1,"type":"get_stats"}
+////   {"v":1,"type":"refit","modules":[{"slot","module"}...],
+////    "parts":[{"mount","part"}...]} — replace the whole loadout; docked only.
 ////
 //// Server -> client:
 ////   {"v":1,"type":"welcome","account_id":N,"ship_id":N,"character_id":N,
@@ -54,6 +56,21 @@
 ////   `interior` + `concourse`). Clients drop walkers whose space/epoch
 ////   don't match their current `space` message.
 ////   {"v":1,"type":"stats",...}
+////   {"v":1,"type":"refit_result","ok":Bool,"reason":null|S} — LOADOUT
+////   REFUSALS (the player asked for an illegal fit): not_docked |
+////   hold_over_capacity | no_fit | loadout_wrong_hull | slot_not_on_hull |
+////   duplicate_slot | unknown_module | module_wrong_hull | module_wrong_slot |
+////   mount_not_on_hull | duplicate_mount | unknown_part | mount_wrong_kind |
+////   mount_too_small | out_of_slot_bounds:<module> | tag_deficit:<tag> |
+////   zero_mass. CONTENT ERRORS (a data file is wrong, not the player):
+////   unknown_hull | mount_bad_size:<mount> | part_bad_size:<part> |
+////   patch_bad_deck:<module> | invalid_hull_plan:<detail> |
+////   invalid_resolved_plan:<detail>. `loadout.resolve` produces all but the
+////   first three verbatim; keep the two groups distinct in any UI, because a
+////   content error is a bug report, not a refit the player can fix.
+////   {"v":1,"type":"ship_fit","ship_id":N,"ship_class":{...},"loadout":{...}}
+////   — the ship's newly resolved class and the loadout that produced it,
+////   pushed to its crew after a successful refit.
 ////
 //// dock_result reasons gain: "berths_full" | "no_berths" | "berth_blocked".
 //// error codes gain: "station_full" (login refused: no free berth at the
@@ -63,6 +80,7 @@ import dh_server/character.{type Character}
 import dh_server/composite
 import dh_server/deckplan.{type DeckPlan}
 import dh_server/glyphs
+import dh_server/loadout
 import dh_server/market
 import dh_server/palette
 import dh_server/ship.{type Ship}
@@ -92,6 +110,10 @@ pub type ClientMessage {
   Sell(commodity: String, quantity: Int)
   GetMarket
   GetStats
+  /// Replace this ship's whole loadout (docked only). Whole-loadout rather
+  /// than a delta so it is idempotent and the refit UI can send exactly what
+  /// the player sees.
+  Refit(modules: List(#(String, String)), parts: List(#(String, String)))
 }
 
 /// Reply to `sit`/`stand`: whether it succeeded, why not, and the seat the
@@ -160,8 +182,25 @@ fn client_message_decoder() -> decode.Decoder(Result(ClientMessage, Nil)) {
     }
     1, "get_market" -> decode.success(Ok(GetMarket))
     1, "get_stats" -> decode.success(Ok(GetStats))
+    1, "refit" -> {
+      use modules <- decode.field("modules", decode.list(slot_module_decoder()))
+      use parts <- decode.field("parts", decode.list(mount_part_decoder()))
+      decode.success(Ok(Refit(modules: modules, parts: parts)))
+    }
     _, _ -> decode.success(Error(Nil))
   }
+}
+
+fn slot_module_decoder() -> decode.Decoder(#(String, String)) {
+  use slot <- decode.field("slot", decode.string)
+  use module_id <- decode.field("module", decode.string)
+  decode.success(#(slot, module_id))
+}
+
+fn mount_part_decoder() -> decode.Decoder(#(String, String)) {
+  use mount <- decode.field("mount", decode.string)
+  use part_id <- decode.field("part", decode.string)
+  decode.success(#(mount, part_id))
 }
 
 /// Serialize the `welcome` message sent on successful login.
@@ -214,6 +253,65 @@ pub fn encode_dock_result(result: Result(Nil, String)) -> String {
     #("type", json.string("dock_result")),
     #("ok", json.bool(ok)),
     #("reason", json.nullable(reason, json.string)),
+  ])
+  |> json.to_string
+}
+
+/// Serialize a `refit_result`. `reason` is null when `ok`, otherwise the
+/// machine-readable reason `loadout.resolve` produced (`"tag_deficit:power"`,
+/// `"out_of_slot_bounds:<module>"`, …) or `"not_docked"`.
+pub fn encode_refit_result(result: Result(Nil, String)) -> String {
+  let #(ok, reason) = case result {
+    Ok(Nil) -> #(True, None)
+    Error(reason) -> #(False, Some(reason))
+  }
+  json.object([
+    #("v", json.int(version)),
+    #("type", json.string("refit_result")),
+    #("ok", json.bool(ok)),
+    #("reason", json.nullable(reason, json.string)),
+  ])
+  |> json.to_string
+}
+
+/// Serialize a `ship_fit`: the ship's newly resolved class and the loadout
+/// that produced it, pushed to its crew after a successful refit. Same
+/// `ship_class` payload the `welcome` carries, so a client adopts it the same
+/// way.
+pub fn encode_ship_fit(
+  ship_id: Int,
+  class: ShipClass,
+  lo: loadout.Loadout,
+) -> String {
+  json.object([
+    #("v", json.int(version)),
+    #("type", json.string("ship_fit")),
+    #("ship_id", json.int(ship_id)),
+    #("ship_class", shipclass.encode(class)),
+    #(
+      "loadout",
+      json.object([
+        #("hull", json.string(lo.hull)),
+        #(
+          "modules",
+          json.array(lo.modules, fn(entry) {
+            json.object([
+              #("slot", json.string(entry.0)),
+              #("module", json.string(entry.1)),
+            ])
+          }),
+        ),
+        #(
+          "parts",
+          json.array(lo.parts, fn(entry) {
+            json.object([
+              #("mount", json.string(entry.0)),
+              #("part", json.string(entry.1)),
+            ])
+          }),
+        ),
+      ]),
+    ),
   ])
   |> json.to_string
 }

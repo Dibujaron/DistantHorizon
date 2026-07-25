@@ -2,6 +2,7 @@ import dh_server/character
 import dh_server/composite
 import dh_server/deckplan
 import dh_server/glyphs
+import dh_server/loadout
 import dh_server/market
 import dh_server/palette
 import dh_server/protocol
@@ -450,4 +451,49 @@ pub fn encode_cargo_sorts_hold_and_lists_transfers_test() {
     )
   assert protocol.encode_cargo(s, 40)
     == "{\"v\":1,\"type\":\"cargo\",\"ship_id\":7,\"wallet\":1725,\"capacity\":40,\"hold\":[{\"commodity\":\"machinery\",\"quantity\":5},{\"commodity\":\"water\",\"quantity\":3}],\"transfers\":[{\"commodity\":\"food\",\"direction\":\"to_ship\",\"remaining\":4}]}"
+}
+
+pub fn parse_refit_message_test() {
+  let text =
+    "{\"v\":1,\"type\":\"refit\","
+    <> "\"modules\":[{\"slot\":\"hold\",\"module\":\"mockingbird.hold.tank\"}],"
+    <> "\"parts\":[{\"mount\":\"engine_center\",\"part\":\"rijay.engine.stock\"}]}"
+  let assert Ok(protocol.Refit(modules, parts)) =
+    protocol.parse_client_message(text)
+  assert modules == [#("hold", "mockingbird.hold.tank")]
+  assert parts == [#("engine_center", "rijay.engine.stock")]
+}
+
+pub fn encode_refit_failure_carries_the_reason_test() {
+  let text = protocol.encode_refit_result(Error("tag_deficit:power"))
+  assert string.contains(text, "\"ok\":false")
+  assert string.contains(text, "tag_deficit:power")
+}
+
+pub fn encode_refit_success_has_a_null_reason_test() {
+  assert protocol.encode_refit_result(Ok(Nil))
+    == "{\"v\":1,\"type\":\"refit_result\",\"ok\":true,\"reason\":null}"
+}
+
+pub fn encode_ship_fit_carries_the_class_and_the_loadout_test() {
+  // The loadout that produced the class travels with it, so a refit UI can
+  // re-render exactly what is installed without a second round trip.
+  let lo =
+    loadout.Loadout(
+      hull: "mockingbird",
+      modules: [#("hold", "m.hold.tank")],
+      parts: [
+        #("engine_center", "rijay.engine.stock"),
+      ],
+    )
+  let text = protocol.encode_ship_fit(7, test_class(), lo)
+  assert string.contains(text, "\"type\":\"ship_fit\"")
+  assert string.contains(text, "\"ship_id\":7")
+  assert string.contains(
+    text,
+    "\"loadout\":{\"hull\":\"mockingbird\",\"modules\":[{\"slot\":\"hold\",\"module\":\"m.hold.tank\"}],\"parts\":[{\"mount\":\"engine_center\",\"part\":\"rijay.engine.stock\"}]}",
+  )
+  // The ship_class payload is the same one `welcome` carries, so a client
+  // adopts it through the same path.
+  assert string.contains(text, "\"ship_class\":{")
 }

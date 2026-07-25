@@ -4,11 +4,11 @@
 //// a valid `login`; the given `Authenticator` decides success/failure. On
 //// success the connection's ship and character are spawned via
 //// `sim.add_player` and it moves to `LoggedIn`, at which point
-//// `helm`/`dock`/`undock`/`move`/`sit`/`stand`/`buy`/`sell`/`get_market` take
-//// effect. `get_stats` works in both states. `sim.add_player` can also
-//// refuse the login with `Error("station_full")` when the spawn station has
-//// no free berth, in which case the connection stays `PreLogin` and receives
-//// an `error` frame. `LoggedIn.ship_id` is the character's *spawn* ship: set
+//// `helm`/`dock`/`undock`/`move`/`sit`/`stand`/`buy`/`sell`/`get_market`/
+//// `refit` take effect. `get_stats` works in both states. `sim.add_player`
+//// can also refuse the login with `Error("station_full")` when the spawn
+//// station has no free berth, in which case the connection stays `PreLogin`
+//// and receives an `error` frame. `LoggedIn.ship_id` is the character's *spawn* ship: set
 //// once at login and never updated afterward, so it is informational only
 //// (e.g. for the welcome frame) — every other route resolves the
 //// character's current ship sim-side by `character_id`, not by this field.
@@ -341,6 +341,20 @@ fn handle_client_text(
                 ),
               )
           }
+          session
+        }
+      }
+
+    Ok(protocol.Refit(modules, parts)) ->
+      case session {
+        PreLogin(_) -> session
+        LoggedIn(_, _, character_id) -> {
+          let result =
+            sim.request_refit(sim_subject, character_id, modules, parts, 1000)
+          let _ =
+            mist.send_text_frame(conn, protocol.encode_refit_result(result))
+          // The new deck reaches this client as the `ship_fit` and `space`
+          // pushes the sim fans out, not as part of this reply.
           session
         }
       }

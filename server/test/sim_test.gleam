@@ -10,6 +10,7 @@
 import dh_server/composite
 import dh_server/deckplan
 import dh_server/glyphs
+import dh_server/loadout
 import dh_server/noise
 import dh_server/protocol
 import dh_server/shipclass
@@ -996,4 +997,219 @@ pub fn request_market_resolves_ashore_and_docked_test() {
   // Flying: no market.
   let assert Ok(Nil) = sim.request_undock(s, char, 1000)
   assert sim.request_market(s, char, 1000) == Error("no_market")
+}
+
+// ---------------------------------------------------------- refit (M4) --
+//
+// The refit verb: docked-only, free, whole-loadout replacement. These drive
+// the real actor and observe the ship's resolved class through the same
+// `ship_class` route the welcome frame uses, plus the `ship_fit` and `space`
+// pushes a client would see.
+
+const station_space = "station:meridian_highport"
+
+/// The Mockingbird's default loadout, spelled out as the wire spells it â€”
+/// this is exactly what a refit UI would send back unchanged.
+const default_modules = [
+  #("cockpit", "mockingbird.cockpit.stock"),
+  #("forward_crew", "mockingbird.forward_crew.cabins"),
+  #("commons", "mockingbird.commons.mess"),
+  #("aft_crew", "mockingbird.aft_crew.cabins"),
+  #("hold", "mockingbird.hold.breakbulk"),
+]
+
+/// The same loadout with the break-bulk hold swapped for the bunkerage tank â€”
+/// a different stamped deck, and a different pallet-derived hold.
+const tank_modules = [
+  #("cockpit", "mockingbird.cockpit.stock"),
+  #("forward_crew", "mockingbird.forward_crew.cabins"),
+  #("commons", "mockingbird.commons.mess"),
+  #("aft_crew", "mockingbird.aft_crew.cabins"),
+  #("hold", "mockingbird.hold.tank"),
+]
+
+/// Passenger staterooms draw 2 power where the cabins they replace draw 1.
+const passenger_modules = [
+  #("cockpit", "mockingbird.cockpit.stock"),
+  #("forward_crew", "mockingbird.forward_crew.passenger"),
+  #("commons", "mockingbird.commons.mess"),
+  #("aft_crew", "mockingbird.aft_crew.cabins"),
+  #("hold", "mockingbird.hold.breakbulk"),
+]
+
+const default_parts = [#("engine_center", "rijay.engine.consol_patch")]
+
+/// The original Rijay engine draws 4 power where the consol patch draws 3.
+const stock_engine_parts = [#("engine_center", "rijay.engine.stock")]
+
+/// The fit `modules`/`parts` resolve to on the Mockingbird, through the same
+/// registries the sim loaded â€” so a test states its expectations in resolved
+/// numbers rather than magic ones.
+fn resolved(
+  modules: List(#(String, String)),
+  parts: List(#(String, String)),
+) -> loadout.Fit {
+  let assert Ok(f) =
+    fit.resolve_loadout(loadout.Loadout(
+      hull: "mockingbird",
+      modules: modules,
+      parts: parts,
+    ))
+  f
+}
+
+/// One decoded `ship_fit` message: which ship, the hold the class resolved
+/// to, and the loadout that produced it.
+type ShipFitMsg {
+  ShipFitMsg(
+    ship_id: Int,
+    capacity: Int,
+    hull: String,
+    modules: List(#(String, String)),
+  )
+}
+
+fn ship_fit_decoder() -> decode.Decoder(ShipFitMsg) {
+  use ship_id <- decode.field("ship_id", decode.int)
+  use capacity <- decode.subfield(
+    ["ship_class", "cargo", "capacity"],
+    decode.int,
+  )
+  use hull <- decode.subfield(["loadout", "hull"], decode.string)
+  use modules <- decode.subfield(
+    ["loadout", "modules"],
+    decode.list({
+      use slot <- decode.field("slot", decode.string)
+      use module_id <- decode.field("module", decode.string)
+      decode.success(#(slot, module_id))
+    }),
+  )
+  decode.success(ShipFitMsg(
+    ship_id: ship_id,
+    capacity: capacity,
+    hull: hull,
+    modules: modules,
+  ))
+}
+
+fn receive_ship_fit(client: process.Subject(sim.ClientMsg)) -> ShipFitMsg {
+  let assert Ok(sim.SendText(text)) = process.receive(client, 2000)
+  let assert Ok(msg_type) = json.parse(text, message_type_decoder())
+  case msg_type {
+    "ship_fit" -> {
+      let assert Ok(decoded) = json.parse(text, ship_fit_decoder())
+      decoded
+    }
+    _ -> receive_ship_fit(client)
+  }
+}
+
+/// Assert the next `count` inbound messages carry no `space` â€” the observable
+/// signal that no composite rebuild happened.
+fn assert_no_space(client: process.Subject(sim.ClientMsg), count: Int) -> Nil {
+  case count {
+    0 -> Nil
+    _ -> {
+      let assert Ok(sim.SendText(text)) = process.receive(client, 2000)
+      let assert Ok(msg_type) = json.parse(text, message_type_decoder())
+      assert msg_type != "space"
+      assert_no_space(client, count - 1)
+    }
+  }
+}
+
+pub fn refit_reresolves_the_fit_and_rebuilds_the_composite_test() {
+  let s = start_sim()
+  let client = process.new_subject()
+  let assert Ok(#(ship_id, char)) = sim.add_player(s, "ada", client, 1000)
+  let assert Ok(before) = sim.ship_class(s, ship_id, 1000)
+  let #(_space, epoch_before) = receive_space_for(client, station_space)
+
+  let assert Ok(Nil) =
+    sim.request_refit(s, char, tank_modules, default_parts, 1000)
+
+  // She now resolves to exactly the class that loadout bakes to: a new
+  // stamped deck, and the hold that falls out of it.
+  let assert Ok(after) = sim.ship_class(s, ship_id, 1000)
+  let expected = resolved(tank_modules, default_parts)
+  assert after == expected.class
+  assert after.plan != before.plan
+  assert after.cargo_capacity != before.cargo_capacity
+
+  // Her crew is told, and told what produced it.
+  let pushed = receive_ship_fit(client)
+  assert pushed.ship_id == ship_id
+  assert pushed.hull == "mockingbird"
+  assert pushed.modules == tank_modules
+  assert pushed.capacity == after.cargo_capacity
+
+  // ...and the station's composite was rebuilt, so everyone in it â€” aboard
+  // and ashore alike â€” gets a fresh `space` carrying the new deck.
+  let #(_sp, epoch_after) = receive_space_for(client, station_space)
+  assert epoch_after > epoch_before
+}
+
+pub fn a_refused_refit_leaves_the_fit_untouched_test() {
+  let s = start_sim()
+  let client = process.new_subject()
+  let assert Ok(#(ship_id, char)) = sim.add_player(s, "ada", client, 1000)
+  let assert Ok(before) = sim.ship_class(s, ship_id, 1000)
+  let #(_space, _epoch) = receive_space_for(client, station_space)
+
+  // Passenger staterooms (2) plus the original Rijay engine (4) draw 11 power
+  // from a hull that provides 10 â€” a refusal from deep inside the resolver,
+  // forwarded verbatim.
+  let assert Error(reason) =
+    sim.request_refit(s, char, passenger_modules, stock_engine_parts, 1000)
+  assert reason == "tag_deficit:power"
+
+  // Nothing moved: the resolved class is identical, field for field...
+  let assert Ok(after) = sim.ship_class(s, ship_id, 1000)
+  assert after == before
+  // ...and no composite rebuild went out either.
+  assert_no_space(client, 20)
+}
+
+pub fn refit_while_flying_is_refused_test() {
+  let s = start_sim()
+  let client = process.new_subject()
+  let assert Ok(#(ship_id, char)) = sim.add_player(s, "ada", client, 1000)
+  let assert Ok(before) = sim.ship_class(s, ship_id, 1000)
+  // You do not swap an engine under way.
+  let assert Ok(Nil) = sim.request_undock(s, char, 1000)
+  assert sim.request_refit(s, char, tank_modules, default_parts, 1000)
+    == Error("not_docked")
+  let assert Ok(after) = sim.ship_class(s, ship_id, 1000)
+  assert after == before
+}
+
+pub fn refit_that_would_strand_cargo_is_refused_test() {
+  let s = start_sim()
+  let client = process.new_subject()
+  let assert Ok(#(ship_id, char)) = sim.add_player(s, "ada", client, 1000)
+  let plan = receive_plan(client)
+  walk_to_broker(s, client, char, plan)
+  let assert protocol.SeatResult(ok: True, ..) =
+    sim.request_sit(s, char, "broker0", 1000)
+
+  // Buy one unit more than the tank hold could ever carry. Units still
+  // inbound count: they already have a reserved berth in the hold.
+  let tank = resolved(tank_modules, default_parts)
+  let buy =
+    sim.request_buy(s, char, "machinery", tank.class.cargo_capacity + 1, 1000)
+  assert buy.ok
+
+  let assert Ok(before) = sim.ship_class(s, ship_id, 1000)
+  assert sim.request_refit(s, char, tank_modules, default_parts, 1000)
+    == Error("hold_over_capacity")
+  // Refused, and the cargo is still hers: the fit never changed.
+  let assert Ok(after) = sim.ship_class(s, ship_id, 1000)
+  assert after == before
+
+  // The refusal is about the CARGO, not the loadout: a refit the hold does
+  // fit in still goes through (and a whole-loadout refit is idempotent).
+  let assert Ok(Nil) =
+    sim.request_refit(s, char, default_modules, default_parts, 1000)
+  let assert Ok(unchanged) = sim.ship_class(s, ship_id, 1000)
+  assert unchanged == before
 }
