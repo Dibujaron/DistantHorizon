@@ -142,22 +142,34 @@ pub fn from_plan(
   dock_standoff: Float,
   flight: Flight,
 ) -> Result(ShipClass, String) {
-  let derived = deckplan.pallet_count(plan, reg)
-  let capacity = case derived > 0 {
-    True -> derived
-    False -> fallback_capacity
-  }
   validate(ShipClass(
     schema: schema,
     id: id,
     name: name,
     plan: plan,
-    cargo_capacity: capacity,
+    cargo_capacity: effective_capacity(reg, plan, fallback_capacity),
     handling: handling,
     dock_port_orientation: dock_port_orientation,
     dock_standoff: dock_standoff,
     flight: flight,
   ))
+}
+
+/// The hold capacity of a resolved plan: breakbulk capacity derives from the
+/// cargo-pallet tiles the map draws ("the map is the single source of truth",
+/// as with consoles and berths), falling back to the authored number for a
+/// hull whose plan draws no pallets.
+///
+/// Deliberately ONE function with two callers — the bake (`from_plan`) and the
+/// wire (`ship_class_decoder`). Spelled out twice, a change to one of them
+/// would quietly stop `encode`/`decode` round-tripping, and the decoder has no
+/// production caller to notice.
+fn effective_capacity(reg: Registry, plan: DeckPlan, fallback: Int) -> Int {
+  let derived = deckplan.pallet_count(plan, reg)
+  case derived > 0 {
+    True -> derived
+    False -> fallback
+  }
 }
 
 fn validate(class: ShipClass) -> Result(ShipClass, String) {
@@ -210,20 +222,12 @@ fn ship_class_decoder(reg: Registry) -> decode.Decoder(ShipClass) {
   // malformed document, and failing loudly beats an unflyable ship.
   use flight <- decode.field("flight", flight_decoder())
   let #(capacity, handling) = cargo
-  // Breakbulk hold capacity derives from cargo-pallet tiles on the deck
-  // plan ("the map is the single source of truth", as with consoles/berths)
-  // — falling back to the authored capacity for hulls with no pallets.
-  let derived = deckplan.pallet_count(plan, reg)
-  let effective_capacity = case derived > 0 {
-    True -> derived
-    False -> capacity
-  }
   decode.success(ShipClass(
     schema: schema,
     id: id,
     name: name,
     plan: plan,
-    cargo_capacity: effective_capacity,
+    cargo_capacity: effective_capacity(reg, plan, capacity),
     handling: handling,
     dock_port_orientation: dock_port_orientation,
     dock_standoff: dock_standoff,
