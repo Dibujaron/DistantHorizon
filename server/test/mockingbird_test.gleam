@@ -97,7 +97,11 @@ pub fn every_shipped_module_resolves_in_its_slot_test() {
   let base = loadout.default_for(h)
   // Each shipped module, installed alone in its own slot over the default fit,
   // must resolve — the cheapest guard against a patch drifting off its slot.
+  // Filtered to this hull: modules are authored per (hull, slot), so a Sparrow
+  // or Finch module arriving later would otherwise fail here as
+  // `module_wrong_hull` rather than being skipped.
   dict.to_list(mods)
+  |> list.filter(fn(entry) { { entry.1 }.hull == "mockingbird" })
   |> list.each(fn(entry) {
     let #(id, m) = entry
     let swapped =

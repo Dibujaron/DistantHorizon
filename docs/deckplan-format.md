@@ -116,18 +116,51 @@ list anywhere.
 A module rewrites its slot completely — including *both* halves of any wall
 between two slot tiles, since both tiles are its own. The only edges it shares
 with the hull are the slot's **perimeter**, where the neighbouring tile is fixed
-structure. Two authoring rules follow, and neither is machine-checked:
+structure. None of the following is machine-checked.
 
-- **Leave the slot perimeter open by default.** Each tile owns all four of its
-  own walls and the collision rule ORs the two facing edges, so a module can put
-  a wall (`#` on its half) or a door (`=` on its half) anywhere along an open
-  perimeter — full freedom, no engine special case. A hull-side wall on the
-  perimeter is therefore a *deliberate structural declaration*: "no module ever
-  opens this", for a pressure bulkhead or a hold's fire wall. Draw one only
-  where you mean it.
+**The perimeter is a double edge, and the hull's side can only ever add
+restriction.** Both collision (`edge_blocks`) and rendering (`interior_view`'s
+boundary merge) OR the two facing edges: a wall or fixture on *either* side makes
+a wall, else a door on either side makes a door, else it is open. So what the
+hull draws on its side is a floor on what any module can achieve there, never a
+ceiling:
+
+| hull's side | what a module can produce |
+|---|---|
+| `#`, or any wall fixture (`w`, `v`, a console…) | **wall only** — sealed forever |
+| `=` door | door, or wall |
+| open | **open, door, or wall** |
+
+The authoring rules that follow:
+
+- **Author the hull side of a slot perimeter *open*, and draw all of that
+  perimeter's walls and doors on the slot side, in the module.** Open is
+  strictly the most permissive choice — a hull-side door still forbids one
+  outcome, a plain doorless opening. This makes the default module, not the
+  hull, responsible for how the slot reads.
+- **Draw hull-side `#` only where the structure must be permanent** — a
+  pressure shell, the hull skin, a hold's fire wall — and hull-side `=` only
+  where a door must exist no matter what is fitted.
+- **Never author a wall fixture or a console on a hull tile facing a slot.**
+  A fixture is a wall to the OR, so it seals the edge and no module can open it.
 - **A stamp never overwrites the SW corner.** Slot regions are hull-owned, so
   the resolved plan still carries them and a second refit finds the same
   region.
+
+**This cannot be retrofitted** to a hull carved out of an existing map that must
+keep reproducing that map exactly: blanking a corridor's slot-facing wall is
+collision- and render-neutral once the module redraws it, but it *does* change
+that hull tile's own authored edge, so an exact-reproduction check fails. The
+Mockingbird was carved this way and therefore keeps her corridor-side walls,
+which permanently fixes her `forward_crew` doors at the two positions the
+corridor already opens. That is a known, accepted one-hull cost; hulls authored
+from scratch should follow the rules above instead.
+
+One consequence of modules owning their slot outright: **a console inside a slot
+belongs to whichever module draws it.** The Mockingbird's bare hull has no
+consoles at all — her helm comes from the cockpit module and her cargo console
+from whichever hold module is fitted. Any future hold module must redraw that
+`c`, or the ship will not resolve.
 
 Console/dock/spawn glyphs are an **authoring** convenience: **the map is the
 single source of truth**, so a position can't drift from a separate list. At
