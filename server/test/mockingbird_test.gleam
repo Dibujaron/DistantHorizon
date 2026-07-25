@@ -114,6 +114,10 @@ pub fn every_shipped_module_resolves_in_its_slot_test() {
           }
         }),
       )
+    // `list.map` only REPLACES: a module whose slot has no default entry
+    // would leave the loadout identical to the default, and the resolve
+    // below would pass without ever installing the module under test.
+    assert list.contains(swapped.modules, #(m.slot, id))
     let assert Ok(_) = loadout.resolve(reg, h, mods, parts, swapped)
   })
 }

@@ -279,6 +279,93 @@ pub fn unknown_slot_and_module_are_rejected_test() {
   assert b == "unknown_module:m.nope"
 }
 
+pub fn a_loadout_for_another_hull_is_rejected_test() {
+  // The first thing `resolve` checks: this loadout names a hull that is not
+  // the one it is being resolved against, so nothing else about it matters.
+  let m = a_module("m.p", "0.0", "{}", "[\"   \", \" p \", \"   \"]")
+  let lo =
+    loadout.Loadout(hull: "otherhull", modules: [#("bay", "m.p")], parts: [
+      #("engine_center", "test.engine"),
+    ])
+  let assert Error(e) = fit_of([m], lo)
+  assert e == "loadout_wrong_hull:otherhull"
+}
+
+pub fn a_module_in_the_wrong_slot_is_rejected_test() {
+  // The module declares this hull, but declares itself a HOLD module; the
+  // loadout tries to install it in the bay. Distinct from
+  // `slot_not_on_hull` — the slot exists, it is just not this module's.
+  let assert Ok(m) =
+    module.decode(
+      "{ \"schema\": 1, \"id\": \"m.hold\", \"hull\": \"testhull\",
+         \"slot\": \"hold\", \"name\": \"M\",
+         \"patches\": [ { \"deck\": 0, \"x\": 0, \"y\": 1,
+                          \"grid\": [\"   \", \" p \", \"   \"] } ] }",
+    )
+  let assert Error(e) = fit_of([m], bay_loadout("m.hold"))
+  assert e == "module_wrong_slot:m.hold"
+}
+
+pub fn an_unknown_mount_and_an_unknown_part_are_rejected_test() {
+  let m = a_module("m.p", "0.0", "{}", "[\"   \", \" p \", \"   \"]")
+  let #(mods, parts) = registries([m])
+  // The hull's only mount is `engine_center`.
+  let bad_mount =
+    loadout.Loadout(hull: "testhull", modules: [#("bay", "m.p")], parts: [
+      #("nose", "test.engine"),
+    ])
+  let assert Error(a) =
+    loadout.resolve(glyphs.default(), a_hull(), mods, parts, bad_mount)
+  assert a == "mount_not_on_hull:nose"
+
+  let bad_part =
+    loadout.Loadout(hull: "testhull", modules: [#("bay", "m.p")], parts: [
+      #("engine_center", "test.nope"),
+    ])
+  let assert Error(b) =
+    loadout.resolve(glyphs.default(), a_hull(), mods, parts, bad_part)
+  assert b == "unknown_part:test.nope"
+}
+
+pub fn two_parts_on_one_mount_are_rejected_test() {
+  // The mount half of `duplicate_slot`: naming the same mount twice is a
+  // malformed loadout, not a silent last-one-wins.
+  let m = a_module("m.p", "0.0", "{}", "[\"   \", \" p \", \"   \"]")
+  let lo =
+    loadout.Loadout(hull: "testhull", modules: [#("bay", "m.p")], parts: [
+      #("engine_center", "test.engine"),
+      #("engine_center", "test.engine"),
+    ])
+  let assert Error(e) = fit_of([m], lo)
+  assert e == "duplicate_mount:engine_center"
+}
+
+pub fn a_part_of_the_wrong_kind_is_rejected_test() {
+  // A gun on an engine mount. It is small enough to fit — the refusal is
+  // about KIND, which is checked before size.
+  let assert Ok(gun) =
+    part.decode(
+      "{ \"schema\": 1, \"id\": \"test.gun\", \"name\": \"G\",
+         \"kind\": \"gun\", \"size\": \"s\", \"mass\": 1.0,
+         \"provides\": { \"engine\": 1 } }",
+    )
+  let m = a_module("m.p", "0.0", "{}", "[\"   \", \" p \", \"   \"]")
+  let #(mods, _) = registries([m])
+  let lo =
+    loadout.Loadout(hull: "testhull", modules: [#("bay", "m.p")], parts: [
+      #("engine_center", "test.gun"),
+    ])
+  let assert Error(e) =
+    loadout.resolve(
+      glyphs.default(),
+      a_hull(),
+      mods,
+      dict.from_list([#("test.gun", gun)]),
+      lo,
+    )
+  assert e == "mount_wrong_kind:engine_center"
+}
+
 pub fn two_modules_in_one_slot_are_rejected_test() {
   let a = a_module("m.a", "0.0", "{}", "[\"   \", \" p \", \"   \"]")
   let b = a_module("m.b", "0.0", "{}", "[\"   \", \" p \", \"   \"]")
@@ -390,6 +477,24 @@ pub fn a_part_with_a_junk_size_is_a_content_error_test() {
       lo,
     )
   assert e == "part_bad_size:test.badsize"
+}
+
+pub fn a_hull_whose_own_rows_do_not_parse_is_a_content_error_test() {
+  // `hull.decode` keeps deck grids as raw TEXT, so a malformed hull document
+  // loads happily and only fails when `resolve` parses it — distinct from
+  // `invalid_resolved_plan`, which is the same parse run on the STAMPED rows.
+  // These rows are 4 characters wide, and a v3 tile is 3 characters.
+  let assert Ok(h) =
+    hull.decode(
+      "{ \"schema\": 3, \"id\": \"testhull\", \"name\": \"T\", \"mass\": 1.0,
+         \"decks\": [ { \"name\": \"M\", \"grid\": [\"####\", \"#  #\", \"####\"] } ],
+         \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" } }",
+    )
+  let lo = loadout.Loadout(hull: "testhull", modules: [], parts: [])
+  let assert Error(e) =
+    loadout.resolve(glyphs.default(), h, dict.new(), dict.new(), lo)
+  assert e
+    == "invalid_hull_plan:deck \"M\" row length is not a positive multiple of 3"
 }
 
 pub fn a_patch_naming_a_deck_the_hull_lacks_is_a_content_error_test() {
