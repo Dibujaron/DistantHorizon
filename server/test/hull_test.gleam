@@ -36,6 +36,15 @@ pub fn decode_hull_document_test() {
   assert h.default_parts == [#("engine_center", "test.engine")]
 }
 
+/// The schemas type `mass` as `number`, and JSON Schema draft-06 cannot say
+/// "float-spelled only" — `4.0` is an integer to a validator too — so the
+/// decoder accepts either spelling rather than the schema pretending to
+/// forbid one (`hull.number_decoder`).
+pub fn a_bare_integer_mass_decodes_test() {
+  let assert Ok(h) = hull.decode(string.replace(doc, "100.0", "100"))
+  assert h.mass == 100.0
+}
+
 pub fn slot_lookup_test() {
   let assert Ok(h) = hull.decode(doc)
   let assert Ok(slot) = hull.slot_by_id(h, "cockpit")

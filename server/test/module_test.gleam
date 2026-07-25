@@ -31,6 +31,13 @@ pub fn decode_module_document_test() {
   assert p.rows == ["#h#", "#e ", "## "]
 }
 
+/// `mass` is a JSON `number`, and either spelling decodes: the schemas cannot
+/// forbid a bare integer (see `hull.number_decoder`).
+pub fn a_bare_integer_mass_decodes_test() {
+  let assert Ok(m) = module.decode(string.replace(module_doc, "4.0", "4"))
+  assert m.mass == 4.0
+}
+
 pub fn patch_row_count_not_multiple_of_three_is_rejected_test() {
   let bad =
     "{ \"schema\": 1, \"id\": \"a\", \"hull\": \"h\", \"slot\": \"s\",

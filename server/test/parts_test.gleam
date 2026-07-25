@@ -76,3 +76,20 @@ pub fn no_engine_is_refused_test() {
     loadout.resolve(glyphs.default(), h, dict.new(), dict.new(), bare)
   assert e == "tag_deficit:engine"
 }
+
+/// `mass`, `thrust` and `torque` are JSON `number`s, and a hand-authored part
+/// is as likely to spell a round figure `4` as `4.0`. Draft-06 cannot express
+/// "float-spelled only" (`4.0` is an integer to a validator), so the decoder
+/// takes either rather than the schema pretending to forbid one
+/// (`hull.number_decoder`).
+pub fn bare_integer_numbers_decode_test() {
+  let assert Ok(p) =
+    part.decode(
+      "{ \"schema\": 1, \"id\": \"test.round\", \"name\": \"R\",
+         \"kind\": \"engine\", \"size\": \"m\", \"mass\": 24,
+         \"thrust\": 4800, \"torque\": 21600 }",
+    )
+  assert p.mass == 24.0
+  assert p.thrust == 4800.0
+  assert p.torque == 21_600.0
+}

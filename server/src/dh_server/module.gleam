@@ -147,7 +147,7 @@ fn module_decoder() -> decode.Decoder(Module) {
   use hull_id <- decode.field("hull", decode.string)
   use slot <- decode.field("slot", decode.string)
   use name <- decode.field("name", decode.string)
-  use mass <- decode.optional_field("mass", 0.0, decode.float)
+  use mass <- decode.optional_field("mass", 0.0, hull.number_decoder())
   use provides <- decode.optional_field(
     "provides",
     dict.new(),

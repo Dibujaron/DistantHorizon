@@ -100,7 +100,7 @@ fn part_decoder() -> decode.Decoder(Part) {
   use name <- decode.field("name", decode.string)
   use kind <- decode.field("kind", decode.string)
   use size <- decode.field("size", decode.string)
-  use mass <- decode.optional_field("mass", 0.0, decode.float)
+  use mass <- decode.optional_field("mass", 0.0, hull.number_decoder())
   use provides <- decode.optional_field(
     "provides",
     dict.new(),
@@ -111,8 +111,8 @@ fn part_decoder() -> decode.Decoder(Part) {
     dict.new(),
     hull.tags_decoder(),
   )
-  use thrust <- decode.optional_field("thrust", 0.0, decode.float)
-  use torque <- decode.optional_field("torque", 0.0, decode.float)
+  use thrust <- decode.optional_field("thrust", 0.0, hull.number_decoder())
+  use torque <- decode.optional_field("torque", 0.0, hull.number_decoder())
   use sprite <- decode.optional_field(
     "sprite",
     None,

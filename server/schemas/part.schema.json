@@ -24,17 +24,17 @@
     },
     "mass": {
       "type": "number",
-      "description": "Optional field (decode.optional_field, default 0.0). Added to the hull's dry mass and every fitted module and part; the fit's flight numbers are pooled engine thrust/torque over that total. Decoded with decode.float, so it must be written with a decimal point (4.0, not 4)."
+      "description": "Optional field (decode.optional_field, default 0.0). Added to the hull's dry mass and every fitted module and part; the fit's flight numbers are pooled engine thrust/torque over that total. Either JSON spelling decodes: 4 and 4.0 are the same number (hull.number_decoder)."
     },
     "provides": { "$ref": "#/$defs/tags" },
     "requires": { "$ref": "#/$defs/tags" },
     "thrust": {
       "type": "number",
-      "description": "Optional field (decode.optional_field, default 0.0). Force along the heading; 0 for a non-engine part. Pooled across mounted parts and divided by the fit's total mass to give acceleration. Decoded with decode.float, so it must be written with a decimal point."
+      "description": "Optional field (decode.optional_field, default 0.0). Force along the heading; 0 for a non-engine part. Pooled across mounted parts and divided by the fit's total mass to give acceleration. Either JSON spelling decodes: 4 and 4.0 are the same number (hull.number_decoder)."
     },
     "torque": {
       "type": "number",
-      "description": "Optional field (decode.optional_field, default 0.0). Turning authority; pooled and divided by the fit's total mass to give degrees/s. Decoded with decode.float, so it must be written with a decimal point."
+      "description": "Optional field (decode.optional_field, default 0.0). Turning authority; pooled and divided by the fit's total mass to give degrees/s. Either JSON spelling decodes: 4 and 4.0 are the same number (hull.number_decoder)."
     },
     "sprite": {
       "type": "string",

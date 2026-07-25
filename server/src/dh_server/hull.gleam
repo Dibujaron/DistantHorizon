@@ -13,6 +13,7 @@
 import dh_server/shipclass.{type Handling}
 import gleam/dict.{type Dict}
 import gleam/dynamic/decode
+import gleam/int
 import gleam/json
 import gleam/list
 import gleam/result
@@ -147,7 +148,7 @@ fn hull_decoder() -> decode.Decoder(Hull) {
     [],
     decode.list(mount_decoder()),
   )
-  use mass <- decode.optional_field("mass", 100.0, decode.float)
+  use mass <- decode.optional_field("mass", 100.0, number_decoder())
   use provides <- decode.optional_field("provides", dict.new(), tags_decoder())
   use requires <- decode.optional_field("requires", dict.new(), tags_decoder())
   use cargo <- decode.field("cargo", cargo_decoder())
@@ -211,6 +212,18 @@ fn mount_decoder() -> decode.Decoder(Mount) {
 /// and sums, so new content invents new tags with zero code.
 pub fn tags_decoder() -> decode.Decoder(Dict(String, Int)) {
   decode.dict(decode.string, decode.int)
+}
+
+/// A JSON `number` field, either spelling: `4` decodes as readily as `4.0`.
+///
+/// Bare `decode.float` rejects `4`, and the schemas cannot make up the
+/// difference — JSON Schema draft-06 defines `integer` as any number with a
+/// zero fractional part, so `4.0` is an integer to a validator and "must be
+/// written with a decimal point" is not expressible. The decoders meet the
+/// schemas rather than the other way round. Shared by hull, module and part
+/// for `mass` / `thrust` / `torque`.
+pub fn number_decoder() -> decode.Decoder(Float) {
+  decode.one_of(decode.float, or: [decode.map(decode.int, int.to_float)])
 }
 
 fn cargo_decoder() -> decode.Decoder(#(Int, Handling)) {
