@@ -5,6 +5,13 @@ import dh_server/module
 import dh_server/part
 import dh_server/shipclass
 import gleam/dict
+import gleam/float
+
+/// Flight stats are quotients, so compare them with a tolerance rather than
+/// float equality — `7000.0 /. 132.0` has no exact binary representation.
+fn near(actual: Float, expected: Float) -> Bool {
+  float.loosely_equals(actual, expected, tolerating: 0.001)
+}
 
 pub fn shipped_parts_load_test() {
   let assert Ok(parts) = part.load_all("parts")
@@ -16,19 +23,23 @@ pub fn shipped_parts_load_test() {
   assert stock.torque <. patch.torque
 }
 
-/// The Mockingbird's default fit lands on exactly the pre-M4 constants — the
-/// mass arithmetic the carve rests on: 96.0 of hull, 24.0 of default modules
-/// and a massless Consol patch make the same 120.0 she flew at before M4 split
-/// her up. (`mockingbird_test` owns the deck-fidelity half of that promise.)
-pub fn the_mockingbird_default_fit_flies_at_the_pre_m4_constants_test() {
+/// Flight is EMERGENT, not authored: masses say what each thing is and the
+/// engine says what it pushes with, so `accel = thrust / mass` falls out of
+/// the loadout. Nothing here is back-solved from a target — 96.0 of hull,
+/// 24.0 of default modules and an 8.0 Consol patch give 128.0, and 5000 N of
+/// thrust over that is what she accelerates at. Swapping to the heavier Rijay
+/// original moves the total to 132.0, which is exactly why an engine's mass
+/// has to be real: it is one of the things the swap trades.
+/// (`mockingbird_test` owns the deck-fidelity half of the carve's promise.)
+pub fn the_mockingbird_default_fit_flight_derives_from_its_masses_test() {
   let assert Ok(h) = hull.load("shipclasses/mockingbird.json")
   let assert Ok(mods) = module.load_all("modules")
   let assert Ok(parts) = part.load_all("parts")
   let assert Ok(fit) =
     loadout.resolve(glyphs.default(), h, mods, parts, loadout.default_for(h))
-  assert fit.mass == 120.0
-  assert fit.class.flight.accel == 40.0
-  assert fit.class.flight.turn_rate == 180.0
+  assert fit.mass == 128.0
+  assert near(fit.class.flight.accel, 39.0625)
+  assert near(fit.class.flight.turn_rate, 171.875)
   assert fit.class.cargo_capacity == 60
   assert fit.class.handling == shipclass.BreakBulk
 }
@@ -42,16 +53,17 @@ pub fn the_stock_engine_trades_turn_for_thrust_test() {
     loadout.Loadout(..base, parts: [#("engine_center", "rijay.engine.stock")])
   let assert Ok(fit) =
     loadout.resolve(glyphs.default(), h, mods, parts, swapped)
-  assert fit.class.flight.accel == 55.0
-  assert fit.class.flight.turn_rate == 160.0
+  // Heavier, but it pushes harder: quicker in a straight line, lazier to turn.
+  assert near(fit.class.flight.accel, 53.0303)
+  assert near(fit.class.flight.turn_rate, 151.5152)
 }
 
 /// Every pytest harness test spawns from the fixture hull, and
-/// `harness/test_m1_flight.py` asserts "~20 u for ~1 s of full thrust" — which
-/// is 40 u/s^2. Its metadata is hand-written rather than derived, so a typo
-/// there would only surface as a mystifying harness failure once the sim
-/// resolves fits. Pin it here, where the cause is obvious.
-pub fn the_harness_fixture_hull_flies_at_the_pre_m4_constants_test() {
+/// `harness/test_m1_flight.py` measures distance travelled under thrust, so
+/// its bounds are downstream of this number. The fixture's metadata is
+/// hand-written rather than derived, so a typo there would surface only as a
+/// mystifying harness failure. Pin it here, where the cause is obvious.
+pub fn the_harness_fixture_hull_flight_is_pinned_test() {
   let assert Ok(h) = hull.load("../harness/fixtures/test_fixture.json")
   let assert Ok(parts) = part.load_all("parts")
   let assert Ok(fit) =
@@ -62,8 +74,8 @@ pub fn the_harness_fixture_hull_flies_at_the_pre_m4_constants_test() {
       parts,
       loadout.default_for(h),
     )
-  assert fit.class.flight.accel == 40.0
-  assert fit.class.flight.turn_rate == 180.0
+  assert near(fit.class.flight.accel, 39.0625)
+  assert near(fit.class.flight.turn_rate, 171.875)
 }
 
 /// A hull that requires `{"engine": 1}` cannot resolve with nothing mounted —

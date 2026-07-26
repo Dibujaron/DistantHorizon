@@ -4,10 +4,10 @@
   "name": "Consol patch engine",
   "kind": "engine",
   "size": "m",
-  "mass": 0.0,
+  "mass": 8.0,
   "provides": { "engine": 1 },
   "requires": { "power": 3 },
-  "thrust": 4800.0,
-  "torque": 21600.0,
+  "thrust": 5000.0,
+  "torque": 22000.0,
   "sprite": "engine_consol"
 }

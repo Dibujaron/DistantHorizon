@@ -13,6 +13,7 @@ import dh_server/loadout
 import dh_server/module
 import dh_server/part
 import gleam/dict
+import gleam/float
 import gleam/list
 import gleam/option
 import simplifile
@@ -63,10 +64,18 @@ pub fn default_capacity_is_still_sixty_test() {
   assert resolved_default().class.cargo_capacity == 60
 }
 
-pub fn default_flight_matches_the_pre_m4_constants_test() {
+pub fn default_flight_derives_from_hull_and_module_masses_test() {
   let fit = resolved_default()
-  assert fit.class.flight.accel == 40.0
-  assert fit.class.flight.turn_rate == 180.0
+  assert float.loosely_equals(
+    fit.class.flight.accel,
+    39.0625,
+    tolerating: 0.001,
+  )
+  assert float.loosely_equals(
+    fit.class.flight.turn_rate,
+    171.875,
+    tolerating: 0.001,
+  )
 }
 
 pub fn swapping_the_hold_for_a_tank_drops_capacity_test() {

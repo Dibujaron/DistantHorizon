@@ -64,18 +64,19 @@ def _center_char(ship_class: dict, deck: int, x: int, y: int) -> str:
 
 
 async def test_welcome_carries_flight_stats(server):
-    """The fixture hull is pinned to resolve at exactly 40.0 accel / 180.0
-    turn_rate with its default loadout (mass 120, the one engine's 4800
-    thrust / 21600 torque) -- the same numbers a Gleam-level test pins
-    server-side. Proving welcome carries them over the wire is the
-    prerequisite for every later assertion in this file: if flight stats
-    didn't parse off the socket, a refit's resolved-class push wouldn't
-    either."""
+    """Flight is derived, not authored: the fixture hull's 120.0 of dry mass
+    plus its 8.0 Consol patch make 128.0, and the engine's 5000 thrust /
+    22000 torque over that give these numbers. The same values are pinned
+    server-side by a Gleam test, so a mismatch here means they were mangled
+    in transit rather than computed wrong. Proving welcome carries them over
+    the wire is the prerequisite for every later assertion in this file: if
+    flight stats didn't parse off the socket, a refit's resolved-class push
+    wouldn't either."""
     async with DHClient(name="m4_flight") as client:
         welcome = await client.login("m4_flight_stats", "pw")
         flight = welcome["ship_class"]["flight"]
-        assert flight["accel"] == pytest.approx(40.0)
-        assert flight["turn_rate"] == pytest.approx(180.0)
+        assert flight["accel"] == pytest.approx(5000.0 / 128.0)
+        assert flight["turn_rate"] == pytest.approx(22000.0 / 128.0)
 
 
 async def test_refit_installs_a_module(server):
