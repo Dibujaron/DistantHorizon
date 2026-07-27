@@ -108,7 +108,10 @@ affects walkability or collision.
 A tile's **SW corner** carries a hex digit `0`–`f` naming the hull **slot** the
 tile belongs to — the modulable regions a refit may overwrite (`docs/modules.md`).
 A blank, `#`, or any other non-hex character means "fixed hull structure": no
-module may touch that tile. The hull's `slots` table maps each digit to a slot
+module may touch that tile.  To read a hull's slots at a glance rather than
+hunting SW corners in the raw JSON, run `python tools/slotmap.py <hull.json>`,
+which paints each slot's digit into its tiles (add `--structure <resolved.json>`
+to draw the walls of a fitted ship rather than the bare hull's). The hull's `slots` table maps each digit to a slot
 id and human name. Slot regions are exactly as fluid as the hull author draws
 them — following a taper, non-rectangular, whatever — and there is no rectangle
 list anywhere.
