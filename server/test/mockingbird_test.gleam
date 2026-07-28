@@ -104,19 +104,22 @@ pub fn every_shipped_module_resolves_in_its_slot_test() {
   let assert Ok(mods) = module.load_all("modules")
   let assert Ok(parts) = part.load_all("parts")
   let base = loadout.default_for(h)
-  // Each shipped module, installed alone in its own slot over the default fit,
-  // must resolve — the cheapest guard against a patch drifting off its slot.
-  // Filtered to this hull: a module is authored per (hull, slot) target, so a
-  // Sparrow or Finch module arriving later would otherwise fail here as
-  // `module_not_drawn_for_slot` rather than being skipped.
+  // Every shipped module's mockingbird target, installed alone in its own slot
+  // over the default fit, must resolve — the cheapest guard against a patch
+  // drifting off its slot. A module with several targets on this hull (a
+  // standard cabin stamped into five different bays, say) has to prove every
+  // one of them, not just the first — otherwise four of five placements would
+  // drift unnoticed. Filtered to this hull: a module is authored per (hull,
+  // slot) target, so a Sparrow or Finch module arriving later would otherwise
+  // fail here as `module_not_drawn_for_slot` rather than being skipped.
   dict.to_list(mods)
-  |> list.filter(fn(entry) {
-    list.any({ entry.1 }.targets, fn(t) { t.hull == "mockingbird" })
+  |> list.flat_map(fn(entry) {
+    let #(id, m) = entry
+    list.filter(m.targets, fn(t) { t.hull == "mockingbird" })
+    |> list.map(fn(t) { #(id, t) })
   })
   |> list.each(fn(entry) {
-    let #(id, m) = entry
-    let assert Ok(target) =
-      list.find(m.targets, fn(t) { t.hull == "mockingbird" })
+    let #(id, target) = entry
     let swapped =
       loadout.Loadout(
         ..base,
