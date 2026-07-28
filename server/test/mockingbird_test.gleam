@@ -98,6 +98,29 @@ pub fn swapping_the_hold_for_a_tank_drops_capacity_test() {
   assert fit.class.cargo_capacity < 60
 }
 
+/// The point of module targets: one document furnishes every cabin on the
+/// ship. If this ever needs a second file, the change did not work.
+pub fn one_cabin_document_serves_every_cabin_slot_test() {
+  let assert Ok(mods) = module.load_all("modules")
+  let assert Ok(cabin) = dict.get(mods, "rijay.cabin.standard")
+  let slots =
+    list.filter_map(cabin.targets, fn(t) {
+      case t.hull == "mockingbird" {
+        True -> Ok(t.slots)
+        False -> Error(Nil)
+      }
+    })
+    |> list.flatten
+  assert list.length(slots) == 5
+  // And the default loadout actually installs it in all five.
+  let assert Ok(h) = hull.load("shipclasses/mockingbird.json")
+  let installed =
+    list.filter(loadout.default_for(h).modules, fn(e) {
+      e.1 == "rijay.cabin.standard"
+    })
+  assert list.length(installed) == 5
+}
+
 pub fn every_shipped_module_resolves_in_its_slot_test() {
   let reg = glyphs.default()
   let assert Ok(h) = hull.load("shipclasses/mockingbird.json")

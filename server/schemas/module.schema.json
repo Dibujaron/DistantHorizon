@@ -5,7 +5,11 @@
   "description": "A per-(hull, slot) hand-authored overlay stamped onto the hull's authored rows when the module is fitted, where a void cell leaves the hull untouched and any other cell overwrites it (docs/modules.md). Derived from the Gleam decoders in server/src/dh_server/module.gleam (module_decoder/patch_decoder) — that decoder is the source of truth; this schema is documentation and a typo-catcher, not a substitute for it. additionalProperties is false at every object level even though the decoder itself ignores unknown fields, precisely so this schema can catch typos the decoder would silently swallow. Modules are filed per hull as server/modules/<hull>/<id>.json, because an overlay is drawn against one hull's coordinate space and is never portable.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "id", "hull", "slot", "name"],
+  "required": ["schema", "id", "name"],
+  "oneOf": [
+    { "required": ["targets"] },
+    { "required": ["hull", "slot"] }
+  ],
   "properties": {
     "schema": { "type": "integer" },
     "id": {
@@ -31,9 +35,35 @@
       "type": "array",
       "description": "Optional field (decode.optional_field, default []). The rectangles of overlay this module stamps. A module with no patches is legal — it is then pure capability, contributing only mass and tags.",
       "items": { "$ref": "#/$defs/patch" }
+    },
+    "targets": {
+      "type": "array",
+      "description": "The canonical spelling: every (hull, slots) placement this one document is drawn for, each with its own overlay. Top-level hull/slot/patches is the shorthand for a single target claiming one slot; the oneOf above makes a document carry exactly one of the two spellings, never both and never neither.",
+      "items": { "$ref": "#/$defs/target" }
     }
   },
   "$defs": {
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hull", "slots"],
+      "properties": {
+        "hull": {
+          "type": "string",
+          "description": "The hull id this target's overlay is drawn for. A loadout naming this module on a hull it has no target for is refused with module_not_drawn_for_slot."
+        },
+        "slots": {
+          "type": "array",
+          "description": "The hull slot ids this target claims — usually one, but a single overlay may claim several ADJACENT slots. Naming the module under any one of them occupies all of them.",
+          "items": { "type": "string" }
+        },
+        "patches": {
+          "type": "array",
+          "description": "Optional field (decode.optional_field, default []). This target's overlay rectangles.",
+          "items": { "$ref": "#/$defs/patch" }
+        }
+      }
+    },
     "tags": {
       "type": "object",
       "description": "Optional field (decode.optional_field, default {}). A {tag: amount} object. Tags are open strings the engine only compares and sums (server/src/dh_server/hull.gleam tags_decoder); legality is sum(provides) >= sum(requires) pooled across the whole loadout.",
