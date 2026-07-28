@@ -22,15 +22,20 @@ pub type Patch {
   Patch(deck: Int, x: Int, y: Int, rows: List(String))
 }
 
-/// One placement of a module: the hull it is drawn for, the slot it claims
+/// One placement of a module: the hull it is drawn for, the slot(s) it claims
 /// there, and the overlay drawn against that hull's coordinates.
 ///
 /// A module is still never portable *as a drawing* — every target is
 /// hand-authored against one specific hull, which is what guarantees its doors
 /// line up. What a target list buys is that one CONCEPT (a standard cabin, a
 /// medbay) is one document, however many places it fits.
+///
+/// `slots` is usually one id, but a target may claim several ADJACENT slots
+/// with one overlay — that is how a bigger room absorbs the one next door.
+/// Naming the module in a loadout under any one of its claimed slots occupies
+/// all of them; see `loadout.lookup_modules`.
 pub type Target {
-  Target(hull: String, slot: String, patches: List(Patch))
+  Target(hull: String, slots: List(String), patches: List(Patch))
 }
 
 pub type Module {
@@ -46,13 +51,16 @@ pub type Module {
 }
 
 /// This module's overlay for one `(hull, slot)` placement, or `Error(Nil)` if
-/// it is not drawn for that pair.
+/// it is not drawn for that pair. Matches if `slot_id` is any of the target's
+/// claimed slots.
 pub fn target_for(
   m: Module,
   hull_id: String,
   slot_id: String,
 ) -> Result(Target, Nil) {
-  list.find(m.targets, fn(t) { t.hull == hull_id && t.slot == slot_id })
+  list.find(m.targets, fn(t) {
+    t.hull == hull_id && list.contains(t.slots, slot_id)
+  })
 }
 
 /// Read and decode one module document.
@@ -140,7 +148,18 @@ fn validate(m: Module) -> Result(Module, String) {
     m.targets != [],
     "module \"" <> m.id <> "\" has no targets: it names no (hull, slot) pair",
   )
-  let pairs = list.map(m.targets, fn(t) { t.hull <> "/" <> t.slot })
+  use <- guard(
+    list.all(m.targets, fn(t) { t.slots != [] }),
+    "module \"" <> m.id <> "\" has a target that claims no slots",
+  )
+  // Every (hull, slot) pair this document claims, across every target and
+  // every slot that target claims — flattened so a pair claimed twice, be it
+  // by two targets or twice within one target's own `slots`, is caught the
+  // same way.
+  let pairs =
+    list.flat_map(m.targets, fn(t) {
+      list.map(t.slots, fn(s) { t.hull <> "/" <> s })
+    })
   use <- guard(
     list.length(list.unique(pairs)) == list.length(pairs),
     "module \"" <> m.id <> "\" targets the same (hull, slot) pair twice",
@@ -191,8 +210,9 @@ fn module_decoder() -> decode.Decoder(Module) {
     decode.list(target_decoder()),
   )
   // The flat spelling — top-level `hull`/`slot`/`patches` — is shorthand for a
-  // single target, so a module that exists in exactly one place on one hull
-  // does not have to write a one-element list. `targets` is canonical.
+  // single target claiming one slot, so a module that exists in exactly one
+  // place on one hull does not have to write a one-element list. `targets` is
+  // canonical; `slot` becomes a one-element `slots` list.
   use flat_hull <- decode.optional_field("hull", "", decode.string)
   use flat_slot <- decode.optional_field("slot", "", decode.string)
   use flat_patches <- decode.optional_field(
@@ -202,7 +222,7 @@ fn module_decoder() -> decode.Decoder(Module) {
   )
   let all = case targets, flat_hull, flat_slot {
     [], "", _ | [], _, "" -> []
-    [], h, s -> [Target(hull: h, slot: s, patches: flat_patches)]
+    [], h, s -> [Target(hull: h, slots: [s], patches: flat_patches)]
     ts, _, _ -> ts
   }
   decode.success(Module(
@@ -218,13 +238,13 @@ fn module_decoder() -> decode.Decoder(Module) {
 
 fn target_decoder() -> decode.Decoder(Target) {
   use hull_id <- decode.field("hull", decode.string)
-  use slot <- decode.field("slot", decode.string)
+  use slots <- decode.field("slots", decode.list(decode.string))
   use patches <- decode.optional_field(
     "patches",
     [],
     decode.list(patch_decoder()),
   )
-  decode.success(Target(hull: hull_id, slot: slot, patches: patches))
+  decode.success(Target(hull: hull_id, slots: slots, patches: patches))
 }
 
 fn patch_decoder() -> decode.Decoder(Patch) {

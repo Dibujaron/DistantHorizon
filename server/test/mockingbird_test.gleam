@@ -120,12 +120,16 @@ pub fn every_shipped_module_resolves_in_its_slot_test() {
   })
   |> list.each(fn(entry) {
     let #(id, target) = entry
+    // Every module shipped today claims exactly one slot per target, so
+    // installing it under the first (only) one is enough to prove the
+    // target's patch lands in bounds.
+    let assert [slot_id, ..] = target.slots
     let swapped =
       loadout.Loadout(
         ..base,
         modules: list.map(base.modules, fn(e) {
-          case e.0 == target.slot {
-            True -> #(target.slot, id)
+          case e.0 == slot_id {
+            True -> #(slot_id, id)
             False -> e
           }
         }),
@@ -133,7 +137,7 @@ pub fn every_shipped_module_resolves_in_its_slot_test() {
     // `list.map` only REPLACES: a module whose slot has no default entry
     // would leave the loadout identical to the default, and the resolve
     // below would pass without ever installing the module under test.
-    assert list.contains(swapped.modules, #(target.slot, id))
+    assert list.contains(swapped.modules, #(slot_id, id))
     let assert Ok(_) = loadout.resolve(reg, h, mods, parts, swapped)
   })
 }

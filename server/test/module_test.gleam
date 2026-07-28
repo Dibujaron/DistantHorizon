@@ -25,7 +25,7 @@ pub fn decode_module_document_test() {
   assert dict.get(m.requires, "power") == Ok(2)
   let assert [t] = m.targets
   assert t.hull == "testhull"
-  assert t.slot == "cockpit"
+  assert t.slots == ["cockpit"]
   let assert [p] = t.patches
   assert p.deck == 0
   assert p.x == 6
@@ -82,7 +82,7 @@ pub fn load_all_walks_per_hull_subdirectories_test() {
   let assert Ok(m) = dict.get(modules, "testhull.cockpit.stock")
   let assert Ok(t) = module.target_for(m, "testhull", "cockpit")
   assert t.hull == "testhull"
-  assert t.slot == "cockpit"
+  assert t.slots == ["cockpit"]
 }
 
 pub fn load_all_rejects_duplicate_ids_across_hull_subdirectories_test() {
@@ -140,13 +140,13 @@ pub fn a_module_targets_many_hulls_and_slots_test() {
     "{ \"schema\": 1, \"id\": \"rijay.cabin.standard\", \"name\": \"Cabin\",
        \"mass\": 3.0, \"provides\": { \"berths\": 1 },
        \"targets\": [
-         { \"hull\": \"mockingbird\", \"slot\": \"cabin_fore_a\",
+         { \"hull\": \"mockingbird\", \"slots\": [\"cabin_fore_a\"],
            \"patches\": [ { \"deck\": 0, \"x\": 6, \"y\": 5,
                             \"grid\": [\"###\", \"#d#\", \"###\"] } ] },
-         { \"hull\": \"mockingbird\", \"slot\": \"cabin_fore_b\",
+         { \"hull\": \"mockingbird\", \"slots\": [\"cabin_fore_b\"],
            \"patches\": [ { \"deck\": 0, \"x\": 6, \"y\": 7,
                             \"grid\": [\"###\", \"#d#\", \"###\"] } ] },
-         { \"hull\": \"sparrow\", \"slot\": \"cabin\",
+         { \"hull\": \"sparrow\", \"slots\": [\"cabin\"],
            \"patches\": [ { \"deck\": 0, \"x\": 2, \"y\": 2,
                             \"grid\": [\"###\", \"#d#\", \"###\"] } ] }
        ] }"
@@ -170,7 +170,7 @@ pub fn the_flat_spelling_decodes_as_one_target_test() {
   let assert Ok(m) = module.decode(doc)
   let assert [t] = m.targets
   assert t.hull == "mockingbird"
-  assert t.slot == "hold"
+  assert t.slots == ["hold"]
   assert list.length(t.patches) == 1
 }
 
@@ -183,7 +183,7 @@ pub fn duplicate_targets_are_rejected_test() {
   let doc =
     "{ \"schema\": 1, \"id\": \"a\", \"name\": \"A\",
        \"targets\": [
-         { \"hull\": \"h\", \"slot\": \"s\", \"patches\": [] },
-         { \"hull\": \"h\", \"slot\": \"s\", \"patches\": [] } ] }"
+         { \"hull\": \"h\", \"slots\": [\"s\"], \"patches\": [] },
+         { \"hull\": \"h\", \"slots\": [\"s\"], \"patches\": [] } ] }"
   let assert Error(_) = module.decode(doc)
 }

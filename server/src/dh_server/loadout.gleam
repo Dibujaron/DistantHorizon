@@ -103,7 +103,7 @@ pub fn resolve(
     deckplan.from_rows(reg, h.decks)
     |> result.map_error(fn(e) { "invalid_hull_plan:" <> e }),
   )
-  use _ <- result.try(check_bounds(reg, base, fitted))
+  use _ <- result.try(check_bounds(reg, h, base, fitted))
   use plan <- result.try(
     deckplan.from_rows(reg, stamp_all(reg, h.decks, fitted))
     |> result.map_error(fn(e) { "invalid_resolved_plan:" <> e }),
@@ -144,10 +144,6 @@ fn lookup_modules(
         hull.slot_by_id(h, slot_id)
         |> result.replace_error("slot_not_on_hull:" <> slot_id),
       )
-      use <- guard(
-        !list.any(acc, fn(a) { { a.0 }.id == slot_id }),
-        "duplicate_slot:" <> slot_id,
-      )
       use m <- result.try(
         dict.get(modules, module_id)
         |> result.replace_error("unknown_module:" <> module_id),
@@ -159,7 +155,14 @@ fn lookup_modules(
         module.target_for(m, h.id, slot_id)
         |> result.replace_error("module_not_drawn_for_slot:" <> module_id),
       )
-      Ok(list.append(acc, [#(slot, m, target)]))
+      // A multi-slot target occupies its WHOLE slot set, not just the one it
+      // was named under — a bigger room absorbs the one next door, so none of
+      // its slots are free for another module either.
+      let claimed = list.flat_map(acc, fn(a) { { a.2 }.slots })
+      case list.find(target.slots, fn(id) { list.contains(claimed, id) }) {
+        Ok(dup) -> Error("duplicate_slot:" <> dup)
+        Error(Nil) -> Ok(list.append(acc, [#(slot, m, target)]))
+      }
     },
   )
 }
@@ -250,17 +253,25 @@ fn merge_all(
   })
 }
 
-/// Every non-void overlay cell must land on a hull cell carrying that slot's
-/// digit — the cheap bounds check that stops a module scribbling on hull
-/// structure. This reads the AUTHORED hull, never the previously resolved
-/// plan, so a refit always validates against the same fixed structure.
+/// Every non-void overlay cell must land on a hull cell carrying one of the
+/// target's claimed slots' digits — the cheap bounds check that stops a
+/// module scribbling on hull structure. Multiple slots widen the set of
+/// digits a cell may carry, never the geometry: claiming a slot does not
+/// license writing anywhere outside the digits that back it. This reads the
+/// AUTHORED hull, never the previously resolved plan, so a refit always
+/// validates against the same fixed structure.
 fn check_bounds(
   reg: glyphs.Registry,
+  h: Hull,
   base: DeckPlan,
   fitted: List(#(Slot, Module, module.Target)),
 ) -> Result(Nil, String) {
   list.try_fold(fitted, Nil, fn(_, entry) {
-    let #(slot, m, target) = entry
+    let #(_, m, target) = entry
+    let digits =
+      list.filter_map(target.slots, fn(id) {
+        hull.slot_by_id(h, id) |> result.map(fn(s) { s.digit })
+      })
     list.try_fold(target.patches, Nil, fn(_, p) {
       case deckplan.deck_at(base, p.deck) {
         Error(Nil) -> Error("patch_bad_deck:" <> m.id)
@@ -270,9 +281,13 @@ fn check_bounds(
             case deckplan.cell_at_xy(g, p.x + tx, p.y + ty) {
               Error(Nil) -> Error("out_of_slot_bounds:" <> m.id)
               Ok(cell) ->
-                case cell.slot == Some(slot.digit) {
-                  True -> Ok(Nil)
-                  False -> Error("out_of_slot_bounds:" <> m.id)
+                case cell.slot {
+                  Some(digit) ->
+                    case list.contains(digits, digit) {
+                      True -> Ok(Nil)
+                      False -> Error("out_of_slot_bounds:" <> m.id)
+                    }
+                  _ -> Error("out_of_slot_bounds:" <> m.id)
                 }
             }
           })
