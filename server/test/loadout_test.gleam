@@ -560,6 +560,13 @@ const escaping_module_doc = "{
     \"patches\": [ { \"deck\": 0, \"x\": 0, \"y\": 1,
                      \"grid\": [\"      \", \" p  p \", \"      \"] } ] } ] }"
 
+// Claims bay_a plus a slot id that is not on the hull at all — a typo.
+const typo_module_doc = "{
+  \"schema\": 1, \"id\": \"m.typo\", \"name\": \"Typo\", \"mass\": 0.0,
+  \"targets\": [ { \"hull\": \"testhull\", \"slots\": [\"bay_a\", \"nope\"],
+    \"patches\": [ { \"deck\": 0, \"x\": 0, \"y\": 1,
+                     \"grid\": [\"      \", \" p  p \", \"      \"] } ] } ] }"
+
 fn two_slot_fit(
   module_docs: List(String),
   lo: loadout.Loadout,
@@ -612,4 +619,17 @@ pub fn a_multi_slot_patch_still_cannot_escape_its_slots_test() {
     ])
   let assert Error(e) = two_slot_fit([escaping_module_doc], lo)
   assert e == "out_of_slot_bounds:m.escape"
+}
+
+/// A mistyped id in a multi-slot target's `slots` must be loud, not silently
+/// dropped from the digit set it backs — same reason string as naming a bad
+/// slot in the loadout itself, since either way it is an id that is not on
+/// the hull.
+pub fn a_typo_in_a_multi_slot_targets_slots_is_rejected_test() {
+  let lo =
+    loadout.Loadout(hull: "testhull", modules: [#("bay_a", "m.typo")], parts: [
+      #("engine_center", "test.engine"),
+    ])
+  let assert Error(e) = two_slot_fit([typo_module_doc], lo)
+  assert e == "slot_not_on_hull:nope"
 }

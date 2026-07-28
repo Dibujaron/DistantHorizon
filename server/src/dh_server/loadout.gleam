@@ -155,6 +155,18 @@ fn lookup_modules(
         module.target_for(m, h.id, slot_id)
         |> result.replace_error("module_not_drawn_for_slot:" <> module_id),
       )
+      // Every slot the target claims must resolve on the hull, not just the
+      // one it was named under — a mistyped id in a multi-slot `slots` list
+      // is a content bug, and this is the only place with the hull in hand to
+      // catch it. Once this passes, `check_bounds`'s digit lookup for this
+      // target can never silently drop an id.
+      use _ <- result.try(
+        list.try_fold(target.slots, Nil, fn(_, id) {
+          hull.slot_by_id(h, id)
+          |> result.replace_error("slot_not_on_hull:" <> id)
+          |> result.map(fn(_) { Nil })
+        }),
+      )
       // A multi-slot target occupies its WHOLE slot set, not just the one it
       // was named under — a bigger room absorbs the one next door, so none of
       // its slots are free for another module either.
@@ -268,6 +280,11 @@ fn check_bounds(
 ) -> Result(Nil, String) {
   list.try_fold(fitted, Nil, fn(_, entry) {
     let #(_, m, target) = entry
+    // `filter_map` rather than an assumed-total `map`: it reads as if a slot
+    // id could be silently dropped, but `lookup_modules` already rejected any
+    // target whose `slots` names an id off the hull (`slot_not_on_hull`), so
+    // by the time `fitted` reaches here every lookup below is guaranteed to
+    // hit — this can never actually drop an id.
     let digits =
       list.filter_map(target.slots, fn(id) {
         hull.slot_by_id(h, id) |> result.map(fn(s) { s.digit })
