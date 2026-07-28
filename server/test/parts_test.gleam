@@ -25,8 +25,8 @@ pub fn shipped_parts_load_test() {
 
 /// Flight is EMERGENT, not authored: masses say what each thing is and the
 /// engine says what it pushes with, so `accel = thrust / mass` falls out of
-/// the loadout. Nothing here is back-solved from a target — 96.0 of hull,
-/// 24.0 of default modules and an 8.0 Consol patch give 128.0, and 5000 N of
+/// the loadout. Nothing here is back-solved from a target — 73.0 of hull,
+/// 47.0 of default modules and an 8.0 Consol patch give 128.0, and 5000 N of
 /// thrust over that is what she accelerates at. Swapping to the heavier Rijay
 /// original moves the total to 132.0, which is exactly why an engine's mass
 /// has to be real: it is one of the things the swap trades.

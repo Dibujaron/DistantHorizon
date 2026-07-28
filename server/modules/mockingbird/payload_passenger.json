@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "id": "mockingbird.payload.passenger",
+  "hull": "mockingbird",
+  "slot": "payload",
+  "name": "Passenger accommodation",
+  "mass": 14.0,
+  "provides": { "passengers": 6 },
+  "requires": { "power": 3 },
+  "patches": [
+    {
+      "deck": 0, "x": 3, "y": 12,
+      "grid": [
+        "#######=###########=####",
+        "we        e  t  e     ew",
+        "#                      #",
+        "#                      #",
+        "wt        e  t  e     tw",
+        "#                      #",
+        "#                      #",
+        "we                    ew",
+        "####=###########=#######",
+        "####=##########   ######",
+        "wd   ##d  e   = . =e  dw",
+        "#    ##########   ######",
+        "#    ##########   ######",
+        "wd   ##d      = . =   dw",
+        "#    ##       #   #    #",
+        "#    ##       #   #    #",
+        "wd  e##d  e  e# . #e  dw",
+        "###############   ######"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "id": "mockingbird.commons.crew",
+  "hull": "mockingbird",
+  "slot": "crew_commons",
+  "name": "Crew commons",
+  "mass": 4.0,
+  "provides": { "galley": 1 },
+  "requires": { "power": 1 },
+  "patches": [
+    {
+      "deck": 0, "x": 5, "y": 9,
+      "grid": [
+        "#######=####",
+        "we  t     ew",
+        "#          #",
+        "#          #",
+        "#e  t  e   #",
+        "#          #",
+        "#          #",
+        "=          =",
+        "#=##########"
+      ]
+    }
+  ]
+}

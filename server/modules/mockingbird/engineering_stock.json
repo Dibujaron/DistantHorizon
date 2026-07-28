@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "id": "mockingbird.engineering.stock",
+  "hull": "mockingbird",
+  "slot": "engineering",
+  "name": "Stock engine room",
+  "mass": 6.0,
+  "provides": { "engine_bay": 1 },
+  "requires": { "power": 2 },
+  "patches": [
+    {
+      "deck": 0, "x": 5, "y": 18,
+      "grid": [
+        "#########",
+        "=       =",
+        "#       #",
+        "#       #",
+        "#       #",
+        "#       #"
+      ]
+    }
+  ]
+}
