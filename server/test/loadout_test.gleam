@@ -303,7 +303,7 @@ pub fn a_module_in_the_wrong_slot_is_rejected_test() {
                           \"grid\": [\"   \", \" p \", \"   \"] } ] }",
     )
   let assert Error(e) = fit_of([m], bay_loadout("m.hold"))
-  assert e == "module_wrong_slot:m.hold"
+  assert e == "module_not_drawn_for_slot:m.hold"
 }
 
 pub fn an_unknown_mount_and_an_unknown_part_are_rejected_test() {

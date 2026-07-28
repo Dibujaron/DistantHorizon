@@ -106,19 +106,23 @@ pub fn every_shipped_module_resolves_in_its_slot_test() {
   let base = loadout.default_for(h)
   // Each shipped module, installed alone in its own slot over the default fit,
   // must resolve — the cheapest guard against a patch drifting off its slot.
-  // Filtered to this hull: modules are authored per (hull, slot), so a Sparrow
-  // or Finch module arriving later would otherwise fail here as
-  // `module_wrong_hull` rather than being skipped.
+  // Filtered to this hull: a module is authored per (hull, slot) target, so a
+  // Sparrow or Finch module arriving later would otherwise fail here as
+  // `module_not_drawn_for_slot` rather than being skipped.
   dict.to_list(mods)
-  |> list.filter(fn(entry) { { entry.1 }.hull == "mockingbird" })
+  |> list.filter(fn(entry) {
+    list.any({ entry.1 }.targets, fn(t) { t.hull == "mockingbird" })
+  })
   |> list.each(fn(entry) {
     let #(id, m) = entry
+    let assert Ok(target) =
+      list.find(m.targets, fn(t) { t.hull == "mockingbird" })
     let swapped =
       loadout.Loadout(
         ..base,
         modules: list.map(base.modules, fn(e) {
-          case e.0 == m.slot {
-            True -> #(m.slot, id)
+          case e.0 == target.slot {
+            True -> #(target.slot, id)
             False -> e
           }
         }),
@@ -126,7 +130,7 @@ pub fn every_shipped_module_resolves_in_its_slot_test() {
     // `list.map` only REPLACES: a module whose slot has no default entry
     // would leave the loadout identical to the default, and the resolve
     // below would pass without ever installing the module under test.
-    assert list.contains(swapped.modules, #(m.slot, id))
+    assert list.contains(swapped.modules, #(target.slot, id))
     let assert Ok(_) = loadout.resolve(reg, h, mods, parts, swapped)
   })
 }

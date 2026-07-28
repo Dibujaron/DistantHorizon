@@ -67,7 +67,8 @@ pub fn default_for(h: Hull) -> Loadout {
 ///   - `slot_not_on_hull:<slot id>` / `mount_not_on_hull:<mount id>`
 ///   - `duplicate_mount:<mount id>` — two parts named the same mount
 ///   - `unknown_module:<module id>` / `unknown_part:<part id>`
-///   - `module_wrong_hull:<module id>` / `module_wrong_slot:<module id>`
+///   - `module_not_drawn_for_slot:<module id>` — the module has no target for
+///     this (hull, slot) pair
 ///   - `mount_wrong_kind:<mount id>` — an engine on a gun mount
 ///   - `loadout_wrong_hull:<hull id>` — the loadout is for another hull
 ///   - `zero_mass` — the fit's total mass is not positive, so flight numbers
@@ -133,25 +134,34 @@ fn lookup_modules(
   h: Hull,
   modules: Dict(String, Module),
   lo: Loadout,
-) -> Result(List(#(Slot, Module)), String) {
-  list.try_fold(lo.modules, [], fn(acc: List(#(Slot, Module)), entry) {
-    let #(slot_id, module_id) = entry
-    use slot <- result.try(
-      hull.slot_by_id(h, slot_id)
-      |> result.replace_error("slot_not_on_hull:" <> slot_id),
-    )
-    use <- guard(
-      !list.any(acc, fn(a) { { a.0 }.id == slot_id }),
-      "duplicate_slot:" <> slot_id,
-    )
-    use m <- result.try(
-      dict.get(modules, module_id)
-      |> result.replace_error("unknown_module:" <> module_id),
-    )
-    use <- guard(m.hull == h.id, "module_wrong_hull:" <> module_id)
-    use <- guard(m.slot == slot_id, "module_wrong_slot:" <> module_id)
-    Ok(list.append(acc, [#(slot, m)]))
-  })
+) -> Result(List(#(Slot, Module, module.Target)), String) {
+  list.try_fold(
+    lo.modules,
+    [],
+    fn(acc: List(#(Slot, Module, module.Target)), entry) {
+      let #(slot_id, module_id) = entry
+      use slot <- result.try(
+        hull.slot_by_id(h, slot_id)
+        |> result.replace_error("slot_not_on_hull:" <> slot_id),
+      )
+      use <- guard(
+        !list.any(acc, fn(a) { { a.0 }.id == slot_id }),
+        "duplicate_slot:" <> slot_id,
+      )
+      use m <- result.try(
+        dict.get(modules, module_id)
+        |> result.replace_error("unknown_module:" <> module_id),
+      )
+      // One reason, not two: a module that is not drawn for this hull and this
+      // slot has no overlay to stamp, and the player cannot tell the
+      // difference between "wrong hull" and "wrong slot" anyway.
+      use target <- result.try(
+        module.target_for(m, h.id, slot_id)
+        |> result.replace_error("module_not_drawn_for_slot:" <> module_id),
+      )
+      Ok(list.append(acc, [#(slot, m, target)]))
+    },
+  )
 }
 
 fn lookup_parts(
@@ -195,7 +205,7 @@ fn lookup_parts(
 /// linking a gun to any sufficient gun room, not to one specific partner.
 fn check_tags(
   h: Hull,
-  fitted: List(#(Slot, Module)),
+  fitted: List(#(Slot, Module, module.Target)),
   mounted: List(#(Mount, Part)),
 ) -> Result(Nil, String) {
   let provides =
@@ -247,11 +257,11 @@ fn merge_all(
 fn check_bounds(
   reg: glyphs.Registry,
   base: DeckPlan,
-  fitted: List(#(Slot, Module)),
+  fitted: List(#(Slot, Module, module.Target)),
 ) -> Result(Nil, String) {
   list.try_fold(fitted, Nil, fn(_, entry) {
-    let #(slot, m) = entry
-    list.try_fold(m.patches, Nil, fn(_, p) {
+    let #(slot, m, target) = entry
+    list.try_fold(target.patches, Nil, fn(_, p) {
       case deckplan.deck_at(base, p.deck) {
         Error(Nil) -> Error("patch_bad_deck:" <> m.id)
         Ok(g) ->
@@ -296,13 +306,13 @@ fn patch_tiles(reg: glyphs.Registry, p: Patch) -> List(#(Int, Int)) {
 fn stamp_all(
   reg: glyphs.Registry,
   decks: List(#(String, List(String))),
-  fitted: List(#(Slot, Module)),
+  fitted: List(#(Slot, Module, module.Target)),
 ) -> List(#(String, List(String))) {
   list.index_map(decks, fn(deck, index) {
     let #(name, rows) = deck
     let patches =
       list.flat_map(fitted, fn(f) {
-        list.filter({ f.1 }.patches, fn(p) { p.deck == index })
+        list.filter({ f.2 }.patches, fn(p) { p.deck == index })
       })
     #(name, list.fold(patches, rows, fn(acc, p) { stamp(reg, acc, p) }))
   })
@@ -392,7 +402,7 @@ fn set_at(
 
 fn total_mass(
   h: Hull,
-  fitted: List(#(Slot, Module)),
+  fitted: List(#(Slot, Module, module.Target)),
   mounted: List(#(Mount, Part)),
 ) -> Float {
   let modules = list.fold(fitted, 0.0, fn(t, f) { t +. { f.1 }.mass })
