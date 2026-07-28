@@ -7,14 +7,14 @@ import simplifile
 
 // Reuses quest_schema_ffi's validate/2 — it is already schema-agnostic
 // (Dynamic schema, Dynamic value in; Result(Nil, String) out), so world and
-// ship-class documents ride the same jesse wiring quests use rather than
+// hull documents ride the same jesse wiring quests use rather than
 // standing up a second FFI entry point.
 @external(erlang, "quest_schema_ffi", "validate")
 fn validate_with_schema(schema: Dynamic, value: Dynamic) -> Result(Nil, String)
 
 const world_schema_path = "schemas/world.schema.json"
 
-const ship_class_schema_path = "schemas/ship_class.schema.json"
+const hull_schema_path = "schemas/hull.schema.json"
 
 const station_class_schema_path = "schemas/station_class.schema.json"
 
@@ -26,7 +26,15 @@ const glyphs_path = "glyphs.json"
 
 const worlds_dir = "worlds"
 
-const classes_dir = "shipclasses"
+const hulls_dir = "shipclasses"
+
+const module_schema_path = "schemas/module.schema.json"
+
+const part_schema_path = "schemas/part.schema.json"
+
+const modules_dir = "modules"
+
+const parts_dir = "parts"
 
 fn read_json(path: String) -> Dynamic {
   let assert Ok(text) = simplifile.read(path)
@@ -45,16 +53,39 @@ fn json_files(dir: String) -> List(String) {
   |> list.sort(string.compare)
 }
 
+/// Every `*.json` one level down from `dir`, as full paths. Modules are filed
+/// per hull (`server/modules/<hull>/<id>.json`), so a flat listing would find
+/// nothing but the `.gitkeep` — this mirrors `module.load_all`'s own walk.
+fn nested_json_files(dir: String) -> List(String) {
+  let assert Ok(entries) = simplifile.read_directory(dir)
+  entries
+  |> list.sort(string.compare)
+  |> list.flat_map(fn(entry) {
+    let path = dir <> "/" <> entry
+    case simplifile.is_directory(path) {
+      Ok(True) -> list.map(json_files(path), fn(name) { path <> "/" <> name })
+      _ -> []
+    }
+  })
+}
+
 fn assert_all_validate(schema_path: String, dir: String) -> Nil {
+  assert_paths_validate(
+    schema_path,
+    json_files(dir)
+      |> list.map(fn(f) { dir <> "/" <> f }),
+  )
+}
+
+fn assert_paths_validate(schema_path: String, paths: List(String)) -> Nil {
   let schema = read_json(schema_path)
-  let files = json_files(dir)
   // Guards against a typo'd glob silently validating nothing.
-  assert files != []
-  list.each(files, fn(file) {
-    let value = read_json(dir <> "/" <> file)
+  assert paths != []
+  list.each(paths, fn(path) {
+    let value = read_json(path)
     case validate_with_schema(schema, value) {
       Ok(Nil) -> Nil
-      Error(message) -> panic as { file <> ": " <> message }
+      Error(message) -> panic as { path <> ": " <> message }
     }
   })
 }
@@ -63,12 +94,20 @@ pub fn all_worlds_match_schema_test() {
   assert_all_validate(world_schema_path, worlds_dir)
 }
 
-pub fn all_ship_classes_match_schema_test() {
-  assert_all_validate(ship_class_schema_path, classes_dir)
+pub fn all_hulls_match_schema_test() {
+  assert_all_validate(hull_schema_path, hulls_dir)
 }
 
 pub fn all_station_classes_match_schema_test() {
   assert_all_validate(station_class_schema_path, station_classes_dir)
+}
+
+pub fn all_modules_match_schema_test() {
+  assert_paths_validate(module_schema_path, nested_json_files(modules_dir))
+}
+
+pub fn all_parts_match_schema_test() {
+  assert_all_validate(part_schema_path, parts_dir)
 }
 
 pub fn glyph_registry_matches_schema_test() {
@@ -86,11 +125,48 @@ pub fn world_rejects_a_one_element_berth_test() {
   assert validate_with_schema(schema, invalid_world) != Ok(Nil)
 }
 
-pub fn ship_class_rejects_an_unknown_handling_value_test() {
-  let schema = read_json(ship_class_schema_path)
-  let invalid_class =
+pub fn hull_rejects_an_unknown_handling_value_test() {
+  let schema = read_json(hull_schema_path)
+  let hull_doc = fn(handling: String) {
     parse_json(
-      "{\"schema\": 1, \"id\": \"x\", \"name\": \"X\", \"grid\": {\"width\": 1, \"height\": 1}, \"walkable\": [\"#\"], \"rooms\": [], \"consoles\": [], \"spawn_tile\": [0, 0], \"cargo\": {\"capacity\": 1, \"handling\": \"magnets\"}}",
+      "{\"schema\": 3, \"id\": \"x\", \"name\": \"X\", \"decks\": [{\"name\": \"M\", \"grid\": [\"   \", \" Q \", \"   \"]}], \"cargo\": {\"capacity\": 1, \"handling\": \""
+      <> handling
+      <> "\"}}",
     )
-  assert validate_with_schema(schema, invalid_class) != Ok(Nil)
+  }
+  // The control: the same document with a legal handling value passes, so the
+  // refusal below is about `handling` and not about the rest of the document.
+  let assert Ok(Nil) = validate_with_schema(schema, hull_doc("breakbulk"))
+  assert validate_with_schema(schema, hull_doc("magnets")) != Ok(Nil)
+}
+
+/// The whole point of `additionalProperties: false`: the decoder would ignore
+/// a misspelled `rows` and silently stamp nothing.
+pub fn module_rejects_a_misspelled_patch_field_test() {
+  let schema = read_json(module_schema_path)
+  let invalid_module =
+    parse_json(
+      "{\"schema\": 1, \"id\": \"h.s.m\", \"hull\": \"h\", \"slot\": \"s\", \"name\": \"M\", \"patches\": [{\"deck\": 0, \"x\": 0, \"y\": 0, \"rows\": [\"   \"]}]}",
+    )
+  assert validate_with_schema(schema, invalid_module) != Ok(Nil)
+}
+
+/// Also proves the `$defs` tag ref actually resolves under jesse rather than
+/// being silently skipped, which would make every tag object unvalidated.
+pub fn part_rejects_a_non_integer_tag_amount_test() {
+  let schema = read_json(part_schema_path)
+  let invalid_part =
+    parse_json(
+      "{\"schema\": 1, \"id\": \"p\", \"name\": \"P\", \"kind\": \"engine\", \"size\": \"m\", \"provides\": {\"engine\": \"one\"}}",
+    )
+  assert validate_with_schema(schema, invalid_part) != Ok(Nil)
+}
+
+pub fn part_rejects_an_unknown_size_test() {
+  let schema = read_json(part_schema_path)
+  let invalid_part =
+    parse_json(
+      "{\"schema\": 1, \"id\": \"p\", \"name\": \"P\", \"kind\": \"engine\", \"size\": \"xl\"}",
+    )
+  assert validate_with_schema(schema, invalid_part) != Ok(Nil)
 }

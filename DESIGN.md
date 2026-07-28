@@ -492,11 +492,31 @@ The hull is the fixed part; what's inside is the loadout.
 - **A module is a stamp on the plan and a part on the hull.** Installing a module rewrites its
   slot's cells in the deck plan — the same per-cell vocabulary hull authors use — so a slot
   *is* racks when racks are installed and cabins when it's cabins, and walking your own deck
-  tells you what she's rigged for. A module's interior is validated at module-design time (its
-  cells are self-consistent; its doors land where its placement constraints promise), so
-  loadout validation stays tag matching, never geometry analysis: the hull fixes the corridor
-  skeleton and the slot openings; the module guarantees its own insides. (This conservative
-  split is the working model, not settled — see Open questions.)
+  tells you what she's rigged for. An interior module is **hand-authored against one specific
+  hull and slot**: it is an overlay grid drawn in that hull's own coordinate space, where a
+  void cell passes the hull's tile through and any other cell overwrites it. That is the
+  decision that killed the tempting alternative — shape-agnostic modules that rotate and fit
+  any room of the right size — because reproducing the Mockingbird's bespoke quarters that way
+  needs a configuration language rich enough to be a worse re-encoding of the deck plan it is
+  trying to draw. Per-hull authoring costs a few small maps per hull and buys hand-quality
+  interiors with **zero** shape-matching machinery: the doors line up because a human drew
+  them lining up, so connectivity is guaranteed at authoring time and loadout validation never
+  does reachability or geometry analysis. A module rewrites its slot and nothing else — it may
+  add walls and doors *within* the slot, which is how staterooms get carved out of an open bay,
+  but the hull owns every corridor and all structure outside the slots. Slot membership is
+  marked per tile, by a digit in the tile's SW corner, so slot regions are exactly as fluid as
+  the hull author draws them and there is no rectangle list anywhere.
+- **What survives as cross-hull matching is a tag budget, not a shape.** Legality is one rule
+  — for every tag, pooled `provides` across hull, modules and parts must cover pooled
+  `requires` — plus cheap structural checks (one module per slot, the overlay lands inside its
+  slot, the mount's kind and size fit the part). Power is the flagship case: the hull's reactor
+  provides it, every powered module demands it, so a big gun costs a cargo rack's worth and
+  loadouts are tradeoffs by construction. Tags are open strings the engine only compares and
+  sums, so new content invents new currencies with no code — `gun_control` is how a gun binds
+  to *some* sufficient gun room rather than one specific partner. Exterior **parts**, unlike
+  interiors, genuinely are shared across hulls, and mass is pooled the same way: flight
+  performance is the fitted engines' thrust and torque over the fit's total mass, so the hull
+  you chose and every module you installed change how she flies. See docs/modules.md.
 - **Exteriors decompose the same way.** A hull sprite is the parts-vocabulary composition
   (M3.5's pipeline) plus **mount points**, and exterior-visible modules — engines above all,
   the atmospheric fin package, eventually hardpoint weapons — contribute their own parts to
@@ -504,7 +524,7 @@ The hull is the fixed part; what's inside is the loadout.
   *visible* between the two Rijay originals, and swapping it out has to show on the hull.
   Parts reuse across hulls within a manufacturer's design language (the Mockingbird's engines
   can be the Finch's engines), so each new hull costs less as the parts library grows. Engine
-  modules also carry the flight stats — thrust and handling move out of global constants and
+  parts also carry the flight stats — thrust and torque have moved out of global constants and
   into the loadout, where they belong.
 - Two constraints make slots satisfying instead of a menu:
   - **Breadth:** enough module types, tiers, and per-module configuration options that a
@@ -789,12 +809,6 @@ what makes the game developable by agents rather than merely reviewable.
   leaderboard enough at launch?
 - **Module catalog:** what's the actual module list, tier structure, and per-module config
   surface — and how do we tune for "taste over solvedness" (see Ship customization) in practice?
-- **How much interior can a module rewrite?** The working model (see Ship customization) is
-  conservative: the hull author designates modulable slot regions, the fixed remainder
-  guarantees connectivity, and a module only rewrites its own slot. It'd be slicker if a
-  module could modify the interior in *any* way — but that endangers other modules' ability
-  to connect, and it forces a real definition of "corridor," which is extra-vague right now.
-  Either way the hull author has to mark what's modulable. Hash out with the M4 build.
 - **Exterior composition at runtime:** module swaps must show on the hull (see Ship
   customization). V1 direction: the client layers pre-rendered part sprites at hull mount
   points — it's already fully data-driven — while the full composer stays an authoring-time

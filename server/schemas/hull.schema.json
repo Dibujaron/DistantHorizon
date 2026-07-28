@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-06/schema#",
-  "$id": "https://distanthorizon.dev/schemas/ship_class.schema.json",
-  "title": "Ship class document",
-  "description": "A hull's multi-deck plan (deck-plan format v3, docs/deckplan-format.md) plus the cargo characteristics M3 trading needs. Derived from the Gleam decoders in server/src/dh_server/shipclass.gleam (ship_class_decoder/cargo_decoder/handling_decoder) and server/src/dh_server/deckplan.gleam (decoder, embedded at the top level via decode.then) — those decoders are the source of truth; this schema is documentation and a typo-catcher, not a substitute for them. additionalProperties is false at every object level even though the decoders themselves ignore unknown fields, precisely so this schema can catch typos the decoders would silently swallow.",
+  "$id": "https://distanthorizon.dev/schemas/hull.schema.json",
+  "title": "Hull document",
+  "description": "An authored HULL (server/shipclasses/*.json, schema 3): its multi-deck plan kept as raw text rows (deck-plan format v3, docs/deckplan-format.md), the slots modules overlay, the mounts parts hang on, its dry mass, its capability tags and the loadout it ships with (docs/modules.md). Derived from the Gleam decoders in server/src/dh_server/hull.gleam (hull_decoder/cargo_decoder/default_loadout_decoder/tags_decoder) — those decoders are the source of truth; this schema is documentation and a typo-catcher, not a substitute for them. A hull is NOT a resolved ship class: shipclass.gleam decodes the wire form loadout.resolve bakes out of a hull, which carries a required flight block a hull document must never have. additionalProperties is false at every object level even though the decoders themselves ignore unknown fields, precisely so this schema can catch typos the decoders would silently swallow.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -48,6 +48,37 @@
     "dock_standoff": {
       "type": "number",
       "description": "Optional field (decode.optional_field, default 20.0). How far this hull's centre stands off the berth mooring line, in tiles (= metres), along the berth's outward normal — the per-ship half of the moored sim pose (issue #31). Authored per class since wide hulls stand off further than narrow ones."
+    },
+    "mass": {
+      "type": "number",
+      "description": "Optional field (decode.optional_field, default 100.0; server/src/dh_server/hull.gleam). Dry structural mass — total fit mass = this + every fitted module and part (docs/modules.md, M4)."
+    },
+    "provides": { "$ref": "#/$defs/tags" },
+    "requires": { "$ref": "#/$defs/tags" },
+    "mounts": {
+      "type": "array",
+      "description": "Optional field (decode.optional_field, default []). Exterior attach points parts hang on (docs/modules.md, M4).",
+      "items": { "$ref": "#/$defs/mount" }
+    },
+    "slots": {
+      "type": "array",
+      "description": "Optional field (decode.optional_field, default []). Modulable interior regions (docs/modules.md, M4). A tile joins a slot by carrying that slot's hex digit in its SW corner; everything without a digit is fixed hull structure no module may overwrite.",
+      "items": { "$ref": "#/$defs/slot" }
+    },
+    "default_loadout": {
+      "type": "object",
+      "description": "Optional field (decode.optional_field). The loadout this hull ships with: slot id -> module id, mount id -> part id.",
+      "additionalProperties": false,
+      "properties": {
+        "modules": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "parts": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
     }
   },
   "$defs": {
@@ -97,6 +128,47 @@
           "items": { "type": "integer" },
           "minItems": 2,
           "maxItems": 2
+        }
+      }
+    },
+    "tags": {
+      "type": "object",
+      "description": "A {tag: amount} object. Tags are open strings the engine only compares and sums (server/src/dh_server/hull.gleam tags_decoder).",
+      "additionalProperties": { "type": "integer" }
+    },
+    "slot": {
+      "type": "object",
+      "description": "One modulable interior region. Both `digit` and `id` must be unique across a hull's slots — enforced by hull.validate, not by this schema: JSON Schema draft-06 has no way to say \"this property is unique across the items of an array\".",
+      "additionalProperties": false,
+      "required": ["digit", "id", "name"],
+      "properties": {
+        "digit": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 15,
+          "description": "The hex digit hull tiles carry in their SW corner to join this slot (range enforced by the Gleam decoder's validate step too)."
+        },
+        "id": {
+          "type": "string",
+          "description": "What a module names in its own \"slot\" field."
+        },
+        "name": { "type": "string" }
+      }
+    },
+    "mount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "size"],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "description": "What sort of part takes this mount — \"engine\" for now."
+        },
+        "size": {
+          "type": "string",
+          "enum": ["s", "m", "l"],
+          "description": "A mount takes any part of its kind up to this size."
         }
       }
     }

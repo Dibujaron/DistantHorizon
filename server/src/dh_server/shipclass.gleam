@@ -1,12 +1,11 @@
-//// Ship class documents (schema 3): a hull's multi-deck plan (per-deck 3x3
-//// tile grids, `docs/deckplan-format.md`) plus the cargo characteristics M3
-//// trading needs (DESIGN.md "content is data"). One class exists
-//// (`server/shipclasses/mockingbird.json`, path overridable via
-//// `DH_SHIP_CLASS`); every ship in the sim is spawned from the same loaded
-//// `ShipClass`. The whole document is sent verbatim to clients as
-//// `ship_class` in the `welcome` message, so `encode` round-trips exactly
-//// what was loaded. Angles are degrees throughout (config, wire, in memory);
-//// only the live `heading` and `cos`/`sin` work in radians.
+//// A ship class is a hull's RESOLVED deck plan (schema 3) — what a specific
+//// ship actually is once its loadout has been stamped onto its hull
+//// (`loadout.resolve`, `docs/modules.md`) — plus the cargo characteristics M3
+//// trading needs and the flight stats M4 moved out of `ship.gleam`'s
+//// constants. The authored hull document lives in `hull.gleam`; this type is
+//// the bake's OUTPUT, and the whole document is sent verbatim to clients as
+//// `ship_class` in the `welcome` message, so `encode` round-trips exactly what
+//// was resolved. Angles are degrees throughout.
 
 import dh_server/deckplan.{type Console, type DeckPlan}
 import dh_server/glyphs.{type Registry}
@@ -15,7 +14,6 @@ import gleam/json.{type Json}
 import gleam/list
 import gleam/result
 import gleam/string
-import simplifile
 
 /// How cargo physically gets aboard (DESIGN.md "Cargo handling"):
 /// break-bulk hulls load by robot stevedores anywhere; container hulls
@@ -39,6 +37,19 @@ pub const default_dock_port_orientation_deg = 90.0
 /// Mockingbird's side-on standoff so an unspecified hull still moors sensibly.
 pub const default_dock_standoff = 20.0
 
+/// A resolved hull's flight performance, derived from the loadout: total
+/// thrust and torque of the mounted engine parts divided by the fit's total
+/// mass (`loadout.resolve`). These replaced `ship.main_accel` /
+/// `ship.turn_rate`, which were global constants until M4.
+pub type Flight {
+  Flight(
+    /// Acceleration at full thrust, u/s^2, along the ship's heading.
+    accel: Float,
+    /// Turn rate at full rotate input, DEGREES/s.
+    turn_rate: Float,
+  )
+}
+
 pub type ShipClass {
   ShipClass(
     schema: Int,
@@ -60,25 +71,10 @@ pub type ShipClass {
     /// off further than narrow ones; there is no good constant, so it is
     /// authored per class.
     dock_standoff: Float,
+    /// Flight performance derived from the fitted engine parts and the fit's
+    /// total mass — data now, not constants.
+    flight: Flight,
   )
-}
-
-/// Read and decode a ship class document from a file, using the built-in glyph
-/// legend. `path` is resolved relative to the process's working directory.
-pub fn load(path: String) -> Result(ShipClass, String) {
-  load_with(glyphs.default(), path)
-}
-
-/// `load`, but interpreting the deck grids with an explicit glyph registry —
-/// the runtime path threads the loaded `glyphs.json` here.
-pub fn load_with(reg: Registry, path: String) -> Result(ShipClass, String) {
-  use text <- result.try(
-    simplifile.read(path)
-    |> result.map_error(fn(err) {
-      "failed to read ship class file " <> path <> ": " <> string.inspect(err)
-    }),
-  )
-  decode_with(reg, text)
 }
 
 /// Decode a ship class document (built-in glyph legend), validating the deck
@@ -113,6 +109,13 @@ pub fn encode(class: ShipClass) -> Json {
       #("cargo", encode_cargo(class)),
       #("dock_port_orientation", json.float(class.dock_port_orientation)),
       #("dock_standoff", json.float(class.dock_standoff)),
+      #(
+        "flight",
+        json.object([
+          #("accel", json.float(class.flight.accel)),
+          #("turn_rate", json.float(class.flight.turn_rate)),
+        ]),
+      ),
     ]),
   )
 }
@@ -120,6 +123,53 @@ pub fn encode(class: ShipClass) -> Json {
 /// The first console of kind `"helm"` — every valid class has one.
 pub fn helm_console(class: ShipClass) -> Result(Console, Nil) {
   deckplan.find_console_of_kind(class.plan, "helm")
+}
+
+/// Build a resolved class from a baked plan. This is the bake's exit: the plan
+/// has already been stamped and re-parsed, so consoles, the mooring tile and
+/// the pallet-derived hold capacity all come from the RESOLVED map. Validates
+/// the same invariants an authored class always had (geometry, void-facing
+/// dock doors, a helm) — which is what makes a cockpit-less loadout illegal.
+pub fn from_plan(
+  reg: Registry,
+  id: String,
+  name: String,
+  schema: Int,
+  plan: DeckPlan,
+  fallback_capacity: Int,
+  handling: Handling,
+  dock_port_orientation: Float,
+  dock_standoff: Float,
+  flight: Flight,
+) -> Result(ShipClass, String) {
+  validate(ShipClass(
+    schema: schema,
+    id: id,
+    name: name,
+    plan: plan,
+    cargo_capacity: effective_capacity(reg, plan, fallback_capacity),
+    handling: handling,
+    dock_port_orientation: dock_port_orientation,
+    dock_standoff: dock_standoff,
+    flight: flight,
+  ))
+}
+
+/// The hold capacity of a resolved plan: breakbulk capacity derives from the
+/// cargo-pallet tiles the map draws ("the map is the single source of truth",
+/// as with consoles and berths), falling back to the authored number for a
+/// hull whose plan draws no pallets.
+///
+/// Deliberately ONE function with two callers — the bake (`from_plan`) and the
+/// wire (`ship_class_decoder`). Spelled out twice, a change to one of them
+/// would quietly stop `encode`/`decode` round-tripping, and the decoder has no
+/// production caller to notice.
+fn effective_capacity(reg: Registry, plan: DeckPlan, fallback: Int) -> Int {
+  let derived = deckplan.pallet_count(plan, reg)
+  case derived > 0 {
+    True -> derived
+    False -> fallback
+  }
 }
 
 fn validate(class: ShipClass) -> Result(ShipClass, String) {
@@ -135,7 +185,7 @@ fn validate(class: ShipClass) -> Result(ShipClass, String) {
   }
 }
 
-fn handling_decoder() -> decode.Decoder(Handling) {
+pub fn handling_decoder() -> decode.Decoder(Handling) {
   use raw <- decode.then(decode.string)
   case raw {
     "breakbulk" -> decode.success(BreakBulk)
@@ -166,25 +216,29 @@ fn ship_class_decoder(reg: Registry) -> decode.Decoder(ShipClass) {
     default_dock_standoff,
     decode.float,
   )
+  // Required, not optional: `encode` always writes it, so every document that
+  // legitimately exists carries it. There is no defaulting left to do now that
+  // the pre-M4 global constants are gone — a class without flight stats is a
+  // malformed document, and failing loudly beats an unflyable ship.
+  use flight <- decode.field("flight", flight_decoder())
   let #(capacity, handling) = cargo
-  // Breakbulk hold capacity derives from cargo-pallet tiles on the deck
-  // plan ("the map is the single source of truth", as with consoles/berths)
-  // — falling back to the authored capacity for hulls with no pallets.
-  let derived = deckplan.pallet_count(plan, reg)
-  let effective_capacity = case derived > 0 {
-    True -> derived
-    False -> capacity
-  }
   decode.success(ShipClass(
     schema: schema,
     id: id,
     name: name,
     plan: plan,
-    cargo_capacity: effective_capacity,
+    cargo_capacity: effective_capacity(reg, plan, capacity),
     handling: handling,
     dock_port_orientation: dock_port_orientation,
     dock_standoff: dock_standoff,
+    flight: flight,
   ))
+}
+
+fn flight_decoder() -> decode.Decoder(Flight) {
+  use accel <- decode.field("accel", decode.float)
+  use turn_rate <- decode.field("turn_rate", decode.float)
+  decode.success(Flight(accel: accel, turn_rate: turn_rate))
 }
 
 fn encode_cargo(class: ShipClass) -> Json {

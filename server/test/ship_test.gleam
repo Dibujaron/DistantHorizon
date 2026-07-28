@@ -8,6 +8,13 @@ import gleam/option.{None}
 
 const epsilon = 0.000001
 
+/// The pre-M4 constants, so these tests keep asserting the same numbers.
+/// Flight performance is per-ship loadout data now (`loadout.resolve`), which
+/// is why every `ship.step` below has to name one.
+fn test_flight() -> shipclass.Flight {
+  shipclass.Flight(accel: 40.0, turn_rate: 180.0)
+}
+
 fn close(a: Float, b: Float, tolerance: Float) -> Bool {
   float.absolute_value(a -. b) <. tolerance
 }
@@ -129,7 +136,7 @@ pub fn full_rotate_turns_heading_by_turn_rate_test() {
     |> ship.set_controls(1.0, 0.0)
   let after = run_ticks(ship, w, 60)
   // 60 ticks = 1 s at full rotate, so heading advances by exactly turn_rate.
-  assert close(after.heading, ship.turn_rate, 0.01)
+  assert close(after.heading, test_flight().turn_rate, 0.01)
 }
 
 pub fn set_controls_clamps_test() {
@@ -381,7 +388,7 @@ fn run_ticks_loop(ship: Ship, w: World, tick: Int, n: Int) -> Ship {
     False -> {
       let t = int.to_float(tick + 1) *. ship.dt
       run_ticks_loop(
-        ship.step(ship, w, t, shipclass.default_dock_standoff),
+        ship.step(ship, w, t, shipclass.default_dock_standoff, test_flight()),
         w,
         tick + 1,
         n,

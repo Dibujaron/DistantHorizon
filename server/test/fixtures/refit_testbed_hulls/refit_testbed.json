@@ -1,0 +1,42 @@
+{
+  "schema": 3,
+  "id": "refit_testbed",
+  "name": "Refit testbed",
+  "mass": 10.0,
+  "slots": [
+    {
+      "digit": 1,
+      "id": "bay",
+      "name": "Bay"
+    }
+  ],
+  "decks": [
+    {
+      "name": "Main",
+      "grid": [
+        "                  ",
+        " .  .  .  .  .  . ",
+        "                  ",
+        "                  ",
+        " .  .  .  .  .  . ",
+        "   1  1  1  1     ",
+        "            #=####",
+        " .  .  .  . #Q   h",
+        "             ## ##",
+        "                  ",
+        " .  .  .  .  .  . ",
+        "                  "
+      ]
+    }
+  ],
+  "cargo": {
+    "capacity": 4,
+    "handling": "breakbulk"
+  },
+  "dock_standoff": 4.0,
+  "default_loadout": {
+    "modules": {
+      "bay": "refit_testbed.bay.empty"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "id": "refit_testbed.bay.muster",
+  "hull": "refit_testbed",
+  "slot": "bay",
+  "name": "Muster bay",
+  "mass": 1.0,
+  "patches": [
+    {
+      "deck": 0,
+      "x": 1,
+      "y": 1,
+      "grid": [
+        "###   ###   ",
+        "# # . #s# . ",
+        " ##    ##   "
+      ]
+    }
+  ]
+}

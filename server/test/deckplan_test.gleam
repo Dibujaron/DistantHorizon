@@ -1,6 +1,7 @@
 import dh_server/deckplan.{Console, DeckPlan}
 import dh_server/glyphs
 import gleam/json
+import gleam/list
 import gleam/option
 
 // ---------------------------------------------------------- cargo tiles --
@@ -348,4 +349,59 @@ pub fn derive_edge_console_test() {
   // contribute nothing even though tile (0,0)'s own edges are plain walls,
   // and the console is NOT double-counted onto the void tile it faces.
   assert deckplan.find_console(plan, "helm") == Ok(c)
+}
+
+// ------------------------------------------------------ slot digits (M4) --
+
+pub fn sw_corner_marks_slot_test() {
+  // Two tiles: the left one in slot 1 (SW = "1"), the right one unmarked.
+  let assert Ok(g) = deckplan.parse_deck("t", ["######", "#    #", "1##  #"])
+  let assert Ok(a) = deckplan.cell_at_xy(g, 0, 0)
+  let assert Ok(b) = deckplan.cell_at_xy(g, 1, 0)
+  assert a.slot == option.Some(1)
+  assert b.slot == option.None
+}
+
+pub fn sw_corner_accepts_high_hex_digits_test() {
+  let assert Ok(g) = deckplan.parse_deck("t", ["###", "# #", "f##"])
+  let assert Ok(c) = deckplan.cell_at_xy(g, 0, 0)
+  assert c.slot == option.Some(15)
+}
+
+pub fn non_hex_sw_corner_is_no_slot_test() {
+  let assert Ok(g) = deckplan.parse_deck("t", ["###", "# #", "###"])
+  let assert Ok(c) = deckplan.cell_at_xy(g, 0, 0)
+  assert c.slot == option.None
+}
+
+pub fn slot_digit_round_trips_through_rows_test() {
+  let rows = ["###", "# #", "3##"]
+  let assert Ok(g) = deckplan.parse_deck("t", rows)
+  let assert Ok(g2) = deckplan.parse_deck("t", deckplan.deck_to_rows(g))
+  assert deckplan.cell_at_xy(g, 0, 0) == deckplan.cell_at_xy(g2, 0, 0)
+}
+
+// --------------------------------------------------------- from_rows (#M4) --
+
+pub fn from_rows_derives_markers_like_the_decoder_test() {
+  // A one-deck plan: tile(0,0) is void, tile(0,1) is a docking port.
+  // Grid: 1 tile wide (3 chars), 2 tiles tall (6 rows).
+  // Tile (0,0) center at row 1, col 1; Tile (0,1) center at row 4, col 1.
+  let rows = ["   ", " . ", "   ", "   ", " Q ", "   "]
+  let assert Ok(plan) = deckplan.from_rows(glyphs.default(), [#("Main", rows)])
+  // Should derive one deck from parsing.
+  assert list.length(plan.decks) == 1
+  // Should derive one dock console from the "Q" glyph at (0,1).
+  assert list.length(plan.consoles) == 1
+  let assert Ok(Console(_, kind, _, x, y)) = list.first(plan.consoles)
+  assert kind == "dock"
+  assert x == 0
+  assert y == 1
+  // The docking port tile is the spawn tile (mooring).
+  assert plan.spawn_tile == #(0, 1)
+}
+
+pub fn from_rows_rejects_a_ragged_deck_test() {
+  let assert Error(_) =
+    deckplan.from_rows(glyphs.default(), [#("Main", ["###", "# #"])])
 }

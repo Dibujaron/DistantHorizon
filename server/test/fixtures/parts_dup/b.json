@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "id": "dup.part",
+  "name": "Dup Part B",
+  "kind": "engine",
+  "size": "m",
+  "mass": 2.0
+}

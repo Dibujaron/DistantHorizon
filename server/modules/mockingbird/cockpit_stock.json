@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "id": "mockingbird.cockpit.stock",
+  "hull": "mockingbird",
+  "slot": "cockpit",
+  "name": "Stock cockpit",
+  "mass": 4.0,
+  "provides": { "seats": 1 },
+  "requires": { "power": 2 },
+  "patches": [
+    {
+      "deck": 0, "x": 6, "y": 3,
+      "grid": [
+        "#h####",
+        "#e   #",
+        "#    #",
+        "#    #",
+        "we   w",
+        "####=#"
+      ]
+    }
+  ]
+}

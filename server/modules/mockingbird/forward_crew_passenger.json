@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "id": "mockingbird.forward_crew.passenger",
+  "hull": "mockingbird",
+  "slot": "forward_crew",
+  "name": "Passenger staterooms",
+  "mass": 8.0,
+  "provides": { "passengers": 4 },
+  "requires": { "power": 2 },
+  "patches": [
+    {
+      "deck": 0, "x": 6, "y": 5,
+      "grid": [
+        "###",
+        "wd#",
+        "# #",
+        "# #",
+        "wd=",
+        "###",
+        "###",
+        "wd#",
+        "# #",
+        "# #",
+        "wd=",
+        "###"
+      ]
+    }
+  ]
+}

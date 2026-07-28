@@ -1,194 +1,105 @@
 import dh_server/deckplan
+import dh_server/glyphs
 import dh_server/shipclass
 import gleam/json
-import gleam/list
 
-pub fn load_bundled_mockingbird_test() {
-  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
-  assert c.schema == 3
-  assert c.id == "mockingbird"
-  // Three decks: Upper, Mezzanine, Lower.
-  assert list.length(c.plan.decks) == 3
-  // The docking port (`Q` glyph) derives a "dock" console.
-  let assert Ok(_) = deckplan.find_console_of_kind(c.plan, "dock")
-  let assert Ok(_) = shipclass.helm_console(c)
+const rows = [
+  "#h#######",
+  "#       #",
+  "#########",
+  "#########",
+  "=Q     p#",
+  "#########",
+]
+
+fn a_class() -> shipclass.ShipClass {
+  let reg = glyphs.default()
+  let assert Ok(plan) = deckplan.from_rows(reg, [#("Main", rows)])
+  let assert Ok(c) =
+    shipclass.from_plan(
+      reg,
+      "testhull",
+      "Test Hull",
+      3,
+      plan,
+      7,
+      shipclass.BreakBulk,
+      90.0,
+      20.0,
+      shipclass.Flight(accel: 40.0, turn_rate: 180.0),
+    )
+  c
+}
+
+pub fn from_plan_derives_capacity_from_pallets_test() {
+  // The single `p` tile on the map beats the authored fallback of 7.
+  assert a_class().cargo_capacity == 1
+}
+
+pub fn from_plan_requires_a_helm_test() {
+  let reg = glyphs.default()
+  let assert Ok(plan) =
+    deckplan.from_rows(reg, [
+      #("Main", ["#########", "#       #", "#########"]),
+    ])
+  let assert Error(e) =
+    shipclass.from_plan(
+      reg,
+      "h",
+      "H",
+      3,
+      plan,
+      0,
+      shipclass.BreakBulk,
+      90.0,
+      20.0,
+      shipclass.Flight(accel: 1.0, turn_rate: 1.0),
+    )
+  assert e == "no console of kind \"helm\""
 }
 
 pub fn decode_encode_round_trips_test() {
-  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
+  let c = a_class()
   let text = shipclass.encode(c) |> json.to_string
   let assert Ok(c2) = shipclass.decode(text)
   assert c == c2
 }
 
-pub fn helm_console_is_helm_main_test() {
-  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
-  let assert Ok(console) = shipclass.helm_console(c)
-  assert console.id == "helm"
+pub fn helm_console_is_found_test() {
+  let assert Ok(console) = shipclass.helm_console(a_class())
   assert console.kind == "helm"
 }
 
-pub fn find_console_unknown_is_error_test() {
-  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
-  assert deckplan.find_console(c.plan, "nope") == Error(Nil)
-}
+// `shipclass.gleam` carries a SECOND, independent copy of the "derived pallet
+// count beats the authored capacity" rule in `ship_class_decoder` (the
+// `from_plan` copy above is separate code). These two decode through the wire
+// path, with authored capacity and derived pallet count deliberately set to
+// DIFFERENT numbers, so either copy diverging or being deleted fails them —
+// unlike `decode_encode_round_trips_test`, whose fixture has capacity 1 and
+// one pallet and so can't tell "derived" from "authored" apart.
 
-pub fn spawn_tile_is_walkable_test() {
-  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
-  let assert Ok(g) = deckplan.deck_at(c.plan, c.plan.spawn_deck)
-  let #(sx, sy) = c.plan.spawn_tile
-  assert deckplan.is_walkable(g, sx, sy)
-}
-
-/// A minimal valid schema-3 class, for hand-crafting single-field
-/// violations without depending on the bundled hull's exact layout.
-fn valid_doc() -> String {
-  "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
-  <> "\"decks\":[{\"name\":\"main\",\"grid\":"
-  <> "[\"#########\",\"#       #\",\"#########\"]}],"
-  <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":1,\"y\":0}],"
-  <> "\"spawn\":{\"deck\":0,\"tile\":[1,0]},"
-  <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
-}
-
-pub fn decode_valid_minimal_doc_test() {
-  assert shipclass.decode(valid_doc()) |> is_ok
-}
-
-pub fn decode_rejects_ragged_deck_rows_test() {
-  let bad =
-    "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
-    <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"######\",\"# #\"]}],"
-    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":0,\"y\":0}],"
-    <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
-    <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
-  assert shipclass.decode(bad) |> is_error
-}
-
-pub fn decode_rejects_non_multiple_of_three_test() {
-  let bad =
-    "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
-    <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"####\",\"#  #\",\"####\"]}],"
-    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":0,\"y\":0}],"
-    <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
-    <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
-  assert shipclass.decode(bad) |> is_error
-}
-
-pub fn decode_rejects_console_off_walkable_tile_test() {
-  // Console on a void tile — the '.' centre is at col 4 (tile 1).
-  let bad =
-    "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
-    <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"######\",\"#   . \",\"######\"]}],"
-    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":1,\"y\":0}],"
-    <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
-    <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
-  assert shipclass.decode(bad) |> is_error
-}
-
-pub fn decode_rejects_spawn_tile_off_walkable_tile_test() {
-  let bad =
-    "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
-    <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"######\",\"#   . \",\"######\"]}],"
-    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":0,\"y\":0}],"
-    <> "\"spawn\":{\"deck\":0,\"tile\":[1,0]},"
-    <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
-  assert shipclass.decode(bad) |> is_error
-}
-
-pub fn decode_rejects_missing_helm_console_test() {
-  let bad =
-    "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
-    <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"######\",\"#    #\",\"######\"]}],"
-    <> "\"consoles\":[{\"id\":\"cargo_main\",\"kind\":\"cargo\",\"deck\":0,\"x\":1,\"y\":0}],"
-    <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
-    <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
-  assert shipclass.decode(bad) |> is_error
-}
-
-pub fn decode_rejects_docking_port_without_void_facing_door_test() {
-  // A Q docking port walled in on every side — no door faces void — is an
-  // authoring error (the format requires the outer gangway door). Consoles
-  // (helm + dock) derive from the 'h'/'Q' grid glyphs.
-  let bad =
-    "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
-    <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"####h####\",\"#      Q#\",\"#########\"]}],"
-    <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
-    <> "\"cargo\":{\"capacity\":10,\"handling\":\"breakbulk\"}}"
-  assert shipclass.decode(bad) |> is_error
-}
-
-pub fn decode_rejects_garbage_test() {
-  assert shipclass.decode("not json") |> is_error
-}
-
-pub fn decode_reads_cargo_block_test() {
-  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
-  // Capacity is DERIVED from the hull's cargo-pallet (`p`) tiles, not the
-  // authored `cargo.capacity`: the Mockingbird draws 60 pallets, so its
-  // authored 40 is overridden. `handling` is still read from the block.
-  assert c.cargo_capacity == 60
-  assert c.handling == shipclass.BreakBulk
-}
-
-pub fn dock_standoff_reads_and_defaults_test() {
-  // The bundled hull authors its standoff.
-  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
-  assert c.dock_standoff == 20.0
-  // A class that omits dock_standoff falls back to the default.
-  let assert Ok(d) = shipclass.decode(valid_doc())
-  assert d.dock_standoff == shipclass.default_dock_standoff
-}
-
-pub fn decode_rejects_unknown_handling_test() {
-  let bad =
-    "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
-    <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"######\",\"#    #\",\"######\"]}],"
-    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":1,\"y\":0}],"
-    <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
-    <> "\"cargo\":{\"capacity\":10,\"handling\":\"antigrav\"}}"
-  let assert Error(_) = shipclass.decode(bad)
-}
-
-pub fn decode_rejects_missing_cargo_block_test() {
-  let bad =
-    "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
-    <> "\"decks\":[{\"name\":\"main\",\"grid\":[\"######\",\"#    #\",\"######\"]}],"
-    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":1,\"y\":0}],"
-    <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]}}"
-  let assert Error(_) = shipclass.decode(bad)
-}
-
-pub fn cargo_capacity_derives_from_pallet_tiles_test() {
-  // Three pallet tiles ('p' centre) on the one deck; authored capacity is 0
-  // to prove the derived count wins.
+pub fn capacity_derives_from_pallet_tiles_on_decode_test() {
   let doc =
-    "{\"schema\":3,\"id\":\"tiny\",\"name\":\"Tiny\","
-    <> "\"decks\":[{\"name\":\"main\",\"grid\":"
-    <> "[\"#####################\",\"#h     p     p     p#\",\"#####################\"]}],"
-    <> "\"consoles\":[{\"id\":\"helm_main\",\"kind\":\"helm\",\"deck\":0,\"x\":0,\"y\":0}],"
-    <> "\"spawn\":{\"deck\":0,\"tile\":[0,0]},"
-    <> "\"cargo\":{\"capacity\":0,\"handling\":\"breakbulk\"}}"
+    "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\",
+       \"decks\": [ { \"name\": \"Main\", \"grid\": [
+         \"#h#######\", \"#   p  p#\", \"#########\",
+         \"#########\", \"=Q     p#\", \"#########\" ] } ],
+       \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" },
+       \"flight\": { \"accel\": 40.0, \"turn_rate\": 180.0 } }"
   let assert Ok(c) = shipclass.decode(doc)
+  // Three `p` tiles beat the authored capacity of 0.
   assert c.cargo_capacity == 3
 }
 
-pub fn cargo_capacity_falls_back_to_authored_when_no_pallets_test() {
-  // No pallet tiles at all — the authored capacity is used unchanged.
-  let assert Ok(c) = shipclass.decode(valid_doc())
+pub fn capacity_falls_back_to_authored_value_when_no_pallets_are_drawn_test() {
+  let doc =
+    "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\",
+       \"decks\": [ { \"name\": \"Main\", \"grid\": [
+         \"#h#######\", \"#       #\", \"#########\",
+         \"#########\", \"=Q      #\", \"#########\" ] } ],
+       \"cargo\": { \"capacity\": 10, \"handling\": \"breakbulk\" },
+       \"flight\": { \"accel\": 40.0, \"turn_rate\": 180.0 } }"
+  let assert Ok(c) = shipclass.decode(doc)
+  // No `p` tiles drawn: falls back to the authored capacity of 10.
   assert c.cargo_capacity == 10
-}
-
-fn is_ok(result: Result(a, b)) -> Bool {
-  case result {
-    Ok(_) -> True
-    Error(_) -> False
-  }
-}
-
-fn is_error(result: Result(a, b)) -> Bool {
-  case result {
-    Error(_) -> True
-    Ok(_) -> False
-  }
 }

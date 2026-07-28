@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "id": "dock_testbed.shell.wide",
+  "hull": "dock_testbed",
+  "slot": "shell",
+  "name": "Plated shell",
+  "mass": 1.0,
+  "patches": [
+    {
+      "deck": 0,
+      "x": 0,
+      "y": 0,
+      "grid": [
+        " #  #  # ",
+        "#       #",
+        "         "
+      ]
+    },
+    {
+      "deck": 0,
+      "x": 0,
+      "y": 2,
+      "grid": [
+        "         ",
+        "#       #",
+        " #  #  # "
+      ]
+    }
+  ]
+}

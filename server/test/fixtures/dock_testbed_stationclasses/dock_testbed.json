@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "id": "dock_testbed",
+  "name": "Packed berths",
+  "dock_radius": 150.0,
+  "crane": false,
+  "decks": [
+    {
+      "name": "Concourse",
+      "grid": [
+        "                  ",
+        " .  .  .  .  .  . ",
+        "                  ",
+        "       =  =       ",
+        " .  . #Q##Q# .  . ",
+        "                  ",
+        " #  #        #  # ",
+        "#s               #",
+        " #  #  #  #  #  # "
+      ]
+    }
+  ]
+}

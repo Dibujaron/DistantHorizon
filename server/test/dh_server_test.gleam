@@ -1,9 +1,9 @@
 import dh_server/auth
 import dh_server/protocol
-import dh_server/shipclass
 import dh_server/sim
 import dh_server/stats
 import dh_server/world
+import fit
 import gleam/dynamic/decode
 import gleam/erlang/process
 import gleam/json
@@ -44,13 +44,15 @@ fn test_world() -> world.World {
   w
 }
 
-fn test_class() -> shipclass.ShipClass {
-  let assert Ok(c) = shipclass.load("shipclasses/mockingbird.json")
-  c
+/// The sim over the bundled world and the on-disk content registries; every
+/// ship it spawns resolves the Mockingbird's default fit for itself.
+fn start_test_sim() {
+  let #(hulls, modules, parts, reg, spawn_hull) = fit.sim_args()
+  sim.start(test_world(), hulls, modules, parts, reg, spawn_hull)
 }
 
 pub fn dead_client_is_unregistered_test() {
-  let assert Ok(started) = sim.start(test_world(), test_class())
+  let assert Ok(started) = start_test_sim()
   let sim_subject = started.data
 
   // A fake client handler process: creates its subject (the owner must be
@@ -96,7 +98,7 @@ pub fn snapshot_shape_test() {
 }
 
 pub fn add_player_returns_incrementing_ids_test() {
-  let assert Ok(started) = sim.start(test_world(), test_class())
+  let assert Ok(started) = start_test_sim()
   let sim_subject = started.data
 
   let client1 = process.new_subject()
@@ -107,7 +109,7 @@ pub fn add_player_returns_incrementing_ids_test() {
 }
 
 pub fn add_player_snapshot_contains_docked_ship_test() {
-  let assert Ok(started) = sim.start(test_world(), test_class())
+  let assert Ok(started) = start_test_sim()
   let sim_subject = started.data
 
   let client = process.new_subject()
@@ -121,7 +123,7 @@ pub fn add_player_snapshot_contains_docked_ship_test() {
 }
 
 pub fn set_controls_and_undock_moves_ship_test() {
-  let assert Ok(started) = sim.start(test_world(), test_class())
+  let assert Ok(started) = start_test_sim()
   let sim_subject = started.data
 
   let client = process.new_subject()

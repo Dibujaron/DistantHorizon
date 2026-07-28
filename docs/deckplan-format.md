@@ -26,11 +26,9 @@ SW  S  SE      (2,0)=SW  (2,1)=S   (2,2)=SE
 
 The parser reads **five positions**: the center, and the four edge-mids
 (N/E/S/W). The four corners carry no collision data (you never walk through a
-corner) and never change walkability — but the **NE corner** carries one more
-fact: a single hex digit `0`–`f` selects a slot in the 16-colour palette
-(`server/colors.json`) that tints the tile's decor. A blank, `#`, or any other
-non-hex character means uncoloured. NW/SW/SE remain purely cosmetic — draw `#`
-there for a tidy-looking hull, but they carry no data. Nothing is ever a
+corner) and never change walkability — but the **NE and SW corners** carry
+further facts (see "Colour" and "Slots" below). NW/SE remain purely cosmetic —
+draw `#` there for a tidy-looking hull, but they carry no data. Nothing is ever a
 syntax error; a blank simply means "no wall here."
 
 Each tile owns **all four of its own walls**. A partition between two rooms is
@@ -86,12 +84,11 @@ registry is the list.
   wall bunk, so bunks stack in a legible way; nothing currently checks this.
   Any edge char not in the registry parses as a generic fixture, so nothing
   is ever a syntax error.
-- **Corners**: NW/SW/SE are cosmetic — use `#` for a clean hull outline; the
+- **Corners**: NW/SE are cosmetic — use `#` for a clean hull outline; the
   renderer auto-joins wall corners, so a blank corner between two walls still
-  renders closed. **NE is not cosmetic**: it's the tile's colour digit (see
-  "Colour" below). Corners never carry collision data and decor never changes
-  walkability — `r`/`e`/`d`/`p` are walkable floor exactly like plain floor,
-  while `v`/`w`/edge-`d` (bunk) block like any other wall-fixture.
+  renders closed. **NE and SW are not cosmetic**: NE is the tile's colour digit
+  (see "Colour" below) and SW is its slot digit (see "Slots" below). Corners
+  never carry collision data and decor never changes walkability.
 
 ### Colour
 
@@ -105,6 +102,69 @@ non-hex character) renders its decor untinted. The palette rides the wire on
 the `welcome` message, the same way the glyph registry does, and the client
 applies the tint at render — colour is transport, not gameplay: it never
 affects walkability or collision.
+
+### Slots
+
+A tile's **SW corner** carries a hex digit `0`–`f` naming the hull **slot** the
+tile belongs to — the modulable regions a refit may overwrite (`docs/modules.md`).
+A blank, `#`, or any other non-hex character means "fixed hull structure": no
+module may touch that tile.  To read a hull's slots at a glance rather than
+hunting SW corners in the raw JSON, run `python tools/slotmap.py <hull.json>`,
+which paints each slot's digit into its tiles (add `--structure <resolved.json>`
+to draw the walls of a fitted ship rather than the bare hull's). The hull's `slots` table maps each digit to a slot
+id and human name. Slot regions are exactly as fluid as the hull author draws
+them — following a taper, non-rectangular, whatever — and there is no rectangle
+list anywhere.
+
+A module rewrites its slot completely — including *both* halves of any wall
+between two slot tiles, since both tiles are its own. The only edges it shares
+with the hull are the slot's **perimeter**, where the neighbouring tile is fixed
+structure. None of the following is machine-checked.
+
+**The perimeter is a double edge, and the hull's side can only ever add
+restriction.** Both collision (`edge_blocks`) and rendering (`interior_view`'s
+boundary merge) OR the two facing edges: a wall or fixture on *either* side makes
+a wall, else a door on either side makes a door, else it is open. So what the
+hull draws on its side is a floor on what any module can achieve there, never a
+ceiling:
+
+| hull's side | what a module can produce |
+|---|---|
+| `#`, or any wall fixture (`w`, `v`, a console…) | **wall only** — sealed forever |
+| `=` door | door, or wall |
+| open | **open, door, or wall** |
+
+The authoring rules that follow:
+
+- **Author the hull side of a slot perimeter *open*, and draw all of that
+  perimeter's walls and doors on the slot side, in the module.** Open is
+  strictly the most permissive choice — a hull-side door still forbids one
+  outcome, a plain doorless opening. This makes the default module, not the
+  hull, responsible for how the slot reads.
+- **Draw hull-side `#` only where the structure must be permanent** — a
+  pressure shell, the hull skin, a hold's fire wall — and hull-side `=` only
+  where a door must exist no matter what is fitted.
+- **Never author a wall fixture or a console on a hull tile facing a slot.**
+  A fixture is a wall to the OR, so it seals the edge and no module can open it.
+- **A stamp never overwrites the SW corner.** Slot regions are hull-owned, so
+  the resolved plan still carries them and a second refit finds the same
+  region.
+
+**This cannot be retrofitted** to a hull carved out of an existing map that must
+keep reproducing that map exactly: blanking a corridor's slot-facing wall is
+collision- and render-neutral once the module redraws it, but it *does* change
+that hull tile's own authored edge, so an exact-reproduction check fails. The
+Mockingbird was carved this way and therefore keeps her corridor-side walls,
+which permanently fixes her `forward_crew` doors at the two positions the
+corridor already opens. That is a known, accepted one-hull cost; hulls authored
+from scratch should follow the rules above instead.
+
+One consequence of modules owning their slot outright: **a console inside a slot
+belongs to whichever module draws it.** The Mockingbird's bare hull has no
+consoles at all — her helm comes from the cockpit module and her cargo console
+from whichever hold module is fitted. Only the **helm** is machine-checked
+(`shipclass.validate` rejects a fit with no `h`); a hold module that forgets its
+`c` still resolves, and simply leaves the crew with nowhere to work cargo.
 
 Console/dock/spawn glyphs are an **authoring** convenience: **the map is the
 single source of truth**, so a position can't drift from a separate list. At

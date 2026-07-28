@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "id": "test_fixture.bay.bunkroom",
+  "hull": "test_fixture",
+  "slot": "bay",
+  "name": "Bunkroom",
+  "mass": 4.0,
+  "provides": { "berths": 2 },
+  "requires": { "power": 1 },
+  "patches": [
+    { "deck": 0, "x": 4, "y": 2, "grid": ["   ", " d ", "   "] }
+  ]
+}
