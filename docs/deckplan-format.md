@@ -151,13 +151,25 @@ The authoring rules that follow:
   region.
 
 **This cannot be retrofitted** to a hull carved out of an existing map that must
-keep reproducing that map exactly: blanking a corridor's slot-facing wall is
-collision- and render-neutral once the module redraws it, but it *does* change
-that hull tile's own authored edge, so an exact-reproduction check fails. The
-Mockingbird was carved this way and therefore keeps her corridor-side walls,
-which permanently fixes her `forward_crew` doors at the two positions the
-corridor already opens. That is a known, accepted one-hull cost; hulls authored
-from scratch should follow the rules above instead.
+keep reproducing that map exactly: blanking a slot-facing wall is collision- and
+render-neutral once the module redraws it, but it *does* change that hull tile's
+own authored edge, so an exact-reproduction check fails. That binds only the
+tiles on a slot's **hull-owned perimeter** — where the neighbouring tile is
+fixed structure, not another slot. The Mockingbird was carved out of an existing
+map and keeps those perimeter walls permanently: her cockpit passage, the
+corridor and junction that thread her aft rooms, both stairwells, the whole
+Mezzanine with its `Q` ports, and the hull skin. That is a known, accepted cost
+on the corridor-facing side; hulls authored from scratch should follow the
+rules above throughout.
+
+A divider that sits **between two slot tiles** is a different case — both
+tiles are already slot-owned, so redrawing it into the module changes nothing
+about the hull's authored rows, and the reproduction check does not see it. The
+iteration-2a re-carve moved every such internal divider (a cabin's own walls and
+door, a bulkhead between two rooms that are both slots) out of the hull and
+into the modules that furnish those slots, so none of the Mockingbird's ten
+slots are boxed in by fixed hull dividers; only her true corridor-facing
+perimeters remain fixed.
 
 One consequence of modules owning their slot outright: **a console inside a slot
 belongs to whichever module draws it.** The Mockingbird's bare hull has no

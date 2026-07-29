@@ -2,12 +2,18 @@
   "$schema": "http://json-schema.org/draft-06/schema#",
   "$id": "https://distanthorizon.dev/schemas/module.schema.json",
   "title": "Interior module document",
-  "description": "A per-(hull, slot) hand-authored overlay stamped onto the hull's authored rows when the module is fitted, where a void cell leaves the hull untouched and any other cell overwrites it (docs/modules.md). Derived from the Gleam decoders in server/src/dh_server/module.gleam (module_decoder/patch_decoder) — that decoder is the source of truth; this schema is documentation and a typo-catcher, not a substitute for it. additionalProperties is false at every object level even though the decoder itself ignores unknown fields, precisely so this schema can catch typos the decoder would silently swallow. Modules are filed per hull as server/modules/<hull>/<id>.json, because an overlay is drawn against one hull's coordinate space and is never portable.",
+  "description": "A hand-authored overlay stamped onto a hull's authored rows when the module is fitted, where a void cell leaves the hull untouched and any other cell overwrites it (docs/modules.md). A document carries a list of targets, each naming a hull, the slot(s) it claims there, and its own hand-drawn overlay — one concept (a cabin, say) can furnish every hull that has a matching slot from a single document, even though each individual overlay is still drawn against one hull's coordinate space and is not portable as a drawing. Derived from the Gleam decoders in server/src/dh_server/module.gleam (module_decoder/patch_decoder) — that decoder is the source of truth; this schema is documentation and a typo-catcher, not a substitute for it. additionalProperties is false at every object level even though the decoder itself ignores unknown fields, precisely so this schema can catch typos the decoder would silently swallow.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "id", "name"],
   "oneOf": [
-    { "required": ["targets"] },
+    {
+      "allOf": [
+        { "required": ["targets"] },
+        { "not": { "required": ["patches"] } },
+        { "not": { "required": ["hull"] } }
+      ]
+    },
     { "required": ["hull", "slot"] }
   ],
   "properties": {
@@ -18,7 +24,7 @@
     },
     "hull": {
       "type": "string",
-      "description": "The hull id this overlay is drawn for. A loadout naming this module on any other hull is refused with module_wrong_hull."
+      "description": "The hull id this overlay is drawn for. A loadout naming this module on any other hull is refused with module_not_drawn_for_slot."
     },
     "slot": {
       "type": "string",
@@ -38,6 +44,7 @@
     },
     "targets": {
       "type": "array",
+      "minItems": 1,
       "description": "The canonical spelling: every (hull, slots) placement this one document is drawn for, each with its own overlay. Top-level hull/slot/patches is the shorthand for a single target claiming one slot; the oneOf above makes a document carry exactly one of the two spellings, never both and never neither.",
       "items": { "$ref": "#/$defs/target" }
     }
@@ -54,6 +61,7 @@
         },
         "slots": {
           "type": "array",
+          "minItems": 1,
           "description": "The hull slot ids this target claims — usually one, but a single overlay may claim several ADJACENT slots. Naming the module under any one of them occupies all of them.",
           "items": { "type": "string" }
         },

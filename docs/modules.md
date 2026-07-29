@@ -5,10 +5,10 @@ matched to a hull by cheap declarative rules, authored as data. This is the desi
 M4 ("Modules for real", DESIGN.md Milestones) and the reference for the module content
 that lands after it.
 
-**Status:** M4 iteration 1 has shipped, so the shapes and rules below describe code that
-exists rather than code we intend. Where something is still ahead of us — exterior part
-layering, the refit *loop*, more hulls — this document says so at that point and "The M4
-slice" at the end draws the line.
+**Status:** M4 iteration 1 and iteration 2a have shipped, so the shapes and rules below
+describe code that exists rather than code we intend. Where something is still ahead of
+us — the Sparrow and Finch, exterior part layering, the refit *loop* — this document says
+so at that point and "The M4 slice" at the end draws the line.
 
 See also: `docs/deckplan-format.md` (the per-cell ASCII format modules reuse), DESIGN.md
 "Ship customization" and "Content is data, not code".
@@ -37,9 +37,11 @@ in"). A DSL rich enough to draw the Mockingbird is a worse Mockingbird.
 
 ## The model: modules are authored overlays
 
-**An interior module is a per-(hull, slot) hand-authored overlay grid**, written in the
-exact same 3×3-per-cell ASCII format hulls use (`docs/deckplan-format.md`). The rule that
-makes it an *overlay* rather than a whole deck:
+**An interior module places a hand-authored overlay grid onto a slot**, written in the
+exact same 3×3-per-cell ASCII format hulls use (`docs/deckplan-format.md`). A module
+*document* may name several such placements — see "Slots and mounts" below — but every
+individual placement is still one overlay drawn against one hull's coordinate space, at
+one slot. The rule that makes it an *overlay* rather than a whole deck:
 
 > **`void` cells leave the hull untouched. Non-void cells overwrite the hull's cell at
 > that position.**
@@ -50,11 +52,18 @@ already does when it moors a ship's deck plan onto a station concourse. No DSL, 
 interpreter to get right, hand-authored quality every time, and authorable by the same
 process (drawing a small map) the project has already proven agents can do.
 
-Because the module is drawn *against a specific hull's coordinate space and slot*, the
-shape-matching problem doesn't get solved — it **disappears**. Each hull authors its own
-cabins; nothing ever adapts a stamp to a taper. The overlay's doors are drawn to line up
-with the hull's corridor because a human drew them that way, so connectivity is
+Because each placement is drawn *against a specific hull's coordinate space and slot*,
+the shape-matching problem doesn't get solved — it **disappears**. Each hull authors its
+own cabins; nothing ever adapts a stamp to a taper. The overlay's doors are drawn to line
+up with the hull's corridor because a human drew them that way, so connectivity is
 guaranteed at authoring time and **loadout validation never does reachability analysis**.
+This is also why **free placement is refused**: a module's doors line up because a human
+drew them at a known position against a known slot. Letting a module land anywhere at
+runtime would mean coordinates riding in the loadout instead of the document, and the
+validator doing overlap detection and a fit check to make sure the stamp actually lands
+inside the target — the exact shape-matching problem per-hull overlays exist to delete.
+There is no runtime placement anywhere in this design, only authored placements a document
+lists in advance.
 
 ### Where reuse lives
 
@@ -77,17 +86,32 @@ A hull declares two kinds of attach point:
 - **Slots** — named *interior regions*. A slot is a hull-authored area of the deck plan
   (see "Slot marking" below) that modules may overlay. Slots are **flexible and
   contested**: multiple module types compete for the same physical region. A module
-  document is drawn for exactly **one** `(hull, slot)` pair and names it in its `hull`
-  and `slot` fields; a medbay that fits both the Mockingbird's `forward_crew` slot and
-  her `stern` slot is two documents, because the two overlays share no pixels anyway.
-  Constraint: **at most one module per slot**, and every non-void cell of the overlay
-  must land on a hull tile carrying that slot's digit (a cheap bounds check, so a module
-  can't scribble on hull structure).
+  document carries a list of **targets**, each naming a hull, the slot(s) it claims
+  there, and its own hand-drawn overlay for that hull. This restores the design's
+  original intent — one concept is one document, portable to every hull and every slot
+  it has been drawn for — rather than a document per `(hull, slot)` pair. That narrower
+  rule shipped in iteration 1 as an **implementation simplification, not a design
+  decision**: this document originally specified target lists, and was amended to match
+  the simpler code that landed first. `rijay.cabin.standard` is the reference case —
+  one document, five targets, one on each of the Mockingbird's five identical 1×2 cabin
+  slots — and a medbay drawn for both a forward cabin slot and an aft one would be the
+  same shape: two targets in one document, because the two overlays still share no
+  pixels and still each need their own hand-drawn patches.
+
+  A target's `slots` list usually names one slot, but may name several if they are
+  **adjacent** — one overlay stamped across all of them at once, which is how a larger
+  room absorbs the slot next door (no shipped document needs this yet). Constraint:
+  **at most one module per slot** (claiming a slot twice, including a multi-slot
+  target's own other slots, is `duplicate_slot:<id>`), and every non-void cell of an
+  overlay must land on a hull tile carrying its target slot's digit (a cheap bounds
+  check, so a module can't scribble on hull structure). Naming a module for a hull it
+  has no target on, or a slot it has no target for, is refused with
+  `module_not_drawn_for_slot`.
 - **Mount points** — named *exterior attach points*, currently `{id, kind, size}`:
   `kind` gates what can hang there (`"engine"`), and `size` is the ordered scale
   `s | m | l`, a mount taking any part of its kind up to its size. Mount **geometry** —
   where the part actually sits on the hull sprite — is deliberately absent: it is only
-  needed by the renderer, and it arrives with client-side part layering in iteration 2.
+  needed by the renderer, and it arrives with client-side part layering in iteration 2c.
   Until then a mount is a capability point, not a position.
 
 The flexibility of slots is what keeps tradeoffs honest rather than artificial: you can
@@ -112,12 +136,31 @@ can only ever *add* restriction, so author it **open** and draw that perimeter's
 and doors on the module side, where the default module rather than the hull decides how
 the slot reads.
 
-That page also records the one place we could not follow our own advice. The Mockingbird
-was carved into slots out of an existing map she must keep reproducing tile for tile, and
-blanking a corridor's slot-facing wall would change that hull tile's own authored edge —
-so she keeps her corridor-side walls, which permanently fixes her `forward_crew` doors at
-the two positions the corridor already opens. A known, accepted one-hull cost; hulls
-authored from scratch should follow the rules instead.
+That page also records the one place we could not follow our own advice, and draws the
+line carefully: it binds the Mockingbird's **hull-owned perimeters** only, not every wall
+on her. She was carved out of an existing map she must keep reproducing tile for tile, and
+blanking a *corridor's* slot-facing wall would change that hull tile's own authored edge —
+so her cockpit passage, the aft corridor and junction, both stairwells, the Mezzanine and
+its `Q` ports, and the hull skin keep their walls permanently. A divider that sits
+**between two slot tiles**, by contrast, is already slot-owned on both sides, so redrawing
+it into the module changes nothing the reproduction check watches — the iteration 2a
+re-carve moved every such divider (a cabin's own walls and door, a bulkhead between two
+rooms that are both slots) out of the hull into the modules that furnish them. A known,
+accepted cost on the corridor-facing perimeters only; hulls authored from scratch should
+follow the rules throughout.
+
+### The Mockingbird's ten slots
+
+Iteration 2a re-carved the Mockingbird from her original five slots into ten, at the same
+authored geometry (`tools/slotmap.py server/shipclasses/mockingbird.json` paints them):
+`cockpit`, `cabin_fore_a`, `cabin_fore_b`, `crew_commons`, `cabin_mess`, `payload`,
+`cabin_engineer`, `engineering`, `cabin_aft_stbd` on the Upper deck, and `hold` (unchanged)
+on the Hold deck. Five of those ten — `cabin_fore_a`, `cabin_fore_b`, `cabin_mess`,
+`cabin_engineer`, `cabin_aft_stbd` — are identical 1×2 cabins, and one document,
+`server/modules/rijay/cabin_standard.json` (id `rijay.cabin.standard`), furnishes all
+five with one target apiece. It is filed under the manufacturer, `rijay`, rather than
+under `mockingbird`, because the Sparrow and Finch (iteration 2b) will add their own
+targets to that same file rather than growing bespoke cabin documents of their own.
 
 One further consequence of modules owning their slot outright: **a console inside a slot
 belongs to whichever module draws it.** The Mockingbird's bare hull has no consoles at
@@ -150,7 +193,7 @@ normal/height maps) ever demands a baked composite, the client can bake it — t
 is isolated to the renderer and can change later without touching the data model. None of
 this has shipped yet: a part's `sprite` key is authored and decoded but not yet sent over
 the wire, and mounts carry no geometry, so the client still draws the whole-hull bake.
-Layering is iteration 2's work, and it is why the "Exterior composition at runtime"
+Layering is iteration 2c's work, and it is why the "Exterior composition at runtime"
 question stays open in DESIGN.md.
 
 ## The validator: pooled tag sums
@@ -188,11 +231,13 @@ apart, because **a content error is a bug report, not a refit the player can fix
   reachable by a player asking for the wrong combination: `tag_deficit:<tag>`,
   `out_of_slot_bounds:<module>`, `mount_too_small:<mount>`, `duplicate_slot:<slot>`,
   `duplicate_mount:<mount>`, `slot_not_on_hull:<slot>`, `mount_not_on_hull:<mount>`,
-  `unknown_module:<module>`, `unknown_part:<part>`, `module_wrong_hull:<module>`,
-  `module_wrong_slot:<module>`, `mount_wrong_kind:<mount>`, `loadout_wrong_hull:<hull>`,
-  and `zero_mass` (a fit whose total mass is not positive would divide the flight numbers
-  by zero). The refit handler adds two of its own: `not_docked` and
-  `hold_over_capacity`.
+  `unknown_module:<module>`, `unknown_part:<part>`, `module_not_drawn_for_slot:<module>`
+  (the module has no target for this `(hull, slot)` pair — the replacement for what used
+  to be the separate `module_wrong_hull` and `module_wrong_slot`, folded into one reason
+  now that a module can be drawn for several hulls and slots), `mount_wrong_kind:<mount>`,
+  `loadout_wrong_hull:<hull>`, and `zero_mass` (a fit whose total mass is not positive
+  would divide the flight numbers by zero). The refit handler adds two of its own:
+  `not_docked` and `hold_over_capacity`.
 - **Content errors** — a hull, module or part *document* is wrong: `mount_bad_size:<mount>`
   and `part_bad_size:<part>` (a `size` outside `s|m|l`), `patch_bad_deck:<module>` (a patch
   names a deck the hull lacks), `invalid_hull_plan:<detail>` (the authored hull rows do not
@@ -246,30 +291,43 @@ These are the shipped shapes; the JSON schemas in `server/schemas/` (`module.sch
 `server/test/data_schema_test.gleam`, and the Gleam decoders they mirror are the source of
 truth for both.
 
-An **interior module** (`server/modules/<hull>/<id>.json` — filed per hull, because an
-overlay drawn against one hull's coordinate space is not portable to another):
+An **interior module** (`server/modules/<hull-or-manufacturer>/<id>.json` — filed under
+whichever name the *concept* belongs to: a hull-specific fixture like the cockpit files
+under its hull, a manufacturer part like the standard cabin files under its manufacturer,
+because it is one document even though each individual overlay it carries is still drawn
+against one hull's coordinate space and is not portable as a drawing):
 
 ```jsonc
 {
   "schema": 1,
-  "id": "mockingbird.forward_crew.cabins",
-  "hull": "mockingbird",
-  "slot": "forward_crew",
-  "name": "Forward crew cabins",
-  "mass": 6.0,
-  "provides": { "berths": 4 },
+  "id": "rijay.cabin.standard",
+  "name": "Standard cabin",
+  "mass": 3.0,
+  "provides": { "berths": 1 },
   "requires": { "power": 1 },
-  "patches": [
-    { "deck": 0, "x": 6, "y": 5,
-      "grid": [ /* 3*h rows of 3*w chars; void centre = passthrough */ ] }
+  "targets": [
+    { "hull": "mockingbird", "slots": ["cabin_fore_a"],
+      "patches": [
+        { "deck": 0, "x": 6, "y": 5,
+          "grid": [ /* 3*h rows of 3*w chars; void centre = passthrough */ ] }
+      ] },
+    { "hull": "mockingbird", "slots": ["cabin_fore_b"],
+      "patches": [ /* this cabin's own patch, at its own (x, y) */ ] }
   ]
 }
 ```
 
-A module carries **`patches`**, not one whole-deck grid: each patch is a rectangle of
+`targets` is the canonical spelling: a list of every `(hull, slots)` placement this one
+document is drawn for, each with its own overlay. A flat shorthand still decodes for the
+common single-placement case — top-level `hull` (a string), `slot` (a string, singular),
+and `patches`, becoming one target with a one-element `slots` — and most shipped documents
+still use it, because most modules only have one placement. `targets` wins if a document
+somehow carries both; a document with neither fails to decode.
+
+A target carries **`patches`**, not one whole-deck grid: each patch is a rectangle of
 overlay at a **tile** origin (`x`, `y` are tiles, not characters) on deck `deck`. Sparse
 patches rather than a deck-sized sheet because a slot is a small part of a deck and a
-module has no business declaring anything about the rest of it. A module with no patches
+module has no business declaring anything about the rest of it. A target with no patches
 at all is legal, and is pure capability — mass and tags, no map change.
 
 An **exterior part** (`server/parts/<id>.json` — flat, because parts *are* cross-hull):
@@ -292,7 +350,7 @@ An **exterior part** (`server/parts/<id>.json` — flat, because parts *are* cro
 
 `kind` and `size` are what the mount matches against; `thrust` and `torque` are pooled and
 divided by total mass (see "Derived numbers"); `sprite` is the client's key for iteration
-2's layering. Every field after `size` is optional and defaults to zero/empty, so a
+2c's layering. Every field after `size` is optional and defaults to zero/empty, so a
 non-engine part simply omits `thrust` and `torque`.
 
 A **hull** (`server/shipclasses/<id>.json`, schema 3) gains `mass`, `provides`, `requires`,
@@ -358,18 +416,32 @@ what it landed is the whole engine:
 - **Flight stats from data**: no `main_accel`/`turn_rate` constants remain in
   `ship.gleam`; acceleration and turn rate are pooled engine thrust and torque over the
   fit's total mass.
-- The **Mockingbird carved into five slots** — cockpit, forward crew, commons, aft crew,
-  hold — with seven modules and two engines, her default loadout reproducing her pre-M4
-  authored deck tile for tile, at the same capacity and the same flight numbers.
+- The **Mockingbird carved into five slots** (later re-carved into ten — see "Iteration 2a"
+  below) — cockpit, forward crew, commons, aft crew, hold — with seven modules and two
+  engines, her default loadout reproducing her pre-M4 authored deck tile for tile, at the
+  same capacity and the same flight numbers.
 - The **refit verb** (`refit` / `refit_result` / `ship_fit`), whole-loadout so it is
   idempotent, with a composite pre-flight so a refused refit leaves the ship untouched and
   names a machine-readable reason.
 - **Harness and schema coverage**: JSON schemas for hull, module and part documents
   validated against everything on disk, plus refit coverage in the Python harness.
 
-**Iteration 2** is the Sparrow and Finch hulls — the anti-overfit test, since every rule
-above was written while looking at one hull — and **client-side exterior part layering**:
-mount geometry, the part `sprite` on the wire, and a swapped nacelle that actually shows.
+**Iteration 2a has also landed**, restoring this document's original intent (see "Slots
+and mounts"): a module document carries **target lists**, so one document can furnish
+several `(hull, slot)` placements instead of needing a document per pair, and a single
+target may claim several adjacent slots. The one-pair rule iteration 1 shipped was an
+implementation simplification, not a design decision. Riding on that, the **Mockingbird
+was re-carved into ten slots** — the five from iteration 1 split further so five of them
+are identical 1×2 cabins — furnished by one target-bearing document,
+`rijay.cabin.standard`, instead of five bespoke cabin files; her default loadout still
+reproduces her pre-M4 authored deck tile for tile.
+
+**Iteration 2b** is the Sparrow and Finch hulls — the anti-overfit test, since every rule
+above was written while looking at one hull, now authored against target lists and the
+standard cabin shape rather than bespoke per-hull cabin files.
+
+**Iteration 2c** is **client-side exterior part layering**: mount geometry, the part
+`sprite` on the wire, and a swapped nacelle that actually shows.
 
 **Iteration 3** is the refit *loop* as a game system rather than a verb: shipyard stations,
 a refit console you walk to, per-station catalogs of what is actually for sale, and
@@ -392,7 +464,7 @@ touches the core engine.
 - **"Exterior composition at runtime"** — **still open, deliberately.** The V1 direction is
   client-side sprite layering at mount points, with a server/offline bake still available
   if the lighting pipeline demands one; none of it is built yet, so nothing is proven and
-  the question stays in DESIGN.md until iteration 2 closes it.
+  the question stays in DESIGN.md until iteration 2c closes it.
 
 DESIGN.md's "Ship customization" section, written before this was hashed out, described a
 shape-agnostic "modules rotate and fit any room" model that this supersedes: interior fit
