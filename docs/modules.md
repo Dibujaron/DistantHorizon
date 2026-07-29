@@ -240,7 +240,10 @@ apart, because **a content error is a bug report, not a refit the player can fix
   `not_docked` and `hold_over_capacity`.
 - **Content errors** — a hull, module or part *document* is wrong: `mount_bad_size:<mount>`
   and `part_bad_size:<part>` (a `size` outside `s|m|l`), `patch_bad_deck:<module>` (a patch
-  names a deck the hull lacks), `invalid_hull_plan:<detail>` (the authored hull rows do not
+  names a deck the hull lacks), `target_slot_not_on_hull:<module>` (a module document's
+  `targets` list names a slot id that is not on the hull it claims — the document is at
+  fault, not the player's loadout entry, so the reason names the module rather than the
+  slot), `invalid_hull_plan:<detail>` (the authored hull rows do not
   parse) and `invalid_resolved_plan:<detail>` (the *stamped* rows do not — the usual cause
   being a fit that left the ship with no helm console). The refit handler adds `no_fit` and
   `unknown_hull:<id>`, plus `berth_blocked`, `unknown_berth` and `no_concourse_deck` from
@@ -322,7 +325,8 @@ document is drawn for, each with its own overlay. A flat shorthand still decodes
 common single-placement case — top-level `hull` (a string), `slot` (a string, singular),
 and `patches`, becoming one target with a one-element `slots` — and most shipped documents
 still use it, because most modules only have one placement. `targets` wins if a document
-somehow carries both; a document with neither fails to decode.
+somehow carries both; a document with neither fails to decode — though the schema rejects
+a document that carries both.
 
 A target carries **`patches`**, not one whole-deck grid: each patch is a rectangle of
 overlay at a **tile** origin (`x`, `y` are tiles, not characters) on deck `deck`. Sparse

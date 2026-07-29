@@ -622,14 +622,15 @@ pub fn a_multi_slot_patch_still_cannot_escape_its_slots_test() {
 }
 
 /// A mistyped id in a multi-slot target's `slots` must be loud, not silently
-/// dropped from the digit set it backs — same reason string as naming a bad
-/// slot in the loadout itself, since either way it is an id that is not on
-/// the hull.
+/// dropped from the digit set it backs — but this is a CONTENT bug (the
+/// module document is wrong), not a loadout refusal, so it gets its own
+/// reason naming the module rather than reusing `slot_not_on_hull` (which
+/// names a slot the player's loadout entry asked for).
 pub fn a_typo_in_a_multi_slot_targets_slots_is_rejected_test() {
   let lo =
     loadout.Loadout(hull: "testhull", modules: [#("bay_a", "m.typo")], parts: [
       #("engine_center", "test.engine"),
     ])
   let assert Error(e) = two_slot_fit([typo_module_doc], lo)
-  assert e == "slot_not_on_hull:nope"
+  assert e == "target_slot_not_on_hull:m.typo"
 }

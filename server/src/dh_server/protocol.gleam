@@ -65,7 +65,8 @@
 ////   zero_mass. CONTENT ERRORS (a data file is wrong, not the player):
 ////   no_fit | unknown_hull:<id> | mount_bad_size:<mount> |
 ////   part_bad_size:<part> | patch_bad_deck:<module> |
-////   invalid_hull_plan:<detail> | invalid_resolved_plan:<detail> |
+////   target_slot_not_on_hull:<module> | invalid_hull_plan:<detail> |
+////   invalid_resolved_plan:<detail> |
 ////   berth_blocked | unknown_berth | no_concourse_deck. The refit handler
 ////   itself emits `not_docked`, `hold_over_capacity`, `no_fit` and
 ////   `unknown_hull:<id>`; the last three content errors come from the

@@ -11,7 +11,8 @@
       "allOf": [
         { "required": ["targets"] },
         { "not": { "required": ["patches"] } },
-        { "not": { "required": ["hull"] } }
+        { "not": { "required": ["hull"] } },
+        { "not": { "required": ["slot"] } }
       ]
     },
     {

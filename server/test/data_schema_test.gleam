@@ -151,6 +151,32 @@ pub fn module_rejects_a_misspelled_patch_field_test() {
   assert validate_with_schema(schema, invalid_module) != Ok(Nil)
 }
 
+/// Proves the schema's `oneOf`/`not` construct is actually LIVE under jesse
+/// rather than silently ignored (jesse would still validate every shipped
+/// document either way, so nothing else in this file would notice if `oneOf`
+/// were inert). The positive control is a `targets`-only document — the
+/// canonical spelling with none of the flat-shorthand fields — which must
+/// still pass; the negative case adds a stray top-level `hull`/`slot`
+/// alongside `targets`, matching neither `oneOf` branch (branch 1 forbids
+/// `hull`/`slot`; branch 2 forbids `targets`), which the decoder would
+/// silently ignore but the schema must refuse.
+pub fn module_rejects_targets_alongside_a_stray_top_level_slot_test() {
+  let schema = read_json(module_schema_path)
+  let targets_only =
+    parse_json(
+      "{\"schema\": 1, \"id\": \"m.targets_only\", \"name\": \"M\",
+        \"targets\": [{\"hull\": \"h\", \"slots\": [\"s\"]}]}",
+    )
+  let assert Ok(Nil) = validate_with_schema(schema, targets_only)
+  let both_spellings =
+    parse_json(
+      "{\"schema\": 1, \"id\": \"m.both\", \"name\": \"M\", \"hull\": \"h\",
+        \"slot\": \"s\",
+        \"targets\": [{\"hull\": \"h\", \"slots\": [\"s\"]}]}",
+    )
+  assert validate_with_schema(schema, both_spellings) != Ok(Nil)
+}
+
 /// Also proves the `$defs` tag ref actually resolves under jesse rather than
 /// being silently skipped, which would make every tag object unvalidated.
 pub fn part_rejects_a_non_integer_tag_amount_test() {

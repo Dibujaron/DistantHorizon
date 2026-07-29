@@ -165,7 +165,7 @@ rules above throughout.
 A divider that sits **between two slot tiles** is a different case — both
 tiles are already slot-owned, so redrawing it into the module changes nothing
 about the hull's authored rows, and the reproduction check does not see it. The
-iteration-2a re-carve moved every such internal divider (a cabin's own walls and
+iteration 2a re-carve moved every such internal divider (a cabin's own walls and
 door, a bulkhead between two rooms that are both slots) out of the hull and
 into the modules that furnish those slots, so none of the Mockingbird's ten
 slots are boxed in by fixed hull dividers; only her true corridor-facing
