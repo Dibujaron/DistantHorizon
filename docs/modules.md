@@ -155,7 +155,7 @@ Iteration 2a re-carved the Mockingbird from her original five slots into ten, at
 authored geometry (`tools/slotmap.py server/shipclasses/mockingbird.json` paints them):
 `cockpit`, `cabin_fore_a`, `cabin_fore_b`, `crew_commons`, `cabin_mess`, `payload`,
 `cabin_engineer`, `engineering`, `cabin_aft_stbd` on the Upper deck, and `hold` (unchanged)
-on the Hold deck. Five of those ten — `cabin_fore_a`, `cabin_fore_b`, `cabin_mess`,
+on the Lower deck. Five of those ten — `cabin_fore_a`, `cabin_fore_b`, `cabin_mess`,
 `cabin_engineer`, `cabin_aft_stbd` — are identical 1×2 cabins, and one document,
 `server/modules/rijay/cabin_standard.json` (id `rijay.cabin.standard`), furnishes all
 five with one target apiece. It is filed under the manufacturer, `rijay`, rather than

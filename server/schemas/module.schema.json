@@ -14,7 +14,12 @@
         { "not": { "required": ["hull"] } }
       ]
     },
-    { "required": ["hull", "slot"] }
+    {
+      "allOf": [
+        { "required": ["hull", "slot"] },
+        { "not": { "required": ["targets"] } }
+      ]
+    }
   ],
   "properties": {
     "schema": { "type": "integer" },
