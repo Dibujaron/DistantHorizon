@@ -325,8 +325,8 @@ document is drawn for, each with its own overlay. A flat shorthand still decodes
 common single-placement case — top-level `hull` (a string), `slot` (a string, singular),
 and `patches`, becoming one target with a one-element `slots` — and most shipped documents
 still use it, because most modules only have one placement. `targets` wins if a document
-somehow carries both; a document with neither fails to decode — though the schema rejects
-a document that carries both.
+somehow carries both — though the schema refuses such a document, so a validated one never
+does. A document with neither fails to decode.
 
 A target carries **`patches`**, not one whole-deck grid: each patch is a rectangle of
 overlay at a **tile** origin (`x`, `y` are tiles, not characters) on deck `deck`. Sparse
