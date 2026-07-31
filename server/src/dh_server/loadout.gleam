@@ -18,7 +18,7 @@
 
 import dh_server/deckplan.{type DeckPlan}
 import dh_server/glyphs
-import dh_server/hull.{type Hull, type Mount, type Slot}
+import dh_server/hull.{type Hull, type Mount}
 import dh_server/module.{type Module, type Patch}
 import dh_server/part.{type Part}
 import dh_server/shipclass.{type ShipClass}
@@ -67,7 +67,8 @@ pub fn default_for(h: Hull) -> Loadout {
 ///   - `slot_not_on_hull:<slot id>` / `mount_not_on_hull:<mount id>`
 ///   - `duplicate_mount:<mount id>` — two parts named the same mount
 ///   - `unknown_module:<module id>` / `unknown_part:<part id>`
-///   - `module_wrong_hull:<module id>` / `module_wrong_slot:<module id>`
+///   - `module_not_drawn_for_slot:<module id>` — the module has no target for
+///     this (hull, slot) pair
 ///   - `mount_wrong_kind:<mount id>` — an engine on a gun mount
 ///   - `loadout_wrong_hull:<hull id>` — the loadout is for another hull
 ///   - `zero_mass` — the fit's total mass is not positive, so flight numbers
@@ -83,6 +84,11 @@ pub fn default_for(h: Hull) -> Loadout {
 ///   - `mount_bad_size:<mount id>` — hull mount `size` outside `"s"|"m"|"l"`
 ///   - `part_bad_size:<part id>` — part `size` outside `"s"|"m"|"l"`
 ///   - `patch_bad_deck:<module id>` — a patch names a deck the hull lacks
+///   - `target_slot_not_on_hull:<module id>` — a module document's `targets`
+///     list names a slot id that is not on the hull it claims to target (the
+///     document is at fault, not the loadout entry — contrast
+///     `slot_not_on_hull` above, which names the slot the player's loadout
+///     entry asked for)
 ///   - `invalid_hull_plan:<parser message>` — the AUTHORED hull rows do not
 ///     parse or validate
 ///   - `invalid_resolved_plan:<parser message>` — the STAMPED rows do not
@@ -102,7 +108,7 @@ pub fn resolve(
     deckplan.from_rows(reg, h.decks)
     |> result.map_error(fn(e) { "invalid_hull_plan:" <> e }),
   )
-  use _ <- result.try(check_bounds(reg, base, fitted))
+  use _ <- result.try(check_bounds(reg, h, base, fitted))
   use plan <- result.try(
     deckplan.from_rows(reg, stamp_all(reg, h.decks, fitted))
     |> result.map_error(fn(e) { "invalid_resolved_plan:" <> e }),
@@ -133,24 +139,52 @@ fn lookup_modules(
   h: Hull,
   modules: Dict(String, Module),
   lo: Loadout,
-) -> Result(List(#(Slot, Module)), String) {
-  list.try_fold(lo.modules, [], fn(acc: List(#(Slot, Module)), entry) {
+) -> Result(List(#(Module, module.Target)), String) {
+  list.try_fold(lo.modules, [], fn(acc: List(#(Module, module.Target)), entry) {
     let #(slot_id, module_id) = entry
-    use slot <- result.try(
+    // The slot itself is only needed to prove `slot_id` is real; nothing
+    // downstream reads which one it was, so the lookup's result is
+    // discarded rather than carried in the fitted tuple.
+    use _ <- result.try(
       hull.slot_by_id(h, slot_id)
       |> result.replace_error("slot_not_on_hull:" <> slot_id),
-    )
-    use <- guard(
-      !list.any(acc, fn(a) { { a.0 }.id == slot_id }),
-      "duplicate_slot:" <> slot_id,
     )
     use m <- result.try(
       dict.get(modules, module_id)
       |> result.replace_error("unknown_module:" <> module_id),
     )
-    use <- guard(m.hull == h.id, "module_wrong_hull:" <> module_id)
-    use <- guard(m.slot == slot_id, "module_wrong_slot:" <> module_id)
-    Ok(list.append(acc, [#(slot, m)]))
+    // One reason, not two: a module that is not drawn for this hull and this
+    // slot has no overlay to stamp, and the player cannot tell the
+    // difference between "wrong hull" and "wrong slot" anyway.
+    use target <- result.try(
+      module.target_for(m, h.id, slot_id)
+      |> result.replace_error("module_not_drawn_for_slot:" <> module_id),
+    )
+    // Every slot the target claims must resolve on the hull, not just the
+    // one it was named under — a mistyped id in a multi-slot `slots` list
+    // is a content bug, and this is the only place with the hull in hand to
+    // catch it. Once this passes, `check_bounds`'s digit lookup for this
+    // target can never silently drop an id. This is a CONTENT error, not a
+    // loadout refusal: the player named a real slot in their loadout entry
+    // (that is `slot_id` above, already resolved), but the module
+    // DOCUMENT's own `targets` list claims an id that is not on the hull —
+    // so the reason names the module, not the slot, because that is what an
+    // author needs to go fix.
+    use _ <- result.try(
+      list.try_fold(target.slots, Nil, fn(_, id) {
+        hull.slot_by_id(h, id)
+        |> result.replace_error("target_slot_not_on_hull:" <> module_id)
+        |> result.map(fn(_) { Nil })
+      }),
+    )
+    // A multi-slot target occupies its WHOLE slot set, not just the one it
+    // was named under — a bigger room absorbs the one next door, so none of
+    // its slots are free for another module either.
+    let claimed = list.flat_map(acc, fn(a) { { a.1 }.slots })
+    case list.find(target.slots, fn(id) { list.contains(claimed, id) }) {
+      Ok(dup) -> Error("duplicate_slot:" <> dup)
+      Error(Nil) -> Ok(list.append(acc, [#(m, target)]))
+    }
   })
 }
 
@@ -195,16 +229,16 @@ fn lookup_parts(
 /// linking a gun to any sufficient gun room, not to one specific partner.
 fn check_tags(
   h: Hull,
-  fitted: List(#(Slot, Module)),
+  fitted: List(#(Module, module.Target)),
   mounted: List(#(Mount, Part)),
 ) -> Result(Nil, String) {
   let provides =
     h.provides
-    |> merge_all(list.map(fitted, fn(f) { { f.1 }.provides }))
+    |> merge_all(list.map(fitted, fn(f) { { f.0 }.provides }))
     |> merge_all(list.map(mounted, fn(m) { { m.1 }.provides }))
   let requires =
     h.requires
-    |> merge_all(list.map(fitted, fn(f) { { f.1 }.requires }))
+    |> merge_all(list.map(fitted, fn(f) { { f.0 }.requires }))
     |> merge_all(list.map(mounted, fn(m) { { m.1 }.requires }))
   // Sorted by tag: `dict.to_list` has no specified order, and the losing tag
   // travels to the player in the reason string, so an unsorted fold would name
@@ -240,18 +274,31 @@ fn merge_all(
   })
 }
 
-/// Every non-void overlay cell must land on a hull cell carrying that slot's
-/// digit — the cheap bounds check that stops a module scribbling on hull
-/// structure. This reads the AUTHORED hull, never the previously resolved
-/// plan, so a refit always validates against the same fixed structure.
+/// Every non-void overlay cell must land on a hull cell carrying one of the
+/// target's claimed slots' digits — the cheap bounds check that stops a
+/// module scribbling on hull structure. Multiple slots widen the set of
+/// digits a cell may carry, never the geometry: claiming a slot does not
+/// license writing anywhere outside the digits that back it. This reads the
+/// AUTHORED hull, never the previously resolved plan, so a refit always
+/// validates against the same fixed structure.
 fn check_bounds(
   reg: glyphs.Registry,
+  h: Hull,
   base: DeckPlan,
-  fitted: List(#(Slot, Module)),
+  fitted: List(#(Module, module.Target)),
 ) -> Result(Nil, String) {
   list.try_fold(fitted, Nil, fn(_, entry) {
-    let #(slot, m) = entry
-    list.try_fold(m.patches, Nil, fn(_, p) {
+    let #(m, target) = entry
+    // `filter_map` rather than an assumed-total `map`: it reads as if a slot
+    // id could be silently dropped, but `lookup_modules` already rejected any
+    // target whose `slots` names an id off the hull
+    // (`target_slot_not_on_hull`), so by the time `fitted` reaches here every
+    // lookup below is guaranteed to hit — this can never actually drop an id.
+    let digits =
+      list.filter_map(target.slots, fn(id) {
+        hull.slot_by_id(h, id) |> result.map(fn(s) { s.digit })
+      })
+    list.try_fold(target.patches, Nil, fn(_, p) {
       case deckplan.deck_at(base, p.deck) {
         Error(Nil) -> Error("patch_bad_deck:" <> m.id)
         Ok(g) ->
@@ -260,9 +307,13 @@ fn check_bounds(
             case deckplan.cell_at_xy(g, p.x + tx, p.y + ty) {
               Error(Nil) -> Error("out_of_slot_bounds:" <> m.id)
               Ok(cell) ->
-                case cell.slot == Some(slot.digit) {
-                  True -> Ok(Nil)
-                  False -> Error("out_of_slot_bounds:" <> m.id)
+                case cell.slot {
+                  Some(digit) ->
+                    case list.contains(digits, digit) {
+                      True -> Ok(Nil)
+                      False -> Error("out_of_slot_bounds:" <> m.id)
+                    }
+                  _ -> Error("out_of_slot_bounds:" <> m.id)
                 }
             }
           })
@@ -296,7 +347,7 @@ fn patch_tiles(reg: glyphs.Registry, p: Patch) -> List(#(Int, Int)) {
 fn stamp_all(
   reg: glyphs.Registry,
   decks: List(#(String, List(String))),
-  fitted: List(#(Slot, Module)),
+  fitted: List(#(Module, module.Target)),
 ) -> List(#(String, List(String))) {
   list.index_map(decks, fn(deck, index) {
     let #(name, rows) = deck
@@ -392,10 +443,10 @@ fn set_at(
 
 fn total_mass(
   h: Hull,
-  fitted: List(#(Slot, Module)),
+  fitted: List(#(Module, module.Target)),
   mounted: List(#(Mount, Part)),
 ) -> Float {
-  let modules = list.fold(fitted, 0.0, fn(t, f) { t +. { f.1 }.mass })
+  let modules = list.fold(fitted, 0.0, fn(t, f) { t +. { f.0 }.mass })
   let parts = list.fold(mounted, 0.0, fn(t, m) { t +. { m.1 }.mass })
   h.mass +. modules +. parts
 }

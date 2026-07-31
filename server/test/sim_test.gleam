@@ -1016,9 +1016,14 @@ const station_space = "station:meridian_highport"
 /// this is exactly what a refit UI would send back unchanged.
 const default_modules = [
   #("cockpit", "mockingbird.cockpit.stock"),
-  #("forward_crew", "mockingbird.forward_crew.cabins"),
-  #("commons", "mockingbird.commons.mess"),
-  #("aft_crew", "mockingbird.aft_crew.cabins"),
+  #("cabin_fore_a", "rijay.cabin.standard"),
+  #("cabin_fore_b", "rijay.cabin.standard"),
+  #("crew_commons", "mockingbird.commons.crew"),
+  #("cabin_mess", "rijay.cabin.standard"),
+  #("payload", "mockingbird.payload.passenger"),
+  #("cabin_engineer", "rijay.cabin.standard"),
+  #("engineering", "mockingbird.engineering.stock"),
+  #("cabin_aft_stbd", "rijay.cabin.standard"),
   #("hold", "mockingbird.hold.breakbulk"),
 ]
 
@@ -1026,25 +1031,18 @@ const default_modules = [
 /// a different stamped deck, and a different pallet-derived hold.
 const tank_modules = [
   #("cockpit", "mockingbird.cockpit.stock"),
-  #("forward_crew", "mockingbird.forward_crew.cabins"),
-  #("commons", "mockingbird.commons.mess"),
-  #("aft_crew", "mockingbird.aft_crew.cabins"),
+  #("cabin_fore_a", "rijay.cabin.standard"),
+  #("cabin_fore_b", "rijay.cabin.standard"),
+  #("crew_commons", "mockingbird.commons.crew"),
+  #("cabin_mess", "rijay.cabin.standard"),
+  #("payload", "mockingbird.payload.passenger"),
+  #("cabin_engineer", "rijay.cabin.standard"),
+  #("engineering", "mockingbird.engineering.stock"),
+  #("cabin_aft_stbd", "rijay.cabin.standard"),
   #("hold", "mockingbird.hold.tank"),
 ]
 
-/// Passenger staterooms draw 2 power where the cabins they replace draw 1.
-const passenger_modules = [
-  #("cockpit", "mockingbird.cockpit.stock"),
-  #("forward_crew", "mockingbird.forward_crew.passenger"),
-  #("commons", "mockingbird.commons.mess"),
-  #("aft_crew", "mockingbird.aft_crew.cabins"),
-  #("hold", "mockingbird.hold.breakbulk"),
-]
-
 const default_parts = [#("engine_center", "rijay.engine.consol_patch")]
-
-/// The original Rijay engine draws 4 power where the consol patch draws 3.
-const stock_engine_parts = [#("engine_center", "rijay.engine.stock")]
 
 /// The fit `modules`/`parts` resolve to on the Mockingbird, through the same
 /// registries the sim loaded â€” so a test states its expectations in resolved
@@ -1160,12 +1158,13 @@ pub fn a_refused_refit_leaves_the_fit_untouched_test() {
   let assert Ok(before) = sim.ship_class(s, ship_id, 1000)
   let #(_space, _epoch) = receive_space_for(client, station_space)
 
-  // Passenger staterooms (2) plus the original Rijay engine (4) draw 11 power
-  // from a hull that provides 10 â€” a refusal from deep inside the resolver,
+  // Her whole interior, but nothing on the engine mount: the hull's own
+  // `{"engine": 1}` goes uncovered, so the same pooled-tag rule that polices
+  // power refuses the fit â€” a refusal from deep inside the resolver,
   // forwarded verbatim.
   let assert Error(reason) =
-    sim.request_refit(s, char, passenger_modules, stock_engine_parts, 1000)
-  assert reason == "tag_deficit:power"
+    sim.request_refit(s, char, default_modules, [], 1000)
+  assert reason == "tag_deficit:engine"
 
   // Nothing moved: the resolved class is identical, field for field...
   let assert Ok(after) = sim.ship_class(s, ship_id, 1000)

@@ -59,13 +59,14 @@
 ////   {"v":1,"type":"refit_result","ok":Bool,"reason":null|S} — LOADOUT
 ////   REFUSALS (the player asked for an illegal fit): not_docked |
 ////   hold_over_capacity | loadout_wrong_hull | slot_not_on_hull |
-////   duplicate_slot | unknown_module | module_wrong_hull | module_wrong_slot |
+////   duplicate_slot | unknown_module | module_not_drawn_for_slot |
 ////   mount_not_on_hull | duplicate_mount | unknown_part | mount_wrong_kind |
 ////   mount_too_small | out_of_slot_bounds:<module> | tag_deficit:<tag> |
 ////   zero_mass. CONTENT ERRORS (a data file is wrong, not the player):
 ////   no_fit | unknown_hull:<id> | mount_bad_size:<mount> |
 ////   part_bad_size:<part> | patch_bad_deck:<module> |
-////   invalid_hull_plan:<detail> | invalid_resolved_plan:<detail> |
+////   target_slot_not_on_hull:<module> | invalid_hull_plan:<detail> |
+////   invalid_resolved_plan:<detail> |
 ////   berth_blocked | unknown_berth | no_concourse_deck. The refit handler
 ////   itself emits `not_docked`, `hold_over_capacity`, `no_fit` and
 ////   `unknown_hull:<id>`; the last three content errors come from the

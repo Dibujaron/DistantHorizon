@@ -95,11 +95,15 @@ fn an_engine() -> part.Part {
   p
 }
 
+fn engine_registry() -> dict.Dict(String, part.Part) {
+  dict.from_list([#("test.engine", an_engine())])
+}
+
 fn registries(
   mods: List(module.Module),
 ) -> #(dict.Dict(String, module.Module), dict.Dict(String, part.Part)) {
   let by_id = dict.from_list(list.map(mods, fn(m) { #(m.id, m) }))
-  #(by_id, dict.from_list([#("test.engine", an_engine())]))
+  #(by_id, engine_registry())
 }
 
 fn fit_on(h: hull.Hull, mods: List(module.Module), lo: loadout.Loadout) {
@@ -303,7 +307,7 @@ pub fn a_module_in_the_wrong_slot_is_rejected_test() {
                           \"grid\": [\"   \", \" p \", \"   \"] } ] }",
     )
   let assert Error(e) = fit_of([m], bay_loadout("m.hold"))
-  assert e == "module_wrong_slot:m.hold"
+  assert e == "module_not_drawn_for_slot:m.hold"
 }
 
 pub fn an_unknown_mount_and_an_unknown_part_are_rejected_test() {
@@ -508,4 +512,125 @@ pub fn a_patch_naming_a_deck_the_hull_lacks_is_a_content_error_test() {
     )
   let assert Error(e) = fit_of([m], bay_loadout("m.deck9"))
   assert e == "patch_bad_deck:m.deck9"
+}
+
+// ------------------------------------------------------ multi-slot targets --
+
+// `hull_doc`'s bay, split into two adjacent single-tile slots so a module can
+// be drawn to claim both at once. Only the SW digits differ.
+const hull_two_slots_doc = "{
+  \"schema\": 3,
+  \"id\": \"testhull\",
+  \"name\": \"Test Hull\",
+  \"mass\": 96.0,
+  \"provides\": { \"power\": 10 },
+  \"requires\": { \"engine\": 1 },
+  \"slots\": [ { \"digit\": 1, \"id\": \"bay_a\", \"name\": \"Bay A\" },
+               { \"digit\": 2, \"id\": \"bay_b\", \"name\": \"Bay B\" } ],
+  \"mounts\": [ { \"id\": \"engine_center\", \"kind\": \"engine\", \"size\": \"m\" } ],
+  \"cargo\": { \"capacity\": 7, \"handling\": \"breakbulk\" },
+  \"decks\": [ { \"name\": \"Main\", \"grid\": [
+    \"####=#\",
+    \"# h Q#\",
+    \"#### #\",
+    \"#### #\",
+    \"#    #\",
+    \"1##2##\"
+  ] } ]
+}"
+
+// Two tiles wide, claiming both slots with one overlay.
+const wide_module_doc = "{
+  \"schema\": 1, \"id\": \"m.wide\", \"name\": \"Wide bay\", \"mass\": 0.0,
+  \"targets\": [ { \"hull\": \"testhull\", \"slots\": [\"bay_a\", \"bay_b\"],
+    \"patches\": [ { \"deck\": 0, \"x\": 0, \"y\": 1,
+                     \"grid\": [\"      \", \" p  p \", \"      \"] } ] } ] }"
+
+// One tile, claiming only the right-hand slot.
+const narrow_b_doc = "{
+  \"schema\": 1, \"id\": \"m.narrow_b\", \"name\": \"Narrow\", \"mass\": 0.0,
+  \"targets\": [ { \"hull\": \"testhull\", \"slots\": [\"bay_b\"],
+    \"patches\": [ { \"deck\": 0, \"x\": 1, \"y\": 1,
+                     \"grid\": [\"   \", \" p \", \"   \"] } ] } ] }"
+
+// Claims only bay_a, but its overlay reaches into bay_b.
+const escaping_module_doc = "{
+  \"schema\": 1, \"id\": \"m.escape\", \"name\": \"Escape\", \"mass\": 0.0,
+  \"targets\": [ { \"hull\": \"testhull\", \"slots\": [\"bay_a\"],
+    \"patches\": [ { \"deck\": 0, \"x\": 0, \"y\": 1,
+                     \"grid\": [\"      \", \" p  p \", \"      \"] } ] } ] }"
+
+// Claims bay_a plus a slot id that is not on the hull at all — a typo.
+const typo_module_doc = "{
+  \"schema\": 1, \"id\": \"m.typo\", \"name\": \"Typo\", \"mass\": 0.0,
+  \"targets\": [ { \"hull\": \"testhull\", \"slots\": [\"bay_a\", \"nope\"],
+    \"patches\": [ { \"deck\": 0, \"x\": 0, \"y\": 1,
+                     \"grid\": [\"      \", \" p  p \", \"      \"] } ] } ] }"
+
+fn two_slot_fit(
+  module_docs: List(String),
+  lo: loadout.Loadout,
+) -> Result(loadout.Fit, String) {
+  let assert Ok(h) = hull.decode(hull_two_slots_doc)
+  let mods =
+    dict.from_list(
+      list.map(module_docs, fn(doc) {
+        let assert Ok(m) = module.decode(doc)
+        #(m.id, m)
+      }),
+    )
+  loadout.resolve(glyphs.default(), h, mods, engine_registry(), lo)
+}
+
+/// A module may claim several adjacent slots with one overlay — that is how a
+/// bigger room absorbs the one next door. Naming it in the loadout under one
+/// of its slots occupies all of them.
+pub fn a_multi_slot_module_occupies_every_slot_it_claims_test() {
+  let lo =
+    loadout.Loadout(hull: "testhull", modules: [#("bay_a", "m.wide")], parts: [
+      #("engine_center", "test.engine"),
+    ])
+  let assert Ok(fit) = two_slot_fit([wide_module_doc], lo)
+  let assert Ok(g) = deckplan.deck_at(fit.class.plan, 0)
+  let assert Ok(left) = deckplan.cell_at_xy(g, 0, 1)
+  let assert Ok(right) = deckplan.cell_at_xy(g, 1, 1)
+  // The overlay landed in BOTH slots from a single loadout entry.
+  assert left.decor == option.Some("p")
+  assert right.decor == option.Some("p")
+}
+
+/// The slots a multi-slot module claims are not free for anything else.
+pub fn another_module_cannot_claim_an_occupied_slot_test() {
+  let lo =
+    loadout.Loadout(
+      hull: "testhull",
+      modules: [#("bay_a", "m.wide"), #("bay_b", "m.narrow_b")],
+      parts: [#("engine_center", "test.engine")],
+    )
+  let assert Error(e) = two_slot_fit([wide_module_doc, narrow_b_doc], lo)
+  assert e == "duplicate_slot:bay_b"
+}
+
+/// Claiming one slot does not license writing into its neighbour.
+pub fn a_multi_slot_patch_still_cannot_escape_its_slots_test() {
+  let lo =
+    loadout.Loadout(hull: "testhull", modules: [#("bay_a", "m.escape")], parts: [
+      #("engine_center", "test.engine"),
+    ])
+  let assert Error(e) = two_slot_fit([escaping_module_doc], lo)
+  assert e == "out_of_slot_bounds:m.escape"
+}
+
+/// A mistyped id in a multi-slot target's `slots` must be loud, not silently
+/// dropped from the digit set it backs — but this is a CONTENT bug (the
+/// module document is wrong), not a loadout refusal, so it gets its own
+/// reason naming the module rather than reusing `slot_not_on_hull` (which
+/// names a slot the player's loadout entry asked for).
+pub fn a_typo_in_a_multi_slot_targets_slots_is_rejected_test() {
+  let lo =
+    loadout.Loadout(hull: "testhull", modules: [#("bay_a", "m.typo")], parts: [
+      #("engine_center", "test.engine"),
+    ])
+  let assert Error(e) = two_slot_fit([typo_module_doc], lo)
+  assert e == "target_slot_not_on_hull:m.typo"
 }

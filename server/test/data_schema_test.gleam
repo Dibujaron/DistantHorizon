@@ -151,6 +151,47 @@ pub fn module_rejects_a_misspelled_patch_field_test() {
   assert validate_with_schema(schema, invalid_module) != Ok(Nil)
 }
 
+/// Proves the schema's `oneOf`/`not` construct is actually LIVE under jesse
+/// rather than silently ignored (jesse would still validate every shipped
+/// document either way, so nothing else in this file would notice if `oneOf`
+/// were inert). Three documents, because the two keywords fail differently:
+///
+/// - the positive control, a `targets`-only document — the canonical spelling
+///   with none of the flat-shorthand fields — which must still pass;
+/// - both spellings at once, which matches neither branch and so proves
+///   `oneOf` is live;
+/// - `targets` beside a lone stray `slot`, the shape a half-finished
+///   migration to `targets` leaves behind. This is the one that proves `not`
+///   is live: with `not` inert it matches branch 1 alone and passes, whereas
+///   the both-spellings document would match BOTH branches and be refused by
+///   the exactly-one rule anyway.
+///
+/// The decoder silently ignores the flat fields in all three cases, which is
+/// exactly why the schema has to be the one to refuse them.
+pub fn module_rejects_flat_fields_alongside_targets_test() {
+  let schema = read_json(module_schema_path)
+  let targets_only =
+    parse_json(
+      "{\"schema\": 1, \"id\": \"m.targets_only\", \"name\": \"M\",
+        \"targets\": [{\"hull\": \"h\", \"slots\": [\"s\"]}]}",
+    )
+  let assert Ok(Nil) = validate_with_schema(schema, targets_only)
+  let both_spellings =
+    parse_json(
+      "{\"schema\": 1, \"id\": \"m.both\", \"name\": \"M\", \"hull\": \"h\",
+        \"slot\": \"s\",
+        \"targets\": [{\"hull\": \"h\", \"slots\": [\"s\"]}]}",
+    )
+  assert validate_with_schema(schema, both_spellings) != Ok(Nil)
+  let stray_slot =
+    parse_json(
+      "{\"schema\": 1, \"id\": \"m.stray_slot\", \"name\": \"M\",
+        \"slot\": \"s\",
+        \"targets\": [{\"hull\": \"h\", \"slots\": [\"s\"]}]}",
+    )
+  assert validate_with_schema(schema, stray_slot) != Ok(Nil)
+}
+
 /// Also proves the `$defs` tag ref actually resolves under jesse rather than
 /// being silently skipped, which would make every tag object unvalidated.
 pub fn part_rejects_a_non_integer_tag_amount_test() {

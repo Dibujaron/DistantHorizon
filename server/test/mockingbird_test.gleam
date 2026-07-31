@@ -98,27 +98,61 @@ pub fn swapping_the_hold_for_a_tank_drops_capacity_test() {
   assert fit.class.cargo_capacity < 60
 }
 
+/// The point of module targets: one document furnishes every cabin on the
+/// ship. If this ever needs a second file, the change did not work.
+pub fn one_cabin_document_serves_every_cabin_slot_test() {
+  let assert Ok(mods) = module.load_all("modules")
+  let assert Ok(cabin) = dict.get(mods, "rijay.cabin.standard")
+  let slots =
+    list.filter_map(cabin.targets, fn(t) {
+      case t.hull == "mockingbird" {
+        True -> Ok(t.slots)
+        False -> Error(Nil)
+      }
+    })
+    |> list.flatten
+  assert list.length(slots) == 5
+  // And the default loadout actually installs it in all five.
+  let assert Ok(h) = hull.load("shipclasses/mockingbird.json")
+  let installed =
+    list.filter(loadout.default_for(h).modules, fn(e) {
+      e.1 == "rijay.cabin.standard"
+    })
+  assert list.length(installed) == 5
+}
+
 pub fn every_shipped_module_resolves_in_its_slot_test() {
   let reg = glyphs.default()
   let assert Ok(h) = hull.load("shipclasses/mockingbird.json")
   let assert Ok(mods) = module.load_all("modules")
   let assert Ok(parts) = part.load_all("parts")
   let base = loadout.default_for(h)
-  // Each shipped module, installed alone in its own slot over the default fit,
-  // must resolve — the cheapest guard against a patch drifting off its slot.
-  // Filtered to this hull: modules are authored per (hull, slot), so a Sparrow
-  // or Finch module arriving later would otherwise fail here as
-  // `module_wrong_hull` rather than being skipped.
+  // Every shipped module's mockingbird target, installed alone in its own slot
+  // over the default fit, must resolve — the cheapest guard against a patch
+  // drifting off its slot. A module with several targets on this hull (a
+  // standard cabin stamped into five different bays, say) has to prove every
+  // one of them, not just the first — otherwise four of five placements would
+  // drift unnoticed. Filtered to this hull: a module is authored per (hull,
+  // slot) target, so a Sparrow or Finch module arriving later would otherwise
+  // fail here as `module_not_drawn_for_slot` rather than being skipped.
   dict.to_list(mods)
-  |> list.filter(fn(entry) { { entry.1 }.hull == "mockingbird" })
-  |> list.each(fn(entry) {
+  |> list.flat_map(fn(entry) {
     let #(id, m) = entry
+    list.filter(m.targets, fn(t) { t.hull == "mockingbird" })
+    |> list.map(fn(t) { #(id, t) })
+  })
+  |> list.each(fn(entry) {
+    let #(id, target) = entry
+    // Every module shipped today claims exactly one slot per target, so
+    // installing it under the first (only) one is enough to prove the
+    // target's patch lands in bounds.
+    let assert [slot_id, ..] = target.slots
     let swapped =
       loadout.Loadout(
         ..base,
         modules: list.map(base.modules, fn(e) {
-          case e.0 == m.slot {
-            True -> #(m.slot, id)
+          case e.0 == slot_id {
+            True -> #(slot_id, id)
             False -> e
           }
         }),
@@ -126,7 +160,7 @@ pub fn every_shipped_module_resolves_in_its_slot_test() {
     // `list.map` only REPLACES: a module whose slot has no default entry
     // would leave the loadout identical to the default, and the resolve
     // below would pass without ever installing the module under test.
-    assert list.contains(swapped.modules, #(m.slot, id))
+    assert list.contains(swapped.modules, #(slot_id, id))
     let assert Ok(_) = loadout.resolve(reg, h, mods, parts, swapped)
   })
 }

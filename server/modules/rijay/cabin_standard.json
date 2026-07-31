@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "id": "rijay.cabin.standard",
+  "name": "Standard cabin",
+  "mass": 3.0,
+  "provides": { "berths": 1 },
+  "requires": { "power": 1 },
+  "targets": [
+    {
+      "hull": "mockingbird",
+      "slots": ["cabin_fore_a"],
+      "patches": [
+        {
+          "deck": 0, "x": 6, "y": 5,
+          "grid": [
+            "###",
+            "#d#",
+            "# #",
+            "# #",
+            "we=",
+            "###"
+          ]
+        }
+      ]
+    },
+    {
+      "hull": "mockingbird",
+      "slots": ["cabin_fore_b"],
+      "patches": [
+        {
+          "deck": 0, "x": 6, "y": 7,
+          "grid": [
+            "###",
+            "#d#",
+            "# #",
+            "# #",
+            "we=",
+            "###"
+          ]
+        }
+      ]
+    },
+    {
+      "hull": "mockingbird",
+      "slots": ["cabin_mess"],
+      "patches": [
+        {
+          "deck": 0, "x": 4, "y": 10,
+          "grid": [
+            "###",
+            "#d#",
+            "# #",
+            "# #",
+            "we=",
+            "###"
+          ]
+        }
+      ]
+    },
+    {
+      "hull": "mockingbird",
+      "slots": ["cabin_engineer"],
+      "patches": [
+        {
+          "deck": 0, "x": 4, "y": 18,
+          "grid": [
+            "###",
+            "we=",
+            "# #",
+            "# #",
+            "#d#",
+            "###"
+          ]
+        }
+      ]
+    },
+    {
+      "hull": "mockingbird",
+      "slots": ["cabin_aft_stbd"],
+      "patches": [
+        {
+          "deck": 0, "x": 9, "y": 18,
+          "grid": [
+            "###",
+            "=ew",
+            "# #",
+            "# #",
+            "#d#",
+            "###"
+          ]
+        }
+      ]
+    }
+  ]
+}

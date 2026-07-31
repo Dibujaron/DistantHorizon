@@ -1,6 +1,7 @@
 import dh_server/module
 import dh_server/part
 import gleam/dict
+import gleam/list
 import gleam/string
 
 const module_doc = "{
@@ -20,11 +21,12 @@ const module_doc = "{
 pub fn decode_module_document_test() {
   let assert Ok(m) = module.decode(module_doc)
   assert m.id == "testhull.cockpit.stock"
-  assert m.hull == "testhull"
-  assert m.slot == "cockpit"
   assert m.mass == 4.0
   assert dict.get(m.requires, "power") == Ok(2)
-  let assert [p] = m.patches
+  let assert [t] = m.targets
+  assert t.hull == "testhull"
+  assert t.slots == ["cockpit"]
+  let assert [p] = t.patches
   assert p.deck == 0
   assert p.x == 6
   assert p.y == 3
@@ -78,8 +80,9 @@ pub fn zero_size_patch_is_rejected_test() {
 pub fn load_all_walks_per_hull_subdirectories_test() {
   let assert Ok(modules) = module.load_all("test/fixtures/modules_ok")
   let assert Ok(m) = dict.get(modules, "testhull.cockpit.stock")
-  assert m.hull == "testhull"
-  assert m.slot == "cockpit"
+  let assert Ok(t) = module.target_for(m, "testhull", "cockpit")
+  assert t.hull == "testhull"
+  assert t.slots == ["cockpit"]
 }
 
 pub fn load_all_rejects_duplicate_ids_across_hull_subdirectories_test() {
@@ -128,4 +131,59 @@ pub fn size_rank_orders_the_scale_test() {
   assert part.size_rank("m") == Ok(1)
   assert part.size_rank("l") == Ok(2)
   assert part.size_rank("xl") == Error(Nil)
+}
+
+/// One document, several placements. This is the whole point of the change:
+/// five identical 1x2 cabins are one concept, not five files.
+pub fn a_module_targets_many_hulls_and_slots_test() {
+  let doc =
+    "{ \"schema\": 1, \"id\": \"rijay.cabin.standard\", \"name\": \"Cabin\",
+       \"mass\": 3.0, \"provides\": { \"berths\": 1 },
+       \"targets\": [
+         { \"hull\": \"mockingbird\", \"slots\": [\"cabin_fore_a\"],
+           \"patches\": [ { \"deck\": 0, \"x\": 6, \"y\": 5,
+                            \"grid\": [\"###\", \"#d#\", \"###\"] } ] },
+         { \"hull\": \"mockingbird\", \"slots\": [\"cabin_fore_b\"],
+           \"patches\": [ { \"deck\": 0, \"x\": 6, \"y\": 7,
+                            \"grid\": [\"###\", \"#d#\", \"###\"] } ] },
+         { \"hull\": \"sparrow\", \"slots\": [\"cabin\"],
+           \"patches\": [ { \"deck\": 0, \"x\": 2, \"y\": 2,
+                            \"grid\": [\"###\", \"#d#\", \"###\"] } ] }
+       ] }"
+  let assert Ok(m) = module.decode(doc)
+  assert list.length(m.targets) == 3
+  let assert Ok(t) = module.target_for(m, "mockingbird", "cabin_fore_b")
+  let assert [p] = t.patches
+  assert p.y == 7
+  assert module.target_for(m, "finch", "cabin") == Error(Nil)
+  assert module.target_for(m, "mockingbird", "nope") == Error(Nil)
+}
+
+/// The flat single-target spelling stays legal — a module that exists in one
+/// place on one hull should not have to write a one-element list.
+pub fn the_flat_spelling_decodes_as_one_target_test() {
+  let doc =
+    "{ \"schema\": 1, \"id\": \"a\", \"name\": \"A\", \"mass\": 1.0,
+       \"hull\": \"mockingbird\", \"slot\": \"hold\",
+       \"patches\": [ { \"deck\": 2, \"x\": 3, \"y\": 10,
+                        \"grid\": [\"###\", \"#p#\", \"###\"] } ] }"
+  let assert Ok(m) = module.decode(doc)
+  let assert [t] = m.targets
+  assert t.hull == "mockingbird"
+  assert t.slots == ["hold"]
+  assert list.length(t.patches) == 1
+}
+
+pub fn a_module_with_no_targets_is_rejected_test() {
+  let assert Error(_) =
+    module.decode("{ \"schema\": 1, \"id\": \"a\", \"name\": \"A\" }")
+}
+
+pub fn duplicate_targets_are_rejected_test() {
+  let doc =
+    "{ \"schema\": 1, \"id\": \"a\", \"name\": \"A\",
+       \"targets\": [
+         { \"hull\": \"h\", \"slots\": [\"s\"], \"patches\": [] },
+         { \"hull\": \"h\", \"slots\": [\"s\"], \"patches\": [] } ] }"
+  let assert Error(_) = module.decode(doc)
 }
