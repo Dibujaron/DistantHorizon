@@ -255,7 +255,7 @@
       "cabin_aft_stbd": "rijay.cabin.standard",
       "hold":           "mockingbird.hold.breakbulk"
     },
-    "parts": { "engine_center": "rijay.engine.consol_patch" }
+    "parts": { "engine_center": "consol.engine.co17f_2" }
   },
   "cargo": {
     "capacity": 60,

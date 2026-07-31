@@ -1042,7 +1042,7 @@ const tank_modules = [
   #("hold", "mockingbird.hold.tank"),
 ]
 
-const default_parts = [#("engine_center", "rijay.engine.consol_patch")]
+const default_parts = [#("engine_center", "consol.engine.co17f_2")]
 
 /// The fit `modules`/`parts` resolve to on the Mockingbird, through the same
 /// registries the sim loaded â€” so a test states its expectations in resolved

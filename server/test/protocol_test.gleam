@@ -457,11 +457,11 @@ pub fn parse_refit_message_test() {
   let text =
     "{\"v\":1,\"type\":\"refit\","
     <> "\"modules\":[{\"slot\":\"hold\",\"module\":\"mockingbird.hold.tank\"}],"
-    <> "\"parts\":[{\"mount\":\"engine_center\",\"part\":\"rijay.engine.stock\"}]}"
+    <> "\"parts\":[{\"mount\":\"engine_center\",\"part\":\"rijay.engine.stork_240c2\"}]}"
   let assert Ok(protocol.Refit(modules, parts)) =
     protocol.parse_client_message(text)
   assert modules == [#("hold", "mockingbird.hold.tank")]
-  assert parts == [#("engine_center", "rijay.engine.stock")]
+  assert parts == [#("engine_center", "rijay.engine.stork_240c2")]
 }
 
 pub fn encode_refit_failure_carries_the_reason_test() {
@@ -483,7 +483,7 @@ pub fn encode_ship_fit_carries_the_class_and_the_loadout_test() {
       hull: "mockingbird",
       modules: [#("hold", "m.hold.tank")],
       parts: [
-        #("engine_center", "rijay.engine.stock"),
+        #("engine_center", "rijay.engine.stork_240c2"),
       ],
     )
   let text = protocol.encode_ship_fit(7, test_class(), lo)
@@ -491,7 +491,7 @@ pub fn encode_ship_fit_carries_the_class_and_the_loadout_test() {
   assert string.contains(text, "\"ship_id\":7")
   assert string.contains(
     text,
-    "\"loadout\":{\"hull\":\"mockingbird\",\"modules\":[{\"slot\":\"hold\",\"module\":\"m.hold.tank\"}],\"parts\":[{\"mount\":\"engine_center\",\"part\":\"rijay.engine.stock\"}]}",
+    "\"loadout\":{\"hull\":\"mockingbird\",\"modules\":[{\"slot\":\"hold\",\"module\":\"m.hold.tank\"}],\"parts\":[{\"mount\":\"engine_center\",\"part\":\"rijay.engine.stork_240c2\"}]}",
   )
   // The ship_class payload is the same one `welcome` carries, so a client
   // adopts it through the same path.

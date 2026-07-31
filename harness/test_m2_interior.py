@@ -425,7 +425,8 @@ async def test_one_flies_one_walks(server):
 
         # One second of full thrust: the ship moved in the station frame
         # (rail drift removed, as in the M1 tests), still at full burn,
-        # heading untouched by B's rotate input.
+        # heading untouched by B's rotate input. ~7 u, per the Mockingbird's
+        # default Consol engine (test_m1_flight.py has the full derivation).
         snap2 = await snapshot_after_ticks(client_a, snap1["tick"], TICK_RATE)
         ship2 = client_a.ship_in(snap2, ship_a)
         assert ship2["docked"] is None
@@ -433,7 +434,7 @@ async def test_one_flies_one_walks(server):
             world, "meridian_highport", dt,
             ship1, snap1["tick"], ship2, snap2["tick"],
         )
-        assert moved > 10.0
+        assert moved > 3.0
         assert ship2["thrust"] == pytest.approx(1.0)
         assert ship2["heading"] == pytest.approx(heading1, abs=1e-6)
 

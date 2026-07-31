@@ -339,7 +339,7 @@ An **exterior part** (`server/parts/<id>.json` — flat, because parts *are* cro
 ```jsonc
 {
   "schema": 1,
-  "id": "rijay.engine.consol_patch",
+  "id": "consol.engine.co17f_2",
   "name": "Consol patch engine",
   "kind": "engine",
   "size": "m",

@@ -82,7 +82,7 @@ def rail_relative_displacement(
     World-frame displacement is the wrong measure for "did the ship fly?"
     assertions: everything near a station drifts with its rail at
     13.96-41.89 u/s (phase-dependent), which can constructively add to or
-    destructively cancel a ~20 u thrust delta depending on uncontrolled
+    destructively cancel a ~7 u thrust delta depending on uncontrolled
     wall-clock phase at test time. Subtracting the station's analytic
     position at each snapshot's tick removes the drift entirely, leaving
     only the ship's own thrust-driven motion (plus negligible differential
@@ -142,13 +142,14 @@ async def test_undock_and_fly(server):
         ship2 = client.ship_in(snap2, ship_id)
         assert ship2["docked"] is None
 
-        # Displacement in the station's frame (drift removed): ~20 u for
-        # ~1 s of full thrust, regardless of the station's orbital phase.
+        # Displacement in the station's frame (drift removed): ~7 u for
+        # ~1 s of full thrust (the Consol part's 1700 thrust / 128 mass),
+        # regardless of the station's orbital phase.
         moved = rail_relative_displacement(
             welcome["world"], "meridian_highport", welcome["dt"],
             ship1, snap1["tick"], ship2, snap2["tick"],
         )
-        assert moved > 10.0
+        assert moved > 3.0
 
         speed_before_cut = math.hypot(ship2["vx"], ship2["vy"])
         await client.send_helm(0.0, 0.0)
@@ -199,13 +200,13 @@ async def test_two_clients_see_each_other_fly(server):
         dt = welcome_b["dt"]
 
         # A flew: displacement in the station's frame (drift removed) is
-        # ~20 u for ~1 s of full thrust, deterministic regardless of where
+        # ~7 u for ~1 s of full thrust, deterministic regardless of where
         # the station happens to be on its orbit right now.
         moved_a = rail_relative_displacement(
             world, "meridian_highport", dt,
             a_in_b1, snap_b1["tick"], a_in_b2, snap_b2["tick"],
         )
-        assert moved_a > 10.0
+        assert moved_a > 3.0
 
         # B never touched its controls: it stays docked and rides the station
         # rail rigidly. A docked hull sits at a FIXED berth offset from the
@@ -253,9 +254,15 @@ async def test_dock_cycle(server):
         undock_result2 = await client.undock()
         assert undock_result2["ok"] is True
 
+        # 6 s of full thrust off the berth (the Mockingbird's default Consol
+        # engine gives ~7 u/s^2 -- see test_undock_and_fly) clears the
+        # station's 150 u dock_radius with margin even against its own
+        # ~14-42 u/s rail drift, which 3 s no longer reliably did once the
+        # M4-2b engine renaming cut the shipped engines' thrust to a third
+        # of their pre-2b values.
         start_snap = await client.next_snapshot()
         await client.send_helm(0.0, 1.0)
-        far_snap = await snapshot_after_ticks(client, start_snap["tick"], 3 * TICK_RATE)
+        far_snap = await snapshot_after_ticks(client, start_snap["tick"], 6 * TICK_RATE)
         far_ship = client.ship_in(far_snap, ship_id)
         assert far_ship["docked"] is None
 

@@ -68,12 +68,12 @@ pub fn default_flight_derives_from_hull_and_module_masses_test() {
   let fit = resolved_default()
   assert float.loosely_equals(
     fit.class.flight.accel,
-    39.0625,
+    13.28125,
     tolerating: 0.001,
   )
   assert float.loosely_equals(
     fit.class.flight.turn_rate,
-    171.875,
+    58.59375,
     tolerating: 0.001,
   )
 }
