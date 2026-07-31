@@ -68,12 +68,12 @@ pub fn default_flight_derives_from_hull_and_module_masses_test() {
   let fit = resolved_default()
   assert float.loosely_equals(
     fit.class.flight.accel,
-    13.28125,
+    42.76315789473684,
     tolerating: 0.001,
   )
   assert float.loosely_equals(
     fit.class.flight.turn_rate,
-    58.59375,
+    141.44736842105263,
     tolerating: 0.001,
   )
 }
@@ -163,4 +163,43 @@ pub fn every_shipped_module_resolves_in_its_slot_test() {
     assert list.contains(swapped.modules, #(slot_id, id))
     let assert Ok(_) = loadout.resolve(reg, h, mods, parts, swapped)
   })
+}
+
+/// Her art has three nozzle anchors and always has. The default loadout is
+/// now the lore verbatim: "a Consol center engine shoved between two Rijay
+/// originals".
+pub fn she_flies_on_three_engines_test() {
+  let assert Ok(h) = hull.load("shipclasses/mockingbird.json")
+  assert list.length(h.mounts) == 3
+  // `hull.sorted_pairs` orders a decoded loadout by id, not JSON key order —
+  // alphabetically, that's centre, port, stbd.
+  assert h.default_parts
+    == [
+      #("engine_center", "consol.engine.co17f_2"),
+      #("engine_port", "rijay.engine.stork_240c2"),
+      #("engine_stbd", "rijay.engine.stork_240c2"),
+    ]
+}
+
+/// Zero headroom, and now it bites: you cannot fix the Company's patch
+/// without first fixing what feeds it. This is the "putting it right" early
+/// game enforced by the validator rather than by narration, and it is the
+/// only `tag_deficit:power` reachable through shipped content.
+pub fn upgrading_the_centre_engine_overdraws_her_reactor_test() {
+  let assert Ok(h) = hull.load("shipclasses/mockingbird.json")
+  let assert Ok(modules) = module.load_all("modules")
+  let assert Ok(parts) = part.load_all("parts")
+  let stock = loadout.default_for(h)
+  // Swap the cheap Consol Mule for a proper Rijay Stork: draw 26 vs 25.
+  let greedy =
+    loadout.Loadout(..stock, parts: [
+      #("engine_port", "rijay.engine.stork_240c2"),
+      #("engine_center", "rijay.engine.stork_240c2"),
+      #("engine_stbd", "rijay.engine.stork_240c2"),
+    ])
+  let assert Error(e) =
+    loadout.resolve(glyphs.default(), h, modules, parts, greedy)
+  assert e == "tag_deficit:power"
+  // ...and the stock fit sits at exactly zero headroom.
+  let assert Ok(_) = loadout.resolve(glyphs.default(), h, modules, parts, stock)
 }

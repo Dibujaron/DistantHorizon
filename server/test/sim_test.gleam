@@ -1042,7 +1042,19 @@ const tank_modules = [
   #("hold", "mockingbird.hold.tank"),
 ]
 
-const default_parts = [#("engine_center", "consol.engine.co17f_2")]
+const default_parts = [
+  #("engine_port", "rijay.engine.stork_240c2"),
+  #("engine_center", "consol.engine.co17f_2"),
+  #("engine_stbd", "rijay.engine.stork_240c2"),
+]
+
+/// Three Rijay Storks where the stock fit runs a cheaper Consol centre
+/// engine: draws 26 against a reactor that provides 25 â€” one over.
+const greedy_parts = [
+  #("engine_port", "rijay.engine.stork_240c2"),
+  #("engine_center", "rijay.engine.stork_240c2"),
+  #("engine_stbd", "rijay.engine.stork_240c2"),
+]
 
 /// The fit `modules`/`parts` resolve to on the Mockingbird, through the same
 /// registries the sim loaded â€” so a test states its expectations in resolved
@@ -1158,13 +1170,13 @@ pub fn a_refused_refit_leaves_the_fit_untouched_test() {
   let assert Ok(before) = sim.ship_class(s, ship_id, 1000)
   let #(_space, _epoch) = receive_space_for(client, station_space)
 
-  // Her whole interior, but nothing on the engine mount: the hull's own
-  // `{"engine": 1}` goes uncovered, so the same pooled-tag rule that polices
-  // power refuses the fit â€” a refusal from deep inside the resolver,
-  // forwarded verbatim.
+  // Her whole interior, but three Rijay Storks in place of the cheaper
+  // Consol centre engine: the reactor gives 25, three Storks draw 26, so the
+  // same pooled-tag rule that polices power refuses the fit â€” a refusal
+  // from deep inside the resolver, forwarded verbatim.
   let assert Error(reason) =
-    sim.request_refit(s, char, default_modules, [], 1000)
-  assert reason == "tag_deficit:engine"
+    sim.request_refit(s, char, default_modules, greedy_parts, 1000)
+  assert reason == "tag_deficit:power"
 
   // Nothing moved: the resolved class is identical, field for field...
   let assert Ok(after) = sim.ship_class(s, ship_id, 1000)

@@ -227,9 +227,13 @@
     }
   ],
   "mass": 73.0,
-  "provides": { "power": 18 },
+  "provides": { "power": 25 },
   "requires": { "engine": 1 },
-  "mounts": [ { "id": "engine_center", "kind": "engine", "size": "m" } ],
+  "mounts": [
+    { "id": "engine_port",   "kind": "engine", "size": "m" },
+    { "id": "engine_center", "kind": "engine", "size": "m" },
+    { "id": "engine_stbd",   "kind": "engine", "size": "m" }
+  ],
   "slots": [
     { "digit": 1,  "id": "cockpit",        "name": "Cockpit" },
     { "digit": 2,  "id": "cabin_fore_a",   "name": "Forward cabin A" },
@@ -255,7 +259,11 @@
       "cabin_aft_stbd": "rijay.cabin.standard",
       "hold":           "mockingbird.hold.breakbulk"
     },
-    "parts": { "engine_center": "consol.engine.co17f_2" }
+    "parts": {
+      "engine_port":   "rijay.engine.stork_240c2",
+      "engine_center": "consol.engine.co17f_2",
+      "engine_stbd":   "rijay.engine.stork_240c2"
+    }
   },
   "cargo": {
     "capacity": 60,

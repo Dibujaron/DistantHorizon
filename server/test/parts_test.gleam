@@ -38,10 +38,8 @@ pub fn shipped_engine_parts_load_test() {
 /// Flight is EMERGENT, not authored: masses say what each thing is and the
 /// engine says what it pushes with, so `accel = thrust / mass` falls out of
 /// the loadout. Nothing here is back-solved from a target — 73.0 of hull,
-/// 47.0 of default modules and an 8.0 Consol patch give 128.0, and 1700 N of
-/// thrust over that is what she accelerates at. Swapping to the heavier Rijay
-/// original moves the total to 132.0, which is exactly why an engine's mass
-/// has to be real: it is one of the things the swap trades.
+/// 47.0 of default modules and three engines (12.0 + 8.0 + 12.0) give 152.0,
+/// and 6500 N of pooled thrust over that is what she accelerates at.
 /// (`mockingbird_test` owns the deck-fidelity half of the carve's promise.)
 pub fn the_mockingbird_default_fit_flight_derives_from_its_masses_test() {
   let assert Ok(h) = hull.load("shipclasses/mockingbird.json")
@@ -49,13 +47,21 @@ pub fn the_mockingbird_default_fit_flight_derives_from_its_masses_test() {
   let assert Ok(parts) = part.load_all("parts")
   let assert Ok(fit) =
     loadout.resolve(glyphs.default(), h, mods, parts, loadout.default_for(h))
-  assert fit.mass == 128.0
-  assert near(fit.class.flight.accel, 13.28125)
-  assert near(fit.class.flight.turn_rate, 58.59375)
+  assert fit.mass == 152.0
+  assert near(fit.class.flight.accel, 42.76315789473684)
+  assert near(fit.class.flight.turn_rate, 141.44736842105263)
   assert fit.class.cargo_capacity == 60
   assert fit.class.handling == shipclass.BreakBulk
 }
 
+/// Isolates the swap itself rather than the whole default fit: `parts` names
+/// only `engine_center`, so `engine_port`/`engine_stbd` sit bare (mounting is
+/// per-mount, never all-or-nothing) and the total is hull 73.0 + modules 47.0
+/// + one 12.0 Stork = 132.0, against the 8.0 Consol's 128.0. Reactor draw
+/// (4 against a 25-power hull with 14 already spoken for) stays nowhere near
+/// the ceiling that `upgrading_the_centre_engine_overdraws_her_reactor_test`
+/// hits with all three mounts filled, so this is purely about the mass an
+/// engine's own choice trades, not about power.
 pub fn the_stock_engine_trades_turn_for_thrust_test() {
   let assert Ok(h) = hull.load("shipclasses/mockingbird.json")
   let assert Ok(mods) = module.load_all("modules")
