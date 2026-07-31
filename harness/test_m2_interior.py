@@ -434,7 +434,7 @@ async def test_one_flies_one_walks(server):
             world, "meridian_highport", dt,
             ship1, snap1["tick"], ship2, snap2["tick"],
         )
-        assert moved > 3.0
+        assert moved > 4.0
         assert ship2["thrust"] == pytest.approx(1.0)
         assert ship2["heading"] == pytest.approx(heading1, abs=1e-6)
 

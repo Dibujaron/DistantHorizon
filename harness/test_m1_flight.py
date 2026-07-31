@@ -149,7 +149,7 @@ async def test_undock_and_fly(server):
             welcome["world"], "meridian_highport", welcome["dt"],
             ship1, snap1["tick"], ship2, snap2["tick"],
         )
-        assert moved > 3.0
+        assert moved > 4.0
 
         speed_before_cut = math.hypot(ship2["vx"], ship2["vy"])
         await client.send_helm(0.0, 0.0)
@@ -206,7 +206,7 @@ async def test_two_clients_see_each_other_fly(server):
             world, "meridian_highport", dt,
             a_in_b1, snap_b1["tick"], a_in_b2, snap_b2["tick"],
         )
-        assert moved_a > 3.0
+        assert moved_a > 4.0
 
         # B never touched its controls: it stays docked and rides the station
         # rail rigidly. A docked hull sits at a FIXED berth offset from the
@@ -255,11 +255,11 @@ async def test_dock_cycle(server):
         assert undock_result2["ok"] is True
 
         # 6 s of full thrust off the berth (the Mockingbird's default Consol
-        # engine gives ~7 u/s^2 -- see test_undock_and_fly) clears the
-        # station's 150 u dock_radius with margin even against its own
-        # ~14-42 u/s rail drift, which 3 s no longer reliably did once the
-        # M4-2b engine renaming cut the shipped engines' thrust to a third
-        # of their pre-2b values.
+        # engine gives ~7 u of displacement per second of thrust -- see
+        # test_undock_and_fly) clears the station's 150 u dock_radius with
+        # margin even against its own ~14-42 u/s rail drift, which 3 s no
+        # longer reliably did once the M4-2b engine renaming cut the shipped
+        # engines' thrust to a third of their pre-2b values.
         start_snap = await client.next_snapshot()
         await client.send_helm(0.0, 1.0)
         far_snap = await snapshot_after_ticks(client, start_snap["tick"], 6 * TICK_RATE)
