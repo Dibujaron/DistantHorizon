@@ -54,12 +54,14 @@ registry is the list.
 
 - **Center glyphs** (what a tile *is*) carry a `tile` kind — `floor` (walkable),
   `void` (outside the hull; not a tile), or `stairs` (walkable; connects decks)
-  — plus optional flags: a `console` kind (`h`=helm, `c`=cargo, `b`=broker), a
-  `dock` port (`Q`), or a `spawn` tile (`s`). Consoles/dock/spawn are all
-  `floor`-kind. A letter in the **center** is a console/marker; the same letter
-  on an **edge-mid** is a fixture — position disambiguates. Pass-1 decor adds
-  four more `floor`-kind center glyphs that are purely cosmetic (no console/
-  dock/spawn flag, still walkable): `r`=rug, `e`=seat, `d`=bed, and `p`=cargo
+  — plus optional flags: a `dock` port (`Q`) or a `spawn` tile (`s`), both
+  `floor`-kind. Consoles are **not** center glyphs any more: the pass-2 decor
+  migration moved `h`/`c`/`b` (helm/cargo/broker) off the center and onto walls
+  (see "Edge glyphs" below). A letter's meaning still depends on where it
+  sits — `d` in the **center** is a floor bed, the same `d` on an **edge-mid**
+  is a wall bunk — position disambiguates. Pass-1 decor adds
+  four more `floor`-kind center glyphs that are purely cosmetic (no dock/spawn
+  flag, still walkable): `r`=rug, `e`=seat, `d`=bed, and `p`=cargo
   pallet — the last one doubles as the unit a hull's breakbulk capacity is
   derived from (see "Derived cargo capacity" below). Pass-2 decor adds four
   neighbour-aware center glyphs, also purely cosmetic and walkable: `f`=fountain
@@ -73,13 +75,16 @@ registry is the list.
 - **Edge glyphs** (N/E/S/W mid characters, what's on that side) carry an
   edge kind: `open` (space, passable), `wall` (`#`, blocks), `door` (`=`,
   passable, auto-opens), or `fixture` (a named wall decoration — blocks like a
-  wall and renders its art). `v`=viewscreen is the single wall-screen glyph:
+  wall and renders its art). `h`/`c`/`b` (helm/cargo/broker) are **console**
+  fixtures: wall-mounted, operated from the adjacent floor tile they face —
+  consoles used to be center glyphs, but pass-2 decor moved them to the wall.
+  `v`=viewscreen is the single wall-screen glyph:
   it stands for either a bridge viewscreen or a domestic TV, there's no
   separate TV glyph — context (which room it's in) tells them apart, not the
   character. `w`=window is a wall that carries a view instead of a screen.
   `d`=bunk (edge) is a wall-mounted bed — **distinct from centre `d`=bed**:
-  the same letter means "floor bed" in the center and "wall bunk" on an edge,
-  same as the console letters. Authoring convention (not enforced — that's
+  the same letter means "floor bed" in the center and "wall bunk" on an edge.
+  Authoring convention (not enforced — that's
   #24): a bunk may only mount over a floor bed (centre `d`) or over another
   wall bunk, so bunks stack in a legible way; nothing currently checks this.
   Any edge char not in the registry parses as a generic fixture, so nothing

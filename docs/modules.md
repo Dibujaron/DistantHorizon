@@ -170,6 +170,39 @@ outright (`invalid_resolved_plan`: a plan with no helm fails validation), and a 
 module that forgets its `c` leaves the crew with nowhere to work cargo. Every hold module
 we ship therefore redraws that console.
 
+### The Mockingbird's engine mounts
+
+Iteration 2b split her single mount into three — `engine_port`, `engine_center`,
+`engine_stbd`, all `size: m` — matching the three `nozzle` anchors her exterior art has
+always carried. Every shipped engine's `thrust` and `torque` dropped to roughly a third of
+its pre-2b value at the same time, because the old numbers were authored against a
+one-mount hull and were implicitly "the whole ship's push" wearing one part's name. Her
+stock loadout is two Rijay Storks (`rijay.engine.stork_240c2`) flanking the Consol patch
+(`consol.engine.co17f_2`) at centre — the fleet part with less thrust than the Rijay
+original it displaced, but more torque: a part shoved into a hole it was not drawn for.
+Her reactor provides 25 power; her modules draw 14 and her three engines draw 4 + 3 + 4 =
+11, for exactly zero headroom. Swap the centre Consol for a proper Stork and the draw
+becomes 26 against the same 25-power reactor — the fit is refused with `tag_deficit:power`,
+the "putting it right" early-game upgrade enforced by the validator rather than by
+narration.
+
+### The Sparrow
+
+The Sparrow (`server/shipclasses/sparrow.json`) is the first hull authored since the
+Mockingbird, and the first shipped content to actually exercise several rules the engine
+has carried since iteration 1 but never had to prove: a **single deck** (every
+deck-linking rule was written against the Mockingbird's three), **multiple engine mounts
+on a hull, one of them left unfitted** (her `engine_center` ships empty — the lore's
+third-engine upgrade), **`mount size >= part size`** (until her `rijay.engine.wren_90b`,
+every shipped part was `m`, so the size rule had never once been exercised by content),
+and a pooled `requires: {engine: 1}` satisfied by two mounted engines rather than one.
+
+She has two slots — `cockpit` (digit 1) and `bay` (digit 2) — and three `size: s` mounts.
+Her stock fit is `rijay.cockpit.sparrow` and `rijay.bay.packet`, a five-pallet locker whose
+derived capacity is 5; `rijay.bay.ranger` is an endurance package instead — a bunk and no
+pallets, so a ranger fit falls back to the hull's authored `cargo.capacity` of 2. A slot
+holds one module, so on the Sparrow, range and speed are mutually exclusive for free.
+
 ## Exterior parts
 
 Exterior parts and interior modules are **two orthogonal axes**, installed independently:
@@ -179,6 +212,15 @@ Exterior parts and interior modules are **two orthogonal axes**, installed indep
   `{id, name, kind, size, mass, provides, requires, thrust, torque, sprite}`, hung on a
   hull mount point of matching `kind` and sufficient `size`. Engines carry the `thrust`
   and `torque` that used to be global constants in `ship.gleam`.
+- **Part ids follow `<manufacturer>.<kind>.<model>`.** Rijay Drive Yards name an engine the
+  way they name a hull — after a bird, then its thrust class in units of ten, then a block
+  designation (`rijay.engine.stork_240c2`, `rijay.engine.wren_90b`) — and the engine birds
+  are deliberately distinct from the hull birds so the two namespaces never collide.
+  Consolidated Orbital get no bird at all: a part number is all a part gets from the Company
+  (`consol.engine.co17f_2`). The id names **the manufacturer that built the part, not the
+  hull it happens to be bolted to** — the Mockingbird's stock centre engine used to be
+  `rijay.engine.consol_patch`, which broke that rule and erased the joke the hull is built
+  on (her centre engine is foreign to the hull); it is now `consol.engine.co17f_2`.
 - Some installables **link one of each** — a gun is an exterior turret part *and* a
   per-hull interior gun-room overlay. Some are exterior-only (an atmospheric landing/fin
   package — no interior change). Some are interior-only (a medbay).
@@ -340,14 +382,14 @@ An **exterior part** (`server/parts/<id>.json` — flat, because parts *are* cro
 {
   "schema": 1,
   "id": "consol.engine.co17f_2",
-  "name": "Consol patch engine",
+  "name": "Consolidated CO-17F Block 2",
   "kind": "engine",
   "size": "m",
-  "mass": 0.0,
+  "mass": 8.0,
   "provides": { "engine": 1 },
   "requires": { "power": 3 },
-  "thrust": 4800.0,
-  "torque": 21600.0,
+  "thrust": 1700.0,
+  "torque": 7500.0,
   "sprite": "engine_consol"
 }
 ```
