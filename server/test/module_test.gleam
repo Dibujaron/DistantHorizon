@@ -1,3 +1,5 @@
+import dh_server/deckplan
+import dh_server/glyphs
 import dh_server/module
 import dh_server/part
 import gleam/dict
@@ -186,4 +188,47 @@ pub fn duplicate_targets_are_rejected_test() {
          { \"hull\": \"h\", \"slots\": [\"s\"], \"patches\": [] },
          { \"hull\": \"h\", \"slots\": [\"s\"], \"patches\": [] } ] }"
   let assert Error(_) = module.decode(doc)
+}
+
+// ------------------------------------------------------- stairs geometry --
+//
+// Stairs are HULL geometry, never module geometry: a hull's `x` columns are
+// hand-placed so exactly two decks connect at each column
+// (`docs/deckplan-format.md`, "Decks"), and `deckplan.stairs_target` scans
+// `deck+1` DOWNWARD first with no memory of where a walker came from. The
+// Goldfinch's Upper<->Mezzanine link works only because Lower (2,11) is a
+// plain floor tile — and that tile sits INSIDE the `hold` slot, so the hold
+// module owns every character of it except the SW corner. If a module patch
+// ever drew an `x` there, that column would gain a third stairs tile, the
+// down-first scan would send the Mezzanine step down instead of up, and the
+// entire Upper deck would be orphaned — with every one of the other 351
+// tests still green, because `module.gleam`'s own doc comment says the
+// overlay stamp is "for each non-void cell in the overlay, replace the base
+// cell": no shape-matching, no reachability analysis, ever. This test is the
+// backstop the review found missing: no shipped module patch, on any hull,
+// may ever draw a stairs glyph. Phrasing it as "stairs are hull geometry"
+// rather than naming any one hull is what makes this generalise to every
+// future hull and every future module without hardcoding anything about the
+// Goldfinch.
+pub fn no_module_patch_ever_draws_stairs_test() {
+  let assert Ok(mods) = module.load_all("modules")
+  let offenders =
+    dict.values(mods)
+    |> list.flat_map(fn(m) {
+      list.flat_map(m.targets, fn(t) {
+        list.filter_map(t.patches, fn(p) {
+          let assert Ok(g) =
+            deckplan.parse_deck_with(glyphs.default(), "patch", p.rows)
+          let draws_stairs =
+            list.any(g.cells, fn(row) {
+              list.any(row, fn(c) { c.tile == deckplan.Stairs })
+            })
+          case draws_stairs {
+            True -> Ok(m.id)
+            False -> Error(Nil)
+          }
+        })
+      })
+    })
+  assert offenders == []
 }

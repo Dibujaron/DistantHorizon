@@ -257,6 +257,16 @@ her Upper deck. The two invariants an author actually needs are:
   The deck switch (`character.deck_after_step`) fires only on a *non-stairs → stairs*
   step; a stairs tile whose every open neighbour is also stairs can be stood on but never
   *entered* in the switching sense, so it never triggers a switch either way.
+- **Stairs are hull geometry, and a module must never draw them.** A stair column's
+  legality depends on the whole deck stack (exactly two decks per column, a non-stairs
+  neighbour on each), which is a fact about the hull, not about any one slot a module
+  overlays. A module's overlay is a sparse, unchecked patch (`docs/modules.md`) with no
+  reachability analysis behind it — `loadout.resolve` stamps rows without ever asking
+  whether the result is still flyable — so a patch that drew an `x` inside a slot could
+  silently turn a two-deck column into a three-deck one, orphaning whatever is above it,
+  with every existing test still green because nothing was ever looking at that tile.
+  `server/test/module_test.gleam` enforces this: no shipped module patch, on any hull,
+  may draw a stairs glyph.
 
 The **Mockingbird becomes a three-deck ship**: Upper (cockpit, quarters, mess,
 commons, aft passage), a rear Mezzanine (the former docking half-flight, now its
