@@ -218,6 +218,36 @@ pub fn her_lower_corridor_reaches_the_hold_on_one_deck_test() {
   assert unreachable == []
 }
 
+/// The stronger property the corridor check above only partly proves: a
+/// stairs tile dropped forward of the corridor start, rather than behind it,
+/// would sever the deck just as badly and go uncaught there. So instead of
+/// walking from one fixed tile, treat every stairs tile as unenterable and
+/// check the WHOLE deck: its non-stairs walkable tiles must form a single
+/// connected component, none of them cut off by a misplaced stair.
+pub fn her_lower_deck_walkable_tiles_form_one_component_test() {
+  let assert Ok(lower) = deckplan.deck_at(stock_plan(), 2)
+  let all_tiles = non_stairs_walkable_tiles(lower)
+  assert list.length(all_tiles) == 35
+  let assert [start, ..] = all_tiles
+  let reached = walk_one_deck(lower, [start], [])
+  let unreached = list.filter(all_tiles, fn(t) { !list.contains(reached, t) })
+  assert unreached == []
+}
+
+/// Every tile of `grid` that is walkable and not a stairs tile, in row/column
+/// order.
+fn non_stairs_walkable_tiles(grid: DeckGrid) -> List(#(Int, Int)) {
+  list.index_map(grid.cells, fn(row, y) {
+    list.index_map(row, fn(_cell, x) { #(x, y) })
+  })
+  |> list.flatten
+  |> list.filter(fn(t) {
+    let #(x, y) = t
+    deckplan.is_walkable(grid, x, y)
+    && deckplan.tile_at(grid, x, y) != deckplan.Stairs
+  })
+}
+
 /// Every tile of `grid` carrying slot `digit`, in row/column order.
 fn tiles_of_slot(grid: DeckGrid, digit: Int) -> List(#(Int, Int)) {
   list.index_map(grid.cells, fn(row, y) {
@@ -295,14 +325,18 @@ pub fn one_cabin_document_serves_both_hulls_test() {
 /// Her whole stock fit resolves: twelve cabins, a galley, a hold, three
 /// engines of two different sizes. Her hold capacity comes out at four, one
 /// per pallet `rijay.hold.breakbulk_3x2` draws in her 3x2 hold; pinning it
-/// here is what stops the hold quietly changing size again. (Her authored
-/// `cargo.capacity` fallback happens to be four as well — coincidence, not
-/// the source: strip the hold module and the fallback is what you'd get.)
+/// here is what stops the hold quietly changing size again. The plan's own
+/// pallet count is asserted separately, because `cargo_capacity` alone falls
+/// back to the hull's authored number when a plan draws zero pallets — a
+/// derived four is indistinguishable from a fallen-back four unless the
+/// pallet count is checked directly. (Her authored `cargo.capacity` fallback
+/// is two, precisely so it can never be confused with a derived four.)
 pub fn her_default_loadout_resolves_test() {
   let assert Ok(h) = hull.load("shipclasses/goldfinch.json")
   let assert Ok(modules) = module.load_all("modules")
   let assert Ok(parts) = part.load_all("parts")
   let assert Ok(fit) =
     loadout.resolve(glyphs.default(), h, modules, parts, loadout.default_for(h))
+  assert deckplan.pallet_count(fit.class.plan, glyphs.default()) == 4
   assert fit.class.cargo_capacity == 4
 }

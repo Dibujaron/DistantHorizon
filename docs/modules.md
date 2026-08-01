@@ -545,8 +545,9 @@ Mockingbird's ten slots never had to; it took a second large hull to find it, an
 worth writing down now, before a hull that actually wants twenty gets designed against a
 format that cannot express it.
 
-**Two plan rules did not survive**, and both were found only because a second and third
-hull got drawn against rules that had been proven against exactly one:
+**Three plan rules did not survive drawing a second and third hull** — two of them found
+by a failing test, below, and a third ("A stair belongs in a bay", further down) found only
+in review:
 
 - *"Stairs must be vertically aligned across all decks" was wrong, and it produced an
   unflyable ship.* `deckplan.stairs_target` scans **down first** and lets `deck + 1` win a
@@ -556,13 +557,15 @@ hull got drawn against rules that had been proven against exactly one:
   cabins — was unreachable from the boarding port, and 347 green tests did not notice,
   because nothing asserted stair reversibility. The Mockingbird had always avoided this by
   accident of drawing: each of her stair columns carries an `x` on exactly **two** decks.
-  The two real invariants are: **(a)** a stairs column holds an `x` on exactly two decks;
-  and **(b)** every stairs tile must have at least one non-stairs walkable neighbour on its
+  The three real invariants are: **(a)** a stairs column holds an `x` on exactly two decks;
+  **(b)** every stairs tile must have at least one non-stairs walkable neighbour on its
   own deck — the second because a stairs tile whose every non-void neighbour is also stairs
-  can be stood on but never *entered*, so the switch never fires. The first attempted fix
-  satisfied (a) — two decks per column — but violated (b) at the new tile it added, and
-  still stranded the Upper deck. `docs/deckplan-format.md` documented only the down-first
-  scan and the void-skip; it now states both invariants too.
+  can be stood on but never *entered*, so the switch never fires; and **(c)** a stairs tile
+  placed mid-corridor severs that corridor, which "A stair belongs in a bay" below writes up
+  in full. The first attempted fix satisfied (a) — two decks per column — but
+  violated (b) at the new tile it added, and still stranded the Upper deck.
+  `docs/deckplan-format.md` documented only the down-first scan and the void-skip; it now
+  states all three invariants too.
 - *A decor glyph on a tile edge silently becomes a blocking fixture.* The plan's own
   Goldfinch cabin grid put a seat (`e`) on the fore tile's S edge and the aft tile's N edge.
   `server/glyphs.json` registers `e` as a **centre** glyph only, and any edge character the
@@ -585,8 +588,11 @@ property. The fix moved the Lower↔Mezzanine pair to the port flank at (1,10), 
 band at `y10` into a fixed-hull landing the corridor walks past, and cost the hold its
 forward row — 9 tiles to **3×2**, six pallets to four, derived capacity 6 to 4.
 `docs/deckplan-format.md` now states the rule alongside the other two, and
-`goldfinch_test.gleam` pins it with a one-deck flood fill that refuses to enter a stairs
-tile at all.
+`goldfinch_test.gleam` pins it two ways: a one-deck flood fill from the forward corridor
+that refuses to enter a stairs tile and must still reach every hold tile, and the stronger
+property that a misplaced stair anywhere on the deck would also break — with every stairs
+tile unenterable, the Lower deck's 35 non-stairs walkable tiles form one connected
+component, not two.
 
 Worth a line, since it came up while drawing the Goldfinch's cockpit: `provides.seats`, like
 `provides.berths` and `provides.fuel`, is authored bookkeeping the engine only sums —

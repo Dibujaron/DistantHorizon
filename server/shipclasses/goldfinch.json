@@ -195,7 +195,7 @@
     }
   },
   "cargo": {
-    "capacity": 4,
+    "capacity": 2,
     "handling": "breakbulk"
   },
   "dock_port_orientation": 90.0,
