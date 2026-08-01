@@ -133,7 +133,7 @@ pub fn every_shipped_module_resolves_in_its_slot_test() {
   // standard cabin stamped into five different bays, say) has to prove every
   // one of them, not just the first — otherwise four of five placements would
   // drift unnoticed. Filtered to this hull: a module is authored per (hull,
-  // slot) target, so a Sparrow or Finch module arriving later would otherwise
+  // slot) target, so a Sparrow or Goldfinch module arriving later would otherwise
   // fail here as `module_not_drawn_for_slot` rather than being skipped.
   dict.to_list(mods)
   |> list.flat_map(fn(entry) {

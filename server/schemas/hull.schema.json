@@ -20,7 +20,7 @@
     },
     "consoles": {
       "type": "array",
-      "description": "Optional. Authored as center glyphs in the grids (h=helm, c=cargo, b=broker, Q=docking port) and derived at load; the server re-emits this list (namespaced, over the wire) but hand-authored docs omit it.",
+      "description": "Optional. Derived at load from the grids: h/c/b (helm/cargo/broker) are wall-mounted edge fixtures on the floor tile they face, Q (docking port) is a center glyph; the server re-emits this list (namespaced, over the wire) but hand-authored docs omit it.",
       "items": { "$ref": "#/$defs/console" }
     },
     "spawn": { "$ref": "#/$defs/spawn" },
@@ -90,7 +90,7 @@
         "name": { "type": "string" },
         "grid": {
           "type": "array",
-          "description": "3*height rows of 3*width chars: each tile is a 3x3 block. Centre glyph = ' ' floor, '.' void, 'x' stairs, 's' spawn, or a console (h=helm, c=cargo, b=broker, Q=docking port) — consoles/spawn are DERIVED from these glyphs. N/E/S/W edge-mids = ' ' open, '#' wall, '=' door, letter fixture. See docs/deckplan-format.md. Row count and each row's length must be multiples of 3 and consistent (enforced by the Gleam decoder, not by this schema).",
+          "description": "3*height rows of 3*width chars: each tile is a 3x3 block. Centre glyph = ' ' floor, '.' void, 'x' stairs, 's' spawn, or 'Q' docking port — spawn/docking are DERIVED from these glyphs. N/E/S/W edge-mids = ' ' open, '#' wall, '=' door, letter fixture — h=helm, c=cargo, b=broker are wall-mounted console fixtures, DERIVED into the consoles list the same way. See docs/deckplan-format.md. Row count and each row's length must be multiples of 3 and consistent (enforced by the Gleam decoder, not by this schema).",
           "items": { "type": "string" }
         }
       }

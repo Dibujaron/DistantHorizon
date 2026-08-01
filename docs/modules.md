@@ -207,8 +207,8 @@ holds one module, so on the Sparrow, range and speed are mutually exclusive for 
 
 The Goldfinch (`server/shipclasses/goldfinch.json`) is a three-deck passenger liner: an
 Upper and a Lower deck of six identical 1×2 cabin slots each, and a Mezzanine between them
-carrying her two docking ports and the stair shaft that threads all three decks — the same
-role the Mockingbird's own Mezzanine plays. She declares fifteen slots — a cockpit, twelve
+carrying her two docking ports and the two offset stair columns that link all three decks —
+the same role the Mockingbird's own Mezzanine plays. She declares fifteen slots — a cockpit, twelve
 cabins, a galley and a hold — one shy of the sixteen a slot digit can address (see "The
 sixteen-slot ceiling" below). She is also the first hull to mix mount sizes on one ship:
 `engine_center` is `size: m` (a proper Stork on the stern) while `engine_port` and
@@ -510,7 +510,7 @@ needed a rule of its own. But drawing a second and third hull found real edges o
 format that one hull alone never could.
 
 **The sixteen-slot ceiling.** Slot membership rides in a single hex character (`docs/deckplan-format.md`,
-"Slot marking"), so a hull can never carry more than sixteen slots — one per value `0`–`f`.
+"Slots"), so a hull can never carry more than sixteen slots — one per value `0`–`f`.
 The Goldfinch sits at fifteen. Nothing in iteration 1 or 2a came near this wall, because the
 Mockingbird's ten slots never had to; it took a second large hull to find it, and it is
 worth writing down now, before a hull that actually wants twenty gets designed against a
