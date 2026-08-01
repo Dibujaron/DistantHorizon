@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "id": "goldfinch.galley.stock",
+  "id": "rijay.galley.standard",
   "name": "Stock galley",
   "mass": 5.0,
   "provides": { "galley": 1 },

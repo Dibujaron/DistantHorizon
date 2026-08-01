@@ -1,20 +1,20 @@
 {
   "schema": 1,
-  "id": "rijay.cockpit.sparrow",
-  "name": "Sparrow cockpit",
-  "mass": 3.0,
-  "provides": { "seats": 1 },
+  "id": "rijay.cockpit.duo_3x1",
+  "name": "Stock cockpit",
+  "mass": 4.0,
+  "provides": { "seats": 2 },
   "requires": { "power": 2 },
   "targets": [
     {
-      "hull": "sparrow",
+      "hull": "goldfinch",
       "slots": ["cockpit"],
       "patches": [
         {
           "deck": 0, "x": 1, "y": 1,
           "grid": [
             "####h####",
-            "w   e   w",
+            "we     ew",
             " #  =  # "
           ]
         }

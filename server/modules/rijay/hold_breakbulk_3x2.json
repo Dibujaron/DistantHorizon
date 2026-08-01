@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "id": "goldfinch.hold.breakbulk",
+  "id": "rijay.hold.breakbulk_3x2",
   "name": "Break-bulk hold",
   "mass": 6.0,
   "requires": { "power": 1 },

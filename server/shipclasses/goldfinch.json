@@ -172,7 +172,7 @@
   ],
   "default_loadout": {
     "modules": {
-      "cockpit":     "goldfinch.cockpit.stock",
+      "cockpit":     "rijay.cockpit.duo_3x1",
       "cabin_u_p_a": "rijay.cabin.standard",
       "cabin_u_s_a": "rijay.cabin.standard",
       "cabin_u_p_b": "rijay.cabin.standard",
@@ -185,8 +185,8 @@
       "cabin_l_s_b": "rijay.cabin.standard",
       "cabin_l_p_c": "rijay.cabin.standard",
       "cabin_l_s_c": "rijay.cabin.standard",
-      "galley":      "goldfinch.galley.stock",
-      "hold":        "goldfinch.hold.breakbulk"
+      "galley":      "rijay.galley.standard",
+      "hold":        "rijay.hold.breakbulk_3x2"
     },
     "parts": {
       "engine_center": "rijay.engine.stork_240c2",

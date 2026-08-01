@@ -188,7 +188,7 @@ fn walk_from(
 
 /// Her stock fit as a walkable plan. Same-deck traversability is a property
 /// of the FITTED ship, not the bare hull: the hold's walls and its one door
-/// come from `goldfinch.hold.breakbulk` and the cabins seal themselves off
+/// come from `rijay.hold.breakbulk_3x2` and the cabins seal themselves off
 /// the corridor, so a bare-hull walk would stroll through partitions that do
 /// not exist on the ship anybody actually flies.
 fn stock_plan() -> DeckPlan {
@@ -294,7 +294,7 @@ pub fn one_cabin_document_serves_both_hulls_test() {
 
 /// Her whole stock fit resolves: twelve cabins, a galley, a hold, three
 /// engines of two different sizes. Her hold capacity comes out at four, one
-/// per pallet `goldfinch.hold.breakbulk` draws in her 3x2 hold; pinning it
+/// per pallet `rijay.hold.breakbulk_3x2` draws in her 3x2 hold; pinning it
 /// here is what stops the hold quietly changing size again. (Her authored
 /// `cargo.capacity` fallback happens to be four as well — coincidence, not
 /// the source: strip the hold module and the fallback is what you'd get.)

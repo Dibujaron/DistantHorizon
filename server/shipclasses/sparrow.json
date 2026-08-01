@@ -47,7 +47,7 @@
   ],
   "default_loadout": {
     "modules": {
-      "cockpit": "rijay.cockpit.sparrow",
+      "cockpit": "rijay.cockpit.solo_3x1",
       "bay":     "rijay.bay.packet"
     },
     "parts": {

@@ -456,11 +456,11 @@ pub fn encode_cargo_sorts_hold_and_lists_transfers_test() {
 pub fn parse_refit_message_test() {
   let text =
     "{\"v\":1,\"type\":\"refit\","
-    <> "\"modules\":[{\"slot\":\"hold\",\"module\":\"mockingbird.hold.tank\"}],"
+    <> "\"modules\":[{\"slot\":\"hold\",\"module\":\"rijay.hold.tank_8x11\"}],"
     <> "\"parts\":[{\"mount\":\"engine_center\",\"part\":\"rijay.engine.stork_240c2\"}]}"
   let assert Ok(protocol.Refit(modules, parts)) =
     protocol.parse_client_message(text)
-  assert modules == [#("hold", "mockingbird.hold.tank")]
+  assert modules == [#("hold", "rijay.hold.tank_8x11")]
   assert parts == [#("engine_center", "rijay.engine.stork_240c2")]
 }
 

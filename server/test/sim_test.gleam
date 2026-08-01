@@ -1015,31 +1015,31 @@ const station_space = "station:meridian_highport"
 /// The Mockingbird's default loadout, spelled out as the wire spells it â€”
 /// this is exactly what a refit UI would send back unchanged.
 const default_modules = [
-  #("cockpit", "mockingbird.cockpit.stock"),
+  #("cockpit", "rijay.cockpit.solo_2x2"),
   #("cabin_fore_a", "rijay.cabin.standard"),
   #("cabin_fore_b", "rijay.cabin.standard"),
-  #("crew_commons", "mockingbird.commons.crew"),
+  #("crew_commons", "rijay.commons.crew"),
   #("cabin_mess", "rijay.cabin.standard"),
-  #("payload", "mockingbird.payload.passenger"),
+  #("payload", "rijay.payload.passenger"),
   #("cabin_engineer", "rijay.cabin.standard"),
-  #("engineering", "mockingbird.engineering.stock"),
+  #("engineering", "rijay.engineering.stock"),
   #("cabin_aft_stbd", "rijay.cabin.standard"),
-  #("hold", "mockingbird.hold.breakbulk"),
+  #("hold", "rijay.hold.breakbulk_8x11"),
 ]
 
 /// The same loadout with the break-bulk hold swapped for the bunkerage tank â€”
 /// a different stamped deck, and a different pallet-derived hold.
 const tank_modules = [
-  #("cockpit", "mockingbird.cockpit.stock"),
+  #("cockpit", "rijay.cockpit.solo_2x2"),
   #("cabin_fore_a", "rijay.cabin.standard"),
   #("cabin_fore_b", "rijay.cabin.standard"),
-  #("crew_commons", "mockingbird.commons.crew"),
+  #("crew_commons", "rijay.commons.crew"),
   #("cabin_mess", "rijay.cabin.standard"),
-  #("payload", "mockingbird.payload.passenger"),
+  #("payload", "rijay.payload.passenger"),
   #("cabin_engineer", "rijay.cabin.standard"),
-  #("engineering", "mockingbird.engineering.stock"),
+  #("engineering", "rijay.engineering.stock"),
   #("cabin_aft_stbd", "rijay.cabin.standard"),
-  #("hold", "mockingbird.hold.tank"),
+  #("hold", "rijay.hold.tank_8x11"),
 ]
 
 const default_parts = [

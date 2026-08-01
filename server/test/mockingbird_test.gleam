@@ -89,7 +89,7 @@ pub fn swapping_the_hold_for_a_tank_drops_capacity_test() {
       ..base,
       modules: list.map(base.modules, fn(entry) {
         case entry.0 == "hold" {
-          True -> #("hold", "mockingbird.hold.tank")
+          True -> #("hold", "rijay.hold.tank_8x11")
           False -> entry
         }
       }),

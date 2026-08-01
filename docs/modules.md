@@ -198,7 +198,7 @@ every shipped part was `m`, so the size rule had never once been exercised by co
 and a pooled `requires: {engine: 1}` satisfied by two mounted engines rather than one.
 
 She has two slots — `cockpit` (digit 1) and `bay` (digit 2) — and three `size: s` mounts.
-Her stock fit is `rijay.cockpit.sparrow` and `rijay.bay.packet`, a five-pallet locker whose
+Her stock fit is `rijay.cockpit.solo_3x1` and `rijay.bay.packet`, a five-pallet locker whose
 derived capacity is 5; `rijay.bay.ranger` is an endurance package instead — a bunk and no
 pallets, so a ranger fit falls back to the hull's authored `cargo.capacity` of 2. A slot
 holds one module, so on the Sparrow, range and speed are mutually exclusive for free.
@@ -224,7 +224,7 @@ to test — that a module document is a portable concept, not a per-hull one —
 under a hull that was never in the room when the rule was written.
 
 Her `hold` is a **3×2** slot right aft on the Lower deck, furnished by
-`goldfinch.hold.breakbulk`: four `p` pallets down the port and starboard columns, a two-tile
+`rijay.hold.breakbulk_3x2`: four `p` pallets down the port and starboard columns, a two-tile
 centre aisle, one door forward and the cargo console `c` on the port wall — so her derived
 capacity is **4**. She is modest in the hold because she is a liner; the volume went to
 cabins. The 3-wide band immediately forward of it is **fixed hull**, a stair landing rather
@@ -250,6 +250,26 @@ Exterior parts and interior modules are **two orthogonal axes**, installed indep
   hull it happens to be bolted to** — the Mockingbird's stock centre engine used to be
   `rijay.engine.consol_patch`, which broke that rule and erased the joke the hull is built
   on (her centre engine is foreign to the hull); it is now `consol.engine.co17f_2`.
+- **Module ids follow the same `<manufacturer>.<kind>.<model>` shape, for the same reason,
+  and iteration 2b renamed the whole catalog onto it.** Every shipped module used to be
+  filed under either `rijay` or under whichever hull it happened to ship on
+  (`goldfinch.cockpit.stock`, `mockingbird.commons.crew`) — the same mistake as
+  `rijay.engine.consol_patch` above, an id that names who *uses* a document rather than who
+  *built* it. Adding a second hull to a document is a one-line `targets` addition; renaming
+  its id afterwards is not, because the id is referenced in every hull's `default_loadout`.
+  Hull-namespacing bakes in "only this hull will ever use it" at exactly the moment the
+  design is trying to prove documents are portable — `rijay.cabin.standard` already served
+  two hulls from one file under the old scheme, so the rule was already being broken by the
+  first document that needed it. Every module now files under the manufacturer that built
+  it (`server/modules/rijay/`), and the `model` slot names the product, never the hull:
+  `goldfinch.cockpit.stock` became `rijay.cockpit.duo_3x1`, `mockingbird.hold.tank` became
+  `rijay.hold.tank_8x11`. The trailing `_WxH` is a **footprint suffix** — the patch's tile
+  footprint, width by height — and it appears exactly where a `kind` ships more than one
+  shape, on *every* member of that kind, so the set reads uniformly rather than singling
+  one model out: the cockpit kind ships three models across two shapes (3×1 and 2×2), so all
+  three carry a suffix (`.solo_3x1`, `.duo_3x1`, `.solo_2x2`); the bay kind ships two models
+  that are both 3×2, so neither carries one (`rijay.bay.packet`, `rijay.bay.ranger`); a kind
+  with a single shipped model, like `galley` or `commons`, never needs one either.
 - Some installables **link one of each** — a gun is an exterior turret part *and* a
   per-hull interior gun-room overlay. Some are exterior-only (an atmospheric landing/fin
   package — no interior change). Some are interior-only (a medbay).
@@ -365,11 +385,11 @@ These are the shipped shapes; the JSON schemas in `server/schemas/` (`module.sch
 `server/test/data_schema_test.gleam`, and the Gleam decoders they mirror are the source of
 truth for both.
 
-An **interior module** (`server/modules/<hull-or-manufacturer>/<id>.json` — filed under
-whichever name the *concept* belongs to: a hull-specific fixture like the cockpit files
-under its hull, a manufacturer part like the standard cabin files under its manufacturer,
-because it is one document even though each individual overlay it carries is still drawn
-against one hull's coordinate space and is not portable as a drawing):
+An **interior module** (`server/modules/<manufacturer>/<id>.json` — filed under the
+manufacturer named in its own id, per "Module ids follow..." above, even though each
+individual overlay it carries is still drawn against one hull's coordinate space and is not
+portable as a drawing; `server/modules/test_fixture/` is the one exception, holding the
+Python harness's fixture-hull module rather than a Rijay document):
 
 ```jsonc
 {

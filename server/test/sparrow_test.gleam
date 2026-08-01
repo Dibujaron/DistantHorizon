@@ -58,7 +58,7 @@ pub fn the_third_engine_and_the_ranger_package_cannot_both_fit_test() {
     loadout.Loadout(
       hull: "sparrow",
       modules: [
-        #("cockpit", "rijay.cockpit.sparrow"),
+        #("cockpit", "rijay.cockpit.solo_3x1"),
         #("bay", "rijay.bay.packet"),
       ],
       parts: three,
@@ -69,7 +69,7 @@ pub fn the_third_engine_and_the_ranger_package_cannot_both_fit_test() {
     loadout.Loadout(
       hull: "sparrow",
       modules: [
-        #("cockpit", "rijay.cockpit.sparrow"),
+        #("cockpit", "rijay.cockpit.solo_3x1"),
         #("bay", "rijay.bay.ranger"),
       ],
       parts: [

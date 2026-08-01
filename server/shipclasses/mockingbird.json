@@ -248,16 +248,16 @@
   ],
   "default_loadout": {
     "modules": {
-      "cockpit":        "mockingbird.cockpit.stock",
+      "cockpit":        "rijay.cockpit.solo_2x2",
       "cabin_fore_a":   "rijay.cabin.standard",
       "cabin_fore_b":   "rijay.cabin.standard",
-      "crew_commons":   "mockingbird.commons.crew",
+      "crew_commons":   "rijay.commons.crew",
       "cabin_mess":     "rijay.cabin.standard",
-      "payload":        "mockingbird.payload.passenger",
+      "payload":        "rijay.payload.passenger",
       "cabin_engineer": "rijay.cabin.standard",
-      "engineering":    "mockingbird.engineering.stock",
+      "engineering":    "rijay.engineering.stock",
       "cabin_aft_stbd": "rijay.cabin.standard",
-      "hold":           "mockingbird.hold.breakbulk"
+      "hold":           "rijay.hold.breakbulk_8x11"
     },
     "parts": {
       "engine_port":   "rijay.engine.stork_240c2",
