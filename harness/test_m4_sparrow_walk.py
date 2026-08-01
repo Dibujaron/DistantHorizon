@@ -48,6 +48,7 @@ import pytest
 
 from dh_client import DHClient
 from deckplan import tile_walkable
+from server_fixture import SPARROW_PORT, TEST_PORT
 from walk import console_tile, walk_to_console
 
 pytestmark = pytest.mark.asyncio
@@ -55,11 +56,17 @@ pytestmark = pytest.mark.asyncio
 SPAWN_STATION = "meridian_highport"
 SPAWN_STATION_SPACE = f"station:{SPAWN_STATION}"
 
-# server_fixture.SPARROW_PORT's default. The sparrow_server fixture spawns
-# its own dh_server independent of the shared `server` fixture, so this
-# client is pointed at it explicitly rather than via DH_PORT (which the rest
-# of the session has already stamped for the *other* server).
-SPARROW_URL = "ws://127.0.0.1:8586/ws"
+# The sparrow_server fixture spawns its own dh_server independent of the
+# shared `server` fixture, so this client is pointed at it explicitly rather
+# than via DH_PORT (which the rest of the session has already stamped for
+# the *other* server). Built from SPARROW_PORT (DH_SPARROW_PORT-overridable)
+# rather than hardcoded, so an override actually takes effect here too.
+assert SPARROW_PORT != TEST_PORT, (
+    "DH_SPARROW_PORT collides with DH_PORT/TEST_PORT -- sparrow_server and "
+    "server would both try to bind the same port. Point one of the two env "
+    "vars elsewhere."
+)
+SPARROW_URL = f"ws://127.0.0.1:{SPARROW_PORT}/ws"
 
 
 async def test_walk_sparrow_bow_to_stern(sparrow_server):

@@ -149,8 +149,8 @@
   "provides": { "power": 34 },
   "requires": { "engine": 1 },
   "mounts": [
-    { "id": "engine_center", "kind": "engine", "size": "m" },
     { "id": "engine_port",   "kind": "engine", "size": "s" },
+    { "id": "engine_center", "kind": "engine", "size": "m" },
     { "id": "engine_stbd",   "kind": "engine", "size": "s" }
   ],
   "slots": [

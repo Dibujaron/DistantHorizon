@@ -3,7 +3,6 @@
   "id": "goldfinch.hold.breakbulk",
   "name": "Break-bulk hold",
   "mass": 6.0,
-  "provides": {},
   "requires": { "power": 1 },
   "targets": [
     {
