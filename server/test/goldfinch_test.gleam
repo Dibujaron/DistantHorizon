@@ -1,4 +1,4 @@
-import dh_server/deckplan.{type DeckPlan, DeckPlan}
+import dh_server/deckplan.{type DeckPlan}
 import dh_server/glyphs
 import dh_server/hull
 import dh_server/loadout
@@ -48,17 +48,19 @@ pub fn her_mounts_mix_sizes_test() {
 // rescues it. The Mockingbird's columns each carry an `x` on exactly two
 // decks; that is the real invariant, and these two tests pin it.
 
-/// The bare hull's authored decks as a `DeckPlan`. Her default loadout does
-/// not resolve until her modules land, and stair geometry is hull-owned
-/// anyway — a module may not overwrite a fixed-hull tile.
+/// The bare hull's authored decks as a `DeckPlan`, built the same way the
+/// server builds one (`deckplan.from_rows`) so `consoles`/`spawn_deck`/
+/// `spawn_tile` are DERIVED from the hull's own glyphs rather than
+/// hand-pinned here — a hand-written boarding tile would silently stop
+/// matching reality if the west-facing dock port ever moved, and these tests
+/// would keep passing while walking from a tile nobody actually boards at.
+/// Her default loadout does not resolve until her modules land, and stair
+/// geometry is hull-owned anyway — a module may not overwrite a fixed-hull
+/// tile.
 fn bare_plan() -> DeckPlan {
   let assert Ok(h) = hull.load("shipclasses/goldfinch.json")
-  let decks =
-    list.map(h.decks, fn(d) {
-      let assert Ok(g) = deckplan.parse_deck(d.0, d.1)
-      g
-    })
-  DeckPlan(decks:, consoles: [], spawn_deck: 1, spawn_tile: #(1, 9))
+  let assert Ok(plan) = deckplan.from_rows(glyphs.default(), h.decks)
+  plan
 }
 
 /// Every stairs tile on every deck, as `#(deck, x, y)`, in deck/row/column
@@ -107,7 +109,8 @@ pub fn her_stairs_are_reversible_test() {
 /// board at, and asserts all three decks come out reachable.
 pub fn every_deck_is_reachable_from_the_boarding_port_test() {
   let plan = bare_plan()
-  let reached = walk_from(plan, [#(1, 1, 9)], [])
+  let #(bx, by) = plan.spawn_tile
+  let reached = walk_from(plan, [#(plan.spawn_deck, bx, by)], [])
   let decks =
     list.unique(list.map(reached, fn(s) { s.0 })) |> list.sort(int_cmp)
   assert decks == [0, 1, 2]
@@ -188,13 +191,6 @@ pub fn one_cabin_document_serves_both_hulls_test() {
 
 /// Her whole stock fit resolves: twelve cabins, a galley, a hold, three
 /// engines of two different sizes.
-///
-/// EXPECTED RED at the end of this task: the cockpit module is Task 8's
-/// work, not this one's. This is left failing on `unknown_module:...` (the
-/// engine resolves default modules alphabetically, so which id is named
-/// depends on dict iteration order) — landing that failure on purpose is
-/// what the task brief calls for, rather than stubbing a cockpit module to
-/// force green.
 pub fn her_default_loadout_resolves_test() {
   let assert Ok(h) = hull.load("shipclasses/goldfinch.json")
   let assert Ok(modules) = module.load_all("modules")
