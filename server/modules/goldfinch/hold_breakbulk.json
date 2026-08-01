@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "id": "goldfinch.hold.breakbulk",
+  "name": "Break-bulk hold",
+  "mass": 6.0,
+  "provides": {},
+  "requires": { "power": 1 },
+  "targets": [
+    {
+      "hull": "goldfinch",
+      "slots": ["hold"],
+      "patches": [
+        {
+          "deck": 2, "x": 1, "y": 10,
+          "grid": [
+            "         ",
+            "#p     p#",
+            "         ",
+            "         ",
+            "cp     p#",
+            "         ",
+            "         ",
+            "#p     p#",
+            "#########"
+          ]
+        }
+      ]
+    }
+  ]
+}

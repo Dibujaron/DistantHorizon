@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "id": "goldfinch.galley.stock",
+  "name": "Stock galley",
+  "mass": 5.0,
+  "provides": { "galley": 1 },
+  "requires": { "power": 2 },
+  "targets": [
+    {
+      "hull": "goldfinch",
+      "slots": ["galley"],
+      "patches": [
+        {
+          "deck": 2, "x": 1, "y": 1,
+          "grid": [
+            "#########",
+            "wt  t  tw",
+            "         ",
+            "         ",
+            "we  e  ew",
+            "###   ###"
+          ]
+        }
+      ]
+    }
+  ]
+}
