@@ -247,7 +247,7 @@ The down-first scan and the void-skip describe *how* a step resolves, but they a
 by themselves enough to draw a flyable stair column — the Goldfinch (iteration 2b) shipped
 briefly unflyable because a plan that satisfied both anyway put every deck's `x` at the
 same tile, and the down-first scan then sent a walker down and only ever down, stranding
-her Upper deck. The two invariants an author actually needs are:
+her Upper deck. The invariants an author actually needs are:
 
 - **A stairs column holds an `x` on exactly two decks.** A third `x` at the same tile
   makes the down-first scan permanently prefer the lower pair and orphans whatever is
@@ -257,6 +257,18 @@ her Upper deck. The two invariants an author actually needs are:
   The deck switch (`character.deck_after_step`) fires only on a *non-stairs → stairs*
   step; a stairs tile whose every open neighbour is also stairs can be stood on but never
   *entered* in the switching sense, so it never triggers a switch either way.
+- **A stairs tile placed mid-corridor severs that corridor**, because stepping onto it
+  changes your deck. A stair is never a tile you walk *through*: press on down the corridor
+  and you arrive a deck away, and everything past it is reachable only by a bounce — down,
+  along, back up — which reads to a player as the controls lying to them. Nothing catches
+  this. Every deck stays reachable, the two invariants above still hold, and every existing
+  check stays green, which is exactly how the Goldfinch shipped with the aft end of her
+  Lower corridor sitting on the Mezzanine stair (iteration 2b). So it is an authoring rule:
+  **put the stair in a bay with a bypass** — a landing the corridor walks past, as her
+  Lower deck now does with the stair on the port flank at (1,10) and the corridor running
+  straight down `x2` into the hold — **or let the corridor terminate there by design.**
+  `server/test/goldfinch_test.gleam` pins the property for that hull with a one-deck flood
+  fill that refuses to enter a stairs tile at all.
 - **Stairs are hull geometry, and a module must never draw them.** A stair column's
   legality depends on the whole deck stack (exactly two decks per column, a non-stairs
   neighbour on each), which is a fact about the hull, not about any one slot a module

@@ -1,4 +1,4 @@
-import dh_server/deckplan.{type DeckPlan}
+import dh_server/deckplan.{type DeckGrid, type DeckPlan}
 import dh_server/glyphs
 import dh_server/hull
 import dh_server/loadout
@@ -7,6 +7,7 @@ import dh_server/part
 import gleam/dict
 import gleam/int
 import gleam/list
+import gleam/option.{Some}
 import gleam/order
 import gleam/string
 
@@ -88,9 +89,9 @@ fn stair_tiles(plan: DeckPlan) -> List(#(Int, Int, Int)) {
 pub fn her_stairs_are_reversible_test() {
   let plan = bare_plan()
   let stairs = stair_tiles(plan)
-  // Two columns of two decks each: (2,9) Mezzanine<->Lower, (2,11)
+  // Two columns of two decks each: (1,10) Mezzanine<->Lower, (2,11)
   // Upper<->Mezzanine. Never one column of three.
-  assert stairs == [#(0, 2, 11), #(1, 2, 9), #(1, 2, 11), #(2, 2, 9)]
+  assert stairs == [#(0, 2, 11), #(1, 1, 10), #(1, 2, 11), #(2, 1, 10)]
   let round_trips =
     list.map(stairs, fn(s) {
       let #(deck, x, y) = s
@@ -170,6 +171,108 @@ fn walk_from(
   }
 }
 
+// ------------------------------------------- same-deck traversability --
+//
+// Reachability across the whole ship is a weaker property than it looks, and
+// the Goldfinch shipped a level-design defect that hid behind it. Her Lower
+// corridor used to END on the Mezzanine stair tile at (2,9), because the
+// flanking floors either side of it are walled in by the aft cabins and only
+// a diagonal step away from the corridor. Walking aft from the cabins to the
+// hold therefore read: south onto the stairs, and you are now a deck up.
+// Nothing was orphaned, so `every_deck_is_reachable_from_the_boarding_port`
+// stayed green — the player just pressed south, south, north, south and
+// arrived somewhere else. The rule this pins: **stepping onto a stairs tile
+// changes your deck, so a stairs tile dropped mid-corridor severs that
+// corridor** (`docs/deckplan-format.md`, "Decks"). Put the stair in a bay
+// with a bypass, or let the corridor terminate there by design.
+
+/// Her stock fit as a walkable plan. Same-deck traversability is a property
+/// of the FITTED ship, not the bare hull: the hold's walls and its one door
+/// come from `goldfinch.hold.breakbulk` and the cabins seal themselves off
+/// the corridor, so a bare-hull walk would stroll through partitions that do
+/// not exist on the ship anybody actually flies.
+fn stock_plan() -> DeckPlan {
+  let assert Ok(h) = hull.load("shipclasses/goldfinch.json")
+  let assert Ok(modules) = module.load_all("modules")
+  let assert Ok(parts) = part.load_all("parts")
+  let assert Ok(fit) =
+    loadout.resolve(glyphs.default(), h, modules, parts, loadout.default_for(h))
+  fit.class.plan
+}
+
+/// A walker gets from the Lower corridor to every tile of the hold without
+/// ever changing deck. The hold's extent is read off the slot digits rather
+/// than hardcoded, so this keeps meaning what it says if the hold is ever
+/// re-drawn.
+pub fn her_lower_corridor_reaches_the_hold_on_one_deck_test() {
+  let assert Ok(h) = hull.load("shipclasses/goldfinch.json")
+  let assert Ok(hold) = hull.slot_by_id(h, "hold")
+  let assert Ok(lower) = deckplan.deck_at(stock_plan(), 2)
+  let hold_tiles = tiles_of_slot(lower, hold.digit)
+  assert hold_tiles != []
+  // (2,3) is the forward corridor abeam the first pair of cabins: fixed
+  // hull, no slot digit, and as far forward of the hold as the deck goes.
+  let reached = walk_one_deck(lower, [#(2, 3)], [])
+  let unreachable =
+    list.filter(hold_tiles, fn(t) { !list.contains(reached, t) })
+  assert unreachable == []
+}
+
+/// Every tile of `grid` carrying slot `digit`, in row/column order.
+fn tiles_of_slot(grid: DeckGrid, digit: Int) -> List(#(Int, Int)) {
+  list.index_map(grid.cells, fn(row, y) {
+    list.index_map(row, fn(cell, x) { #(cell.slot, x, y) })
+  })
+  |> list.flatten
+  |> list.filter_map(fn(c) {
+    case c.0 == Some(digit) {
+      True -> Ok(#(c.1, c.2))
+      False -> Error(Nil)
+    }
+  })
+}
+
+/// Flood fill across ONE deck that refuses to ENTER a stairs tile — the
+/// deck-preserving half of `walk_from`. A tile reachable only through a
+/// stairs tile is not reachable *on this deck*, which is exactly the
+/// distinction the whole-ship walk above cannot draw.
+fn walk_one_deck(
+  grid: DeckGrid,
+  queue: List(#(Int, Int)),
+  seen: List(#(Int, Int)),
+) -> List(#(Int, Int)) {
+  case queue {
+    [] -> seen
+    [tile, ..rest] ->
+      case list.contains(seen, tile) {
+        True -> walk_one_deck(grid, rest, seen)
+        False -> {
+          let #(x, y) = tile
+          let next =
+            [
+              #(deckplan.N, 0, -1),
+              #(deckplan.S, 0, 1),
+              #(deckplan.E, 1, 0),
+              #(deckplan.W, -1, 0),
+            ]
+            |> list.filter_map(fn(step) {
+              let #(dir, dx, dy) = step
+              let #(nx, ny) = #(x + dx, y + dy)
+              case
+                deckplan.is_walkable(grid, nx, ny)
+                && deckplan.tile_at(grid, nx, ny) != deckplan.Stairs
+                && !deckplan.edge_blocks(grid, x, y, dir)
+              {
+                True -> Ok(#(nx, ny))
+                False -> Error(Nil)
+              }
+            })
+          walk_one_deck(grid, list.append(rest, next), [tile, ..seen])
+        }
+      }
+  }
+}
+
 // ---------------------------------------------------- shared cabin doc --
 
 /// The claim iteration 2a shipped and this iteration tests: one document,
@@ -190,11 +293,16 @@ pub fn one_cabin_document_serves_both_hulls_test() {
 }
 
 /// Her whole stock fit resolves: twelve cabins, a galley, a hold, three
-/// engines of two different sizes.
+/// engines of two different sizes. Her hold capacity comes out at four, one
+/// per pallet `goldfinch.hold.breakbulk` draws in her 3x2 hold; pinning it
+/// here is what stops the hold quietly changing size again. (Her authored
+/// `cargo.capacity` fallback happens to be four as well — coincidence, not
+/// the source: strip the hold module and the fallback is what you'd get.)
 pub fn her_default_loadout_resolves_test() {
   let assert Ok(h) = hull.load("shipclasses/goldfinch.json")
   let assert Ok(modules) = module.load_all("modules")
   let assert Ok(parts) = part.load_all("parts")
-  let assert Ok(_) =
+  let assert Ok(fit) =
     loadout.resolve(glyphs.default(), h, modules, parts, loadout.default_for(h))
+  assert fit.class.cargo_capacity == 4
 }

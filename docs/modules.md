@@ -223,6 +223,15 @@ document exists anywhere. This is the claim iteration 2a shipped and iteration 2
 to test — that a module document is a portable concept, not a per-hull one — and it held
 under a hull that was never in the room when the rule was written.
 
+Her `hold` is a **3×2** slot right aft on the Lower deck, furnished by
+`goldfinch.hold.breakbulk`: four `p` pallets down the port and starboard columns, a two-tile
+centre aisle, one door forward and the cargo console `c` on the port wall — so her derived
+capacity is **4**. She is modest in the hold because she is a liner; the volume went to
+cabins. The 3-wide band immediately forward of it is **fixed hull**, a stair landing rather
+than cargo space: the Lower↔Mezzanine stair sits on its port flank, and the corridor runs
+straight down the centreline past it and into the hold, so no one ever changes deck by
+walking aft (see "A stair belongs in a bay" below).
+
 ## Exterior parts
 
 Exterior parts and interior modules are **two orthogonal axes**, installed independently:
@@ -543,6 +552,21 @@ hull got drawn against rules that had been proven against exactly one:
   unreachable. There is no validation for this: a document with a decor glyph on the wrong
   side of a tile parses cleanly and fails only when someone actually walks the ship — worth
   stating plainly, since nothing catches it at authoring time.
+
+**A stair belongs in a bay.** A third stairs rule surfaced after those two, in review rather
+than in a test: **a stairs tile placed mid-corridor severs that corridor**, because stepping
+onto it changes your deck. The Goldfinch's Lower corridor originally ended *on* the
+Mezzanine stair at (2,9) — the floors flanking it were walled in by the aft cabins and only
+a diagonal step from the corridor — so walking aft to the hold read *south onto the stairs,
+and you are now a deck up*, and the player pressed south, south, north, south to travel two
+tiles. Every deck stayed reachable, so neither invariant above caught it: the suite asserted
+**reachability** and never same-deck **traversability**, which is the strictly stronger
+property. The fix moved the Lower↔Mezzanine pair to the port flank at (1,10), turned the
+band at `y10` into a fixed-hull landing the corridor walks past, and cost the hold its
+forward row — 9 tiles to **3×2**, six pallets to four, derived capacity 6 to 4.
+`docs/deckplan-format.md` now states the rule alongside the other two, and
+`goldfinch_test.gleam` pins it with a one-deck flood fill that refuses to enter a stairs
+tile at all.
 
 Worth a line, since it came up while drawing the Goldfinch's cockpit: `provides.seats`, like
 `provides.berths` and `provides.fuel`, is authored bookkeeping the engine only sums —
