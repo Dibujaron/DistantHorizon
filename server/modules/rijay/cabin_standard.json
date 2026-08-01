@@ -90,6 +90,210 @@
           ]
         }
       ]
+    },
+    {
+      "hull": "goldfinch",
+      "slots": ["cabin_u_p_a"],
+      "patches": [
+        {
+          "deck": 0, "x": 1, "y": 3,
+          "grid": [
+            "###",
+            "wd#",
+            "# #",
+            "# #",
+            "#e=",
+            "###"
+          ]
+        }
+      ]
+    },
+    {
+      "hull": "goldfinch",
+      "slots": ["cabin_u_s_a"],
+      "patches": [
+        {
+          "deck": 0, "x": 3, "y": 3,
+          "grid": [
+            "###",
+            "#dw",
+            "# #",
+            "# #",
+            "=e#",
+            "###"
+          ]
+        }
+      ]
+    },
+    {
+      "hull": "goldfinch",
+      "slots": ["cabin_u_p_b"],
+      "patches": [
+        {
+          "deck": 0, "x": 1, "y": 5,
+          "grid": [
+            "###",
+            "wd#",
+            "# #",
+            "# #",
+            "#e=",
+            "###"
+          ]
+        }
+      ]
+    },
+    {
+      "hull": "goldfinch",
+      "slots": ["cabin_u_s_b"],
+      "patches": [
+        {
+          "deck": 0, "x": 3, "y": 5,
+          "grid": [
+            "###",
+            "#dw",
+            "# #",
+            "# #",
+            "=e#",
+            "###"
+          ]
+        }
+      ]
+    },
+    {
+      "hull": "goldfinch",
+      "slots": ["cabin_u_p_c"],
+      "patches": [
+        {
+          "deck": 0, "x": 1, "y": 7,
+          "grid": [
+            "###",
+            "wd#",
+            "# #",
+            "# #",
+            "#e=",
+            "###"
+          ]
+        }
+      ]
+    },
+    {
+      "hull": "goldfinch",
+      "slots": ["cabin_u_s_c"],
+      "patches": [
+        {
+          "deck": 0, "x": 3, "y": 7,
+          "grid": [
+            "###",
+            "#dw",
+            "# #",
+            "# #",
+            "=e#",
+            "###"
+          ]
+        }
+      ]
+    },
+    {
+      "hull": "goldfinch",
+      "slots": ["cabin_l_p_a"],
+      "patches": [
+        {
+          "deck": 2, "x": 1, "y": 3,
+          "grid": [
+            "###",
+            "wd#",
+            "# #",
+            "# #",
+            "#e=",
+            "###"
+          ]
+        }
+      ]
+    },
+    {
+      "hull": "goldfinch",
+      "slots": ["cabin_l_s_a"],
+      "patches": [
+        {
+          "deck": 2, "x": 3, "y": 3,
+          "grid": [
+            "###",
+            "#dw",
+            "# #",
+            "# #",
+            "=e#",
+            "###"
+          ]
+        }
+      ]
+    },
+    {
+      "hull": "goldfinch",
+      "slots": ["cabin_l_p_b"],
+      "patches": [
+        {
+          "deck": 2, "x": 1, "y": 5,
+          "grid": [
+            "###",
+            "wd#",
+            "# #",
+            "# #",
+            "#e=",
+            "###"
+          ]
+        }
+      ]
+    },
+    {
+      "hull": "goldfinch",
+      "slots": ["cabin_l_s_b"],
+      "patches": [
+        {
+          "deck": 2, "x": 3, "y": 5,
+          "grid": [
+            "###",
+            "#dw",
+            "# #",
+            "# #",
+            "=e#",
+            "###"
+          ]
+        }
+      ]
+    },
+    {
+      "hull": "goldfinch",
+      "slots": ["cabin_l_p_c"],
+      "patches": [
+        {
+          "deck": 2, "x": 1, "y": 7,
+          "grid": [
+            "###",
+            "wd#",
+            "# #",
+            "# #",
+            "#e=",
+            "###"
+          ]
+        }
+      ]
+    },
+    {
+      "hull": "goldfinch",
+      "slots": ["cabin_l_s_c"],
+      "patches": [
+        {
+          "deck": 2, "x": 3, "y": 7,
+          "grid": [
+            "###",
+            "#dw",
+            "# #",
+            "# #",
+            "=e#",
+            "###"
+          ]
+        }
+      ]
     }
   ]
 }

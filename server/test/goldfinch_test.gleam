@@ -1,5 +1,10 @@
 import dh_server/deckplan.{type DeckPlan, DeckPlan}
+import dh_server/glyphs
 import dh_server/hull
+import dh_server/loadout
+import dh_server/module
+import dh_server/part
+import gleam/dict
 import gleam/int
 import gleam/list
 import gleam/order
@@ -160,4 +165,40 @@ fn walk_from(
         }
       }
   }
+}
+
+// ---------------------------------------------------- shared cabin doc --
+
+/// The claim iteration 2a shipped and this iteration tests: one document,
+/// many hulls. If the Goldfinch ever needs a cabin file of her own, this
+/// fails and the rule was wrong.
+pub fn one_cabin_document_serves_both_hulls_test() {
+  let assert Ok(mods) = module.load_all("modules")
+  let assert Ok(cabin) = dict.get(mods, "rijay.cabin.standard")
+  let hulls = list.unique(list.map(cabin.targets, fn(t) { t.hull }))
+  assert list.sort(hulls, string.compare) == ["goldfinch", "mockingbird"]
+  let goldfinch_targets =
+    list.filter(cabin.targets, fn(t) { t.hull == "goldfinch" })
+  assert list.length(goldfinch_targets) == 12
+  // And no second cabin document exists anywhere.
+  let cabin_docs =
+    dict.keys(mods) |> list.filter(fn(id) { string.contains(id, "cabin") })
+  assert cabin_docs == ["rijay.cabin.standard"]
+}
+
+/// Her whole stock fit resolves: twelve cabins, a galley, a hold, three
+/// engines of two different sizes.
+///
+/// EXPECTED RED at the end of this task: the cockpit module is Task 8's
+/// work, not this one's. This is left failing on `unknown_module:...` (the
+/// engine resolves default modules alphabetically, so which id is named
+/// depends on dict iteration order) — landing that failure on purpose is
+/// what the task brief calls for, rather than stubbing a cockpit module to
+/// force green.
+pub fn her_default_loadout_resolves_test() {
+  let assert Ok(h) = hull.load("shipclasses/goldfinch.json")
+  let assert Ok(modules) = module.load_all("modules")
+  let assert Ok(parts) = part.load_all("parts")
+  let assert Ok(_) =
+    loadout.resolve(glyphs.default(), h, modules, parts, loadout.default_for(h))
 }
