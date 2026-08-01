@@ -243,6 +243,21 @@ Decks connect only through **stairs/ladders** (`x` center tiles): standing on an
 floor blocks it — so a stair can bypass a level the column doesn't exist on
 (e.g. the Mockingbird's forward stairs skipping the void mezzanine).
 
+The down-first scan and the void-skip describe *how* a step resolves, but they are not
+by themselves enough to draw a flyable stair column — the Goldfinch (iteration 2b) shipped
+briefly unflyable because a plan that satisfied both anyway put every deck's `x` at the
+same tile, and the down-first scan then sent a walker down and only ever down, stranding
+her Upper deck. The two invariants an author actually needs are:
+
+- **A stairs column holds an `x` on exactly two decks.** A third `x` at the same tile
+  makes the down-first scan permanently prefer the lower pair and orphans whatever is
+  above; use a second, offset column (a short connector tile between the two, as the
+  Mockingbird's Mezzanine and the Goldfinch's both do) to link three or more decks.
+- **Every stairs tile needs at least one non-stairs walkable neighbour on its own deck.**
+  The deck switch (`character.deck_after_step`) fires only on a *non-stairs → stairs*
+  step; a stairs tile whose every open neighbour is also stairs can be stood on but never
+  *entered* in the switching sense, so it never triggers a switch either way.
+
 The **Mockingbird becomes a three-deck ship**: Upper (cockpit, quarters, mess,
 commons, aft passage), a rear Mezzanine (the former docking half-flight, now its
 own deck), and Lower (bow ramp, main hold, docking deck).

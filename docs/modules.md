@@ -5,10 +5,10 @@ matched to a hull by cheap declarative rules, authored as data. This is the desi
 M4 ("Modules for real", DESIGN.md Milestones) and the reference for the module content
 that lands after it.
 
-**Status:** M4 iteration 1 and iteration 2a have shipped, so the shapes and rules below
-describe code that exists rather than code we intend. Where something is still ahead of
-us — the Sparrow and Finch, exterior part layering, the refit *loop* — this document says
-so at that point and "The M4 slice" at the end draws the line.
+**Status:** M4 iteration 1, iteration 2a and iteration 2b have shipped, so the shapes and
+rules below describe code that exists rather than code we intend. Where something is still
+ahead of us — exterior part layering, the refit *loop* — this document says so at that
+point and "The M4 slice" at the end draws the line.
 
 See also: `docs/deckplan-format.md` (the per-cell ASCII format modules reuse), DESIGN.md
 "Ship customization" and "Content is data, not code".
@@ -73,7 +73,7 @@ Reuse does not vanish; it moves down a level, from the module *definition* to th
 - **Shared glyphs / sprites.** A bunk, a medbay console, a reactor fixture are shared
   registry glyphs; every hull's modules draw with the same vocabulary.
 - **Shared exterior parts.** The Rijay engine nacelle is one sprite the Mockingbird and
-  the Finch both mount.
+  the Goldfinch both mount.
 
 Layout is per-hull because layout is inherently hull-shaped, and there aren't many hulls.
 This is the trade the design deliberately accepts: cheap authoring of a few hulls' worth
@@ -159,8 +159,8 @@ on the Lower deck. Five of those ten — `cabin_fore_a`, `cabin_fore_b`, `cabin_
 `cabin_engineer`, `cabin_aft_stbd` — are identical 1×2 cabins, and one document,
 `server/modules/rijay/cabin_standard.json` (id `rijay.cabin.standard`), furnishes all
 five with one target apiece. It is filed under the manufacturer, `rijay`, rather than
-under `mockingbird`, because the Sparrow and Finch (iteration 2b) will add their own
-targets to that same file rather than growing bespoke cabin documents of their own.
+under `mockingbird`, because the Goldfinch (iteration 2b) adds twelve targets of her own
+to that same file rather than growing a bespoke cabin document — see "The Goldfinch" below.
 
 One further consequence of modules owning their slot outright: **a console inside a slot
 belongs to whichever module draws it.** The Mockingbird's bare hull has no consoles at
@@ -203,12 +203,32 @@ derived capacity is 5; `rijay.bay.ranger` is an endurance package instead — a 
 pallets, so a ranger fit falls back to the hull's authored `cargo.capacity` of 2. A slot
 holds one module, so on the Sparrow, range and speed are mutually exclusive for free.
 
+### The Goldfinch
+
+The Goldfinch (`server/shipclasses/goldfinch.json`) is a three-deck passenger liner: an
+Upper and a Lower deck of six identical 1×2 cabin slots each, and a Mezzanine between them
+carrying her two docking ports and the stair shaft that threads all three decks — the same
+role the Mockingbird's own Mezzanine plays. She declares fifteen slots — a cockpit, twelve
+cabins, a galley and a hold — one shy of the sixteen a slot digit can address (see "The
+sixteen-slot ceiling" below). She is also the first hull to mix mount sizes on one ship:
+`engine_center` is `size: m` (a proper Stork on the stern) while `engine_port` and
+`engine_stbd`, small engines on struts, are `size: s`.
+
+Her twelve cabins are furnished entirely by `rijay.cabin.standard` — the same document
+that already carried the Mockingbird's five — through twelve new targets, mirrored
+port/starboard and stacked fore-to-aft across both cabin decks, that differ from one
+another only in `deck`, `x`, `y` and slot id: exactly **two** distinct overlay grids (one
+port-facing, one starboard-facing) repeated six times each. No Goldfinch-specific cabin
+document exists anywhere. This is the claim iteration 2a shipped and iteration 2b existed
+to test — that a module document is a portable concept, not a per-hull one — and it held
+under a hull that was never in the room when the rule was written.
+
 ## Exterior parts
 
 Exterior parts and interior modules are **two orthogonal axes**, installed independently:
 
 - **Exterior parts** are shared across hulls: the Rijay nacelle the Mockingbird mounts is
-  the same document the Finch mounts. A part is
+  the same document the Goldfinch mounts. A part is
   `{id, name, kind, size, mass, provides, requires, thrust, torque, sprite}`, hung on a
   hull mount point of matching `kind` and sufficient `size`. Engines carry the `thrust`
   and `torque` that used to be global constants in `ship.gleam`.
@@ -482,9 +502,53 @@ are identical 1×2 cabins — furnished by one target-bearing document,
 `rijay.cabin.standard`, instead of five bespoke cabin files; her default loadout still
 reproduces her pre-M4 authored deck tile for tile.
 
-**Iteration 2b** is the Sparrow and Finch hulls — the anti-overfit test, since every rule
-above was written while looking at one hull, now authored against target lists and the
-standard cabin shape rather than bespoke per-hull cabin files.
+**Iteration 2b has also landed** — the Sparrow and the Goldfinch (see "The Sparrow", "The
+Goldfinch" above), the anti-overfit test the whole design rested on, since every rule above
+was written while looking at exactly one hull. The central claim held: `rijay.cabin.standard`
+furnishes both the Mockingbird and the Goldfinch from one document, and neither new hull
+needed a rule of its own. But drawing a second and third hull found real edges of the
+format that one hull alone never could.
+
+**The sixteen-slot ceiling.** Slot membership rides in a single hex character (`docs/deckplan-format.md`,
+"Slot marking"), so a hull can never carry more than sixteen slots — one per value `0`–`f`.
+The Goldfinch sits at fifteen. Nothing in iteration 1 or 2a came near this wall, because the
+Mockingbird's ten slots never had to; it took a second large hull to find it, and it is
+worth writing down now, before a hull that actually wants twenty gets designed against a
+format that cannot express it.
+
+**Two plan rules did not survive**, and both were found only because a second and third
+hull got drawn against rules that had been proven against exactly one:
+
+- *"Stairs must be vertically aligned across all decks" was wrong, and it produced an
+  unflyable ship.* `deckplan.stairs_target` scans **down first** and lets `deck + 1` win a
+  tie; `character.deck_after_step` switches deck only on a *non-stairs → stairs* step,
+  statelessly. A stairs tile present on all three of the Goldfinch's decks therefore always
+  sent a walker down and never up: her entire Upper deck — cockpit, helm and six of twelve
+  cabins — was unreachable from the boarding port, and 347 green tests did not notice,
+  because nothing asserted stair reversibility. The Mockingbird had always avoided this by
+  accident of drawing: each of her stair columns carries an `x` on exactly **two** decks.
+  The two real invariants are: **(a)** a stairs column holds an `x` on exactly two decks;
+  and **(b)** every stairs tile must have at least one non-stairs walkable neighbour on its
+  own deck — the second because a stairs tile whose every non-void neighbour is also stairs
+  can be stood on but never *entered*, so the switch never fires. The first attempted fix
+  satisfied (a) — two decks per column — but violated (b) at the new tile it added, and
+  still stranded the Upper deck. `docs/deckplan-format.md` documented only the down-first
+  scan and the void-skip; it now states both invariants too.
+- *A decor glyph on a tile edge silently becomes a blocking fixture.* The plan's own
+  Goldfinch cabin grid put a seat (`e`) on the fore tile's S edge and the aft tile's N edge.
+  `server/glyphs.json` registers `e` as a **centre** glyph only, and any edge character the
+  registry doesn't recognise decodes as a generic `Fixture` — which blocks, same as a wall.
+  Both halves of every cabin would have sealed shut from each other, and because the fore
+  tile's other three edges were `#`, a window and `#`, its bed would have been completely
+  unreachable. There is no validation for this: a document with a decor glyph on the wrong
+  side of a tile parses cleanly and fails only when someone actually walks the ship — worth
+  stating plainly, since nothing catches it at authoring time.
+
+Worth a line, since it came up while drawing the Goldfinch's cockpit: `provides.seats`, like
+`provides.berths` and `provides.fuel`, is authored bookkeeping the engine only sums —
+nothing derives it from the seat glyphs on a module's own map, unlike hold capacity, which
+`deckplan.pallet_count` genuinely counts off the resolved plan's pallet tiles (see "Derived
+numbers" below).
 
 **Iteration 2c** is **client-side exterior part layering**: mount geometry, the part
 `sprite` on the wire, and a swapped nacelle that actually shows.

@@ -523,7 +523,7 @@ The hull is the fixed part; what's inside is the loadout.
   the composite. This is already canon: the starter Mockingbird's Consol center engine is
   *visible* between the two Rijay originals, and swapping it out has to show on the hull.
   Parts reuse across hulls within a manufacturer's design language (the Mockingbird's engines
-  can be the Finch's engines), so each new hull costs less as the parts library grows. Engine
+  can be the Goldfinch's engines), so each new hull costs less as the parts library grows. Engine
   parts also carry the flight stats — thrust and torque have moved out of global constants and
   into the loadout, where they belong.
 - Two constraints make slots satisfying instead of a menu:
