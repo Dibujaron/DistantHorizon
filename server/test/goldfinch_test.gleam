@@ -262,6 +262,60 @@ pub fn no_stair_of_hers_sits_on_the_corridor_centreline_test() {
   assert on_the_corridor == []
 }
 
+/// The other half of "a stair is never a tile you walk *through*", one column
+/// further out than the corridor rule above. Offsetting a stair off `x2` stops
+/// the MAIN thoroughfare running onto it, but a stair left standing open on two
+/// FACING sides still sits mid-run on whatever flank it is on: hold "aft" down
+/// that flank and the tile you meant to walk past drops you a deck, which is the
+/// same lie the centreline stair told. So pin the shape instead of the column:
+/// **no stairs tile of hers is open on both N and S, or on both E and W.** Her
+/// aft stairwell used to be exactly that — Upper (3,11) stood open north, south
+/// and west, with only the hull skin on its east — and every other check stayed
+/// green, because a bypass existed and the corridor was clear. Both of her
+/// starboard stairs are now one-mouth alcoves opening west onto the corridor,
+/// the port pair opens east and turns a corner; none of the four is a corridor.
+pub fn no_stair_of_hers_can_be_walked_through_test() {
+  let plan = stock_plan()
+  let through =
+    list.filter(stair_tiles(plan), fn(s) {
+      let #(deck, x, y) = s
+      let assert Ok(g) = deckplan.deck_at(plan, deck)
+      let open = open_mouths(g, x, y)
+      { list.contains(open, deckplan.N) && list.contains(open, deckplan.S) }
+      || { list.contains(open, deckplan.E) && list.contains(open, deckplan.W) }
+    })
+  assert through == []
+  // And the aft stairwell specifically is a one-mouth alcove on both of the
+  // decks it joins — the Upper half mirroring the Mezzanine half below it.
+  let assert Ok(upper) = deckplan.deck_at(plan, 0)
+  assert open_mouths(upper, 3, 11) == [deckplan.W]
+  let assert Ok(mezzanine) = deckplan.deck_at(plan, 1)
+  assert open_mouths(mezzanine, 3, 11) == [deckplan.W]
+}
+
+/// The directions a walker can actually LEAVE `(x, y)` by — its mouths: the
+/// neighbour is walkable and neither facing edge blocks. This reads the
+/// boundary, not the tile's own edge, so a wall drawn on the neighbour's side
+/// closes the mouth just as surely (the double-wall OR rule).
+fn open_mouths(grid: DeckGrid, x: Int, y: Int) -> List(deckplan.Dir) {
+  [
+    #(deckplan.N, 0, -1),
+    #(deckplan.E, 1, 0),
+    #(deckplan.S, 0, 1),
+    #(deckplan.W, -1, 0),
+  ]
+  |> list.filter_map(fn(step) {
+    let #(dir, dx, dy) = step
+    case
+      deckplan.is_walkable(grid, x + dx, y + dy)
+      && !deckplan.edge_blocks(grid, x, y, dir)
+    {
+      True -> Ok(dir)
+      False -> Error(Nil)
+    }
+  })
+}
+
 /// The size of `grid`'s one connected component of non-stairs walkable tiles,
 /// or `Error(the tiles it could not reach)` when they form more than one — so
 /// a failure names the orphans instead of just saying `False`.

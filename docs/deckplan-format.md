@@ -275,6 +275,19 @@ her Upper deck. The invariants an author actually needs are:
   `server/test/goldfinch_test.gleam` pins both halves for that hull: a one-deck flood fill
   that refuses to enter a stairs tile at all, on each of her cabin decks, and a direct
   check that no stairs tile of hers sits on her corridor column.
+- **Draw the stair into an alcove — never leave one open on two facing sides.** Offsetting
+  a stair off the main corridor stops the *thoroughfare* running onto it, but a stair left
+  open on both N and S (or both E and W) is still a tile you walk *through* on whatever
+  flank it sits on: hold "aft" down that flank and the deck change fires on a tile you only
+  meant to pass. The Goldfinch's aft stair shipped exactly that way (iteration 2b) — offset
+  to `x3` as the rule above asks, and still standing open north, south *and* west, with only
+  the hull skin to its east. Every reachability and connectivity check stayed green, because
+  a bypass existed and `x2` was clear. Wall the sides the stair does not open onto and leave
+  it **one mouth** onto the corridor, as both halves of her starboard column now do (Upper
+  and Mezzanine `(3,11)`, each open only west); a stair that turns a corner (two *adjacent*
+  open sides, like her Lower `(1,10)`) is fine, because no straight run passes over it.
+  `server/test/goldfinch_test.gleam` pins this: no stairs tile of hers is open on both
+  facing sides of either axis, read off the FITTED plan so a wall a module draws counts.
 - **Stairs are hull geometry, and a module must never draw them.** A stair column's
   legality depends on the whole deck stack (exactly two decks per column, a non-stairs
   neighbour on each), which is a fact about the hull, not about any one slot a module
