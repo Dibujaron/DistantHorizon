@@ -196,8 +196,10 @@ pub fn duplicate_targets_are_rejected_test() {
 // hand-placed so exactly two decks connect at each column
 // (`docs/deckplan-format.md`, "Decks"), and `deckplan.stairs_target` scans
 // `deck+1` DOWNWARD first with no memory of where a walker came from. The
-// Goldfinch's Upper<->Mezzanine link works only because Lower (2,11) is a
-// plain floor tile — and that tile sits INSIDE the `hold` slot, so the hold
+// Goldfinch's Upper<->Mezzanine link works only because Lower (3,11) is a
+// plain floor tile — the column runs down her starboard flank, and the
+// Mezzanine's step resolves UP only because that floor blocks the down-scan
+// first. That tile sits INSIDE the `hold` slot, so the hold
 // module owns every character of it except the SW corner. If a module patch
 // ever drew an `x` there, that column would gain a third stairs tile, the
 // down-first scan would send the Mezzanine step down instead of up, and the

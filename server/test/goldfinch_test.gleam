@@ -238,7 +238,7 @@ pub fn her_lower_deck_walkable_tiles_form_one_component_test() {
 /// green on the Upper deck *before* her aft stair moved off the centreline
 /// too, because that stair stood in a three-wide hall and a walker could
 /// squeeze past it on either flank. One component is the weaker half of the
-/// rule; `no_stair_of_hers_sits_on_the_corridor_centreline` below is the half
+/// rule; `no_stair_of_hers_sits_on_the_corridor_centreline_test` below is the half
 /// that actually caught the centreline stair.
 pub fn her_upper_deck_walkable_tiles_form_one_component_test() {
   let assert Ok(upper) = deckplan.deck_at(stock_plan(), 0)
