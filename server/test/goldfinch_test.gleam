@@ -89,9 +89,10 @@ fn stair_tiles(plan: DeckPlan) -> List(#(Int, Int, Int)) {
 pub fn her_stairs_are_reversible_test() {
   let plan = bare_plan()
   let stairs = stair_tiles(plan)
-  // Two columns of two decks each: (1,10) Mezzanine<->Lower, (2,11)
-  // Upper<->Mezzanine. Never one column of three.
-  assert stairs == [#(0, 2, 11), #(1, 1, 10), #(1, 2, 11), #(2, 1, 10)]
+  // Two columns of two decks each: (1,10) Mezzanine<->Lower down the port
+  // flank, (3,11) Upper<->Mezzanine down the starboard one. Never one column
+  // of three, and never the same column twice.
+  assert stairs == [#(0, 3, 11), #(1, 1, 10), #(1, 3, 11), #(2, 1, 10)]
   let round_trips =
     list.map(stairs, fn(s) {
       let #(deck, x, y) = s
@@ -183,8 +184,8 @@ fn walk_from(
 // stayed green — the player just pressed south, south, north, south and
 // arrived somewhere else. The rule this pins: **stepping onto a stairs tile
 // changes your deck, so a stairs tile dropped mid-corridor severs that
-// corridor** (`docs/deckplan-format.md`, "Decks"). Put the stair in a bay
-// with a bypass, or let the corridor terminate there by design.
+// corridor** (`docs/deckplan-format.md`, "Decks"). Offset the stair from the
+// corridor, or let the corridor terminate there by design.
 
 /// Her stock fit as a walkable plan. Same-deck traversability is a property
 /// of the FITTED ship, not the bare hull: the hold's walls and its one door
@@ -226,12 +227,52 @@ pub fn her_lower_corridor_reaches_the_hold_on_one_deck_test() {
 /// connected component, none of them cut off by a misplaced stair.
 pub fn her_lower_deck_walkable_tiles_form_one_component_test() {
   let assert Ok(lower) = deckplan.deck_at(stock_plan(), 2)
-  let all_tiles = non_stairs_walkable_tiles(lower)
-  assert list.length(all_tiles) == 35
+  assert one_component(lower) == Ok(35)
+}
+
+/// The same property on her other cabin deck. It is asserted for BOTH now
+/// rather than only the one that had a bug — a deck severed by its own stair
+/// is not a Lower-deck-shaped mistake, it is a mistake any deck can make.
+///
+/// Honest caveat, so nobody reads more into this test than it proves: it was
+/// green on the Upper deck *before* her aft stair moved off the centreline
+/// too, because that stair stood in a three-wide hall and a walker could
+/// squeeze past it on either flank. One component is the weaker half of the
+/// rule; `no_stair_of_hers_sits_on_the_corridor_centreline` below is the half
+/// that actually caught the centreline stair.
+pub fn her_upper_deck_walkable_tiles_form_one_component_test() {
+  let assert Ok(upper) = deckplan.deck_at(stock_plan(), 0)
+  assert one_component(upper) == Ok(33)
+}
+
+/// A bypass is a mitigation; an offset is the design. A stair with room to
+/// squeeze past it still puts a deck change on the tile a player walks into
+/// when they hold "aft", and it only reads as survivable because the hall
+/// happens to be wide. So pin the design rule directly: **no stairs tile of
+/// hers sits on the corridor column.** Her cross-section is x1 port cabins,
+/// x2 corridor, x3 starboard cabins, so the corridor never meets a stair at
+/// all — you go to the stair, you never arrive at one.
+pub fn no_stair_of_hers_sits_on_the_corridor_centreline_test() {
+  let plan = stock_plan()
+  let assert Ok(upper) = deckplan.deck_at(plan, 0)
+  let centreline = upper.width / 2
+  assert centreline == 2
+  let on_the_corridor =
+    list.filter(stair_tiles(plan), fn(s) { s.1 == centreline })
+  assert on_the_corridor == []
+}
+
+/// The size of `grid`'s one connected component of non-stairs walkable tiles,
+/// or `Error(the tiles it could not reach)` when they form more than one — so
+/// a failure names the orphans instead of just saying `False`.
+fn one_component(grid: DeckGrid) -> Result(Int, List(#(Int, Int))) {
+  let all_tiles = non_stairs_walkable_tiles(grid)
   let assert [start, ..] = all_tiles
-  let reached = walk_one_deck(lower, [start], [])
-  let unreached = list.filter(all_tiles, fn(t) { !list.contains(reached, t) })
-  assert unreached == []
+  let reached = walk_one_deck(grid, [start], [])
+  case list.filter(all_tiles, fn(t) { !list.contains(reached, t) }) {
+    [] -> Ok(list.length(all_tiles))
+    unreached -> Error(unreached)
+  }
 }
 
 /// Every tile of `grid` that is walkable and not a stairs tile, in row/column

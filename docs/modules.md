@@ -230,7 +230,7 @@ capacity is **4**. She is modest in the hold because she is a liner; the volume 
 cabins. The 3-wide band immediately forward of it is **fixed hull**, a stair landing rather
 than cargo space: the Lower↔Mezzanine stair sits on its port flank, and the corridor runs
 straight down the centreline past it and into the hold, so no one ever changes deck by
-walking aft (see "A stair belongs in a bay" below).
+walking aft (see "A stair belongs off the corridor" below).
 
 ## Exterior parts
 
@@ -546,8 +546,8 @@ worth writing down now, before a hull that actually wants twenty gets designed a
 format that cannot express it.
 
 **Three plan rules did not survive drawing a second and third hull** — two of them found
-by a failing test, below, and a third ("A stair belongs in a bay", further down) found only
-in review:
+by a failing test, below, and a third ("A stair belongs off the corridor", further down)
+found only in review:
 
 - *"Stairs must be vertically aligned across all decks" was wrong, and it produced an
   unflyable ship.* `deckplan.stairs_target` scans **down first** and lets `deck + 1` win a
@@ -560,9 +560,9 @@ in review:
   The three real invariants are: **(a)** a stairs column holds an `x` on exactly two decks;
   **(b)** every stairs tile must have at least one non-stairs walkable neighbour on its
   own deck — the second because a stairs tile whose every non-void neighbour is also stairs
-  can be stood on but never *entered*, so the switch never fires; and **(c)** a stairs tile
-  placed mid-corridor severs that corridor, which "A stair belongs in a bay" below writes up
-  in full. The first attempted fix satisfied (a) — two decks per column — but
+  can be stood on but never *entered*, so the switch never fires; and **(c)** stairs belong
+  offset from a corridor, not parked on one, which "A stair belongs off the corridor" below
+  writes up in full. The first attempted fix satisfied (a) — two decks per column — but
   violated (b) at the new tile it added, and still stranded the Upper deck.
   `docs/deckplan-format.md` documented only the down-first scan and the void-skip; it now
   states all three invariants too.
@@ -576,23 +576,43 @@ in review:
   side of a tile parses cleanly and fails only when someone actually walks the ship — worth
   stating plainly, since nothing catches it at authoring time.
 
-**A stair belongs in a bay.** A third stairs rule surfaced after those two, in review rather
-than in a test: **a stairs tile placed mid-corridor severs that corridor**, because stepping
-onto it changes your deck. The Goldfinch's Lower corridor originally ended *on* the
-Mezzanine stair at (2,9) — the floors flanking it were walled in by the aft cabins and only
-a diagonal step from the corridor — so walking aft to the hold read *south onto the stairs,
-and you are now a deck up*, and the player pressed south, south, north, south to travel two
-tiles. Every deck stayed reachable, so neither invariant above caught it: the suite asserted
-**reachability** and never same-deck **traversability**, which is the strictly stronger
-property. The fix moved the Lower↔Mezzanine pair to the port flank at (1,10), turned the
-band at `y10` into a fixed-hull landing the corridor walks past, and cost the hold its
-forward row — 9 tiles to **3×2**, six pallets to four, derived capacity 6 to 4.
+**A stair belongs off the corridor.** A third stairs rule surfaced after those two, in
+review rather than in a test: **stairs belong offset from a corridor, not parked on one**,
+because stepping onto a stairs tile changes your deck. The Goldfinch's Lower corridor
+originally ended *on* the Mezzanine stair at (2,9) — the floors flanking it were walled in
+by the aft cabins and only a diagonal step from the corridor — so walking aft to the hold
+read *south onto the stairs, and you are now a deck up*, and the player pressed south,
+south, north, south to travel two tiles. Every deck stayed reachable, so neither invariant
+above caught it: the suite asserted **reachability** and never same-deck **traversability**,
+which is the strictly stronger property. The fix moved the Lower↔Mezzanine pair to the port
+flank at (1,10), turned the band at `y10` into a fixed-hull landing the corridor walks past,
+and cost the hold its forward row — 9 tiles to **3×2**, six pallets to four, derived capacity
+6 to 4.
+
+Her Upper↔Mezzanine pair then went the same way, in a second review pass, and it is the
+sharper illustration of the rule. That stair sat at (2,11), squarely on the `x2` centreline,
+and it was *legal* under every check: the aft hall is three tiles wide there, so a walker
+could squeeze past on either flank and the deck never split. That is a **mitigation, not a
+design** — the deck change still sat on the tile a player walks into holding "aft", and it
+only survived because the hall happened to be wide. Both halves moved to (3,11), on the
+starboard flank, and `x2` now runs clear from the cockpit passage to the stern.
+
+The mechanically interesting part is where the Mezzanine stair now resolves to. Its
+down-scan hits Lower (3,11), which is hold-slot **floor**, so the shaft blocks and the scan
+falls through to up — landing on Upper (3,11) and keeping the whole Upper deck reachable.
+Upper (3,11) is fixed hull carrying no slot digit, so no module patch moved and
+`check_bounds` stays clean over all fifteen fitted modules.
+
 `docs/deckplan-format.md` now states the rule alongside the other two, and
-`goldfinch_test.gleam` pins it two ways: a one-deck flood fill from the forward corridor
-that refuses to enter a stairs tile and must still reach every hold tile, and the stronger
-property that a misplaced stair anywhere on the deck would also break — with every stairs
-tile unenterable, the Lower deck's 35 non-stairs walkable tiles form one connected
-component, not two.
+`goldfinch_test.gleam` pins it three ways: a one-deck flood fill from the forward corridor
+that refuses to enter a stairs tile and must still reach every hold tile; the same flood
+fill over each whole cabin deck, whose non-stairs walkable tiles must form one connected
+component (35 on the Lower, 33 on the Upper); and — because that component check was green
+on the Upper deck even with the centreline stair, exactly on account of the three-wide
+bypass — a direct assertion that **no stairs tile of hers sits on the corridor column**.
+Only the third one is red against the old grid. That is the honest split: the component
+check catches a stair that severs a deck, and only the column check catches a stair that
+merely should not be there.
 
 Worth a line, since it came up while drawing the Goldfinch's cockpit: `provides.seats`, like
 `provides.berths` and `provides.fuel`, is authored bookkeeping the engine only sums —

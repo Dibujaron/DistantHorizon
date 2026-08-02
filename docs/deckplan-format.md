@@ -257,18 +257,24 @@ her Upper deck. The invariants an author actually needs are:
   The deck switch (`character.deck_after_step`) fires only on a *non-stairs → stairs*
   step; a stairs tile whose every open neighbour is also stairs can be stood on but never
   *entered* in the switching sense, so it never triggers a switch either way.
-- **A stairs tile placed mid-corridor severs that corridor**, because stepping onto it
-  changes your deck. A stair is never a tile you walk *through*: press on down the corridor
-  and you arrive a deck away, and everything past it is reachable only by a bounce — down,
-  along, back up — which reads to a player as the controls lying to them. Nothing catches
-  this. Every deck stays reachable, the two invariants above still hold, and every existing
-  check stays green, which is exactly how the Goldfinch shipped with the aft end of her
-  Lower corridor sitting on the Mezzanine stair (iteration 2b). So it is an authoring rule:
-  **put the stair in a bay with a bypass** — a landing the corridor walks past, as her
-  Lower deck now does with the stair on the port flank at (1,10) and the corridor running
-  straight down `x2` into the hold — **or let the corridor terminate there by design.**
-  `server/test/goldfinch_test.gleam` pins the property for that hull with a one-deck flood
-  fill that refuses to enter a stairs tile at all.
+- **Stairs belong offset from a corridor, not parked on one.** Stepping onto a stairs tile
+  changes your deck, so a stair is never a tile you walk *through*: put one on a corridor
+  and pressing on down that corridor lands you a deck away, with everything past it
+  reachable only by a bounce — down, along, back up — which reads to a player as the
+  controls lying to them. Nothing catches this. Every deck stays reachable, the two
+  invariants above still hold, and every existing check stays green, which is exactly how
+  the Goldfinch shipped with the aft end of her Lower corridor sitting on the Mezzanine
+  stair (iteration 2b). So it is an authoring rule: **draw the stair to one side and let
+  the corridor run clear past it** — as both of her columns now do, on the port flank at
+  (1,10) and the starboard flank at (3,11), leaving `x2` unbroken from the cockpit passage
+  to the stern — **or let the corridor terminate at the stair by design.** A hall wide
+  enough to squeeze around a centreline stair is a *mitigation*, not the design: it leaves
+  the deck change sitting on the tile a player walks into when they hold "aft", and it
+  survives only because the hall happens to be three wide. Offsetting is strictly better,
+  because the corridor never meets the stair at all.
+  `server/test/goldfinch_test.gleam` pins both halves for that hull: a one-deck flood fill
+  that refuses to enter a stairs tile at all, on each of her cabin decks, and a direct
+  check that no stairs tile of hers sits on her corridor column.
 - **Stairs are hull geometry, and a module must never draw them.** A stair column's
   legality depends on the whole deck stack (exactly two decks per column, a non-stairs
   neighbour on each), which is a fact about the hull, not about any one slot a module
