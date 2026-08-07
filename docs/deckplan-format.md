@@ -286,8 +286,13 @@ her Upper deck. The invariants an author actually needs are:
   it **one mouth** onto the corridor, as both halves of her starboard column now do (Upper
   and Mezzanine `(3,11)`, each open only west); a stair that turns a corner (two *adjacent*
   open sides, like her Lower `(1,10)`) is fine, because no straight run passes over it.
-  `server/test/goldfinch_test.gleam` pins this: no stairs tile of hers is open on both
-  facing sides of either axis, read off the FITTED plan so a wall a module draws counts.
+  **One mouth, not zero:** walling a stair on all four sides is not the stricter version of
+  this rule, it is invariant (b) violated — a sealed stair strands its deck at 1 reachable
+  tile while the whole-ship walk still reports that deck as "reached" (you land on the
+  sealed tile) and the one-component check, which refuses to enter stairs at all, never
+  looks. `server/test/goldfinch_test.gleam` pins both ends: no stairs tile of hers is open
+  on both facing sides of either axis, and none has zero open sides — read off the FITTED
+  plan, so a wall a module draws counts.
 - **Stairs are hull geometry, and a module must never draw them.** A stair column's
   legality depends on the whole deck stack (exactly two decks per column, a non-stairs
   neighbour on each), which is a fact about the hull, not about any one slot a module

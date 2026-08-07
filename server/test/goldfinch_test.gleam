@@ -273,14 +273,31 @@ pub fn no_stair_of_hers_sits_on_the_corridor_centreline_test() {
 /// and west, with only the hull skin on its east — and every other check stayed
 /// green, because a bypass existed and the corridor was clear. Both of her
 /// starboard stairs are now one-mouth alcoves opening west onto the corridor,
-/// the port pair opens east and turns a corner; none of the four is a corridor.
+/// the port pair opens east, the lower half turning a corner; none of the four
+/// is a corridor.
+///
+/// The through-axis clause needs a floor under it, though: walling a stair on
+/// ALL four sides satisfies it trivially, and a sealed stair is not a corridor,
+/// it is a stranded deck. Nothing else on this hull catches that — the
+/// whole-ship walk asserts only the deck SET, and you do land on the sealed
+/// tile, so its deck still counts as reached; the one-component check refuses
+/// to enter stairs tiles at all, so it never notices. So this test pins both
+/// ends of the range at once: **at least one mouth** (invariant (b), the stair
+/// can be entered) and **never two facing ones** (it can't be walked through).
 pub fn no_stair_of_hers_can_be_walked_through_test() {
   let plan = stock_plan()
-  let through =
-    list.filter(stair_tiles(plan), fn(s) {
+  let stairs = stair_tiles(plan)
+  let mouths =
+    list.map(stairs, fn(s) {
       let #(deck, x, y) = s
       let assert Ok(g) = deckplan.deck_at(plan, deck)
-      let open = open_mouths(g, x, y)
+      #(s, open_mouths(g, x, y))
+    })
+  let sealed = list.filter(mouths, fn(m) { m.1 == [] })
+  assert sealed == []
+  let through =
+    list.filter(mouths, fn(m) {
+      let open = m.1
       { list.contains(open, deckplan.N) && list.contains(open, deckplan.S) }
       || { list.contains(open, deckplan.E) && list.contains(open, deckplan.W) }
     })
