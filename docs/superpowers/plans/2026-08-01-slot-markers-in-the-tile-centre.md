@@ -232,6 +232,84 @@ git commit -m "feat(deckplan): slot markers as uppercase letters in the tile cen
 
 ---
 
+### Task 2.5: A slot tile may not be void
+
+**Added mid-execution.** Task 2 discovered that the centre encoding cannot express slot membership for a *void* tile — the centre holds either `.` or a marker, never both — and that ten tiles across two testbed fixtures rely on exactly that. Reading the module payloads showed it is a real capability, not fixture sloppiness: a module drawing a non-void centre over a void hull tile **grows the ship's footprint**, and because a void patch cell is passthrough, that is the *only* way a refit can change a hull's outline.
+
+**The human partner's ruling: refits do not change a ship's internal outline.** Exterior silhouette may still change with mounts and sprites — that is 2c's exterior layering, not this. So the capability goes, and a slot tile must be floor.
+
+(If a growable hull is ever genuinely wanted, the escape hatch the human named is to move the *void-or-not* designation to the SW corner and keep the marker in the centre — the inverse of today. Do not build that now.)
+
+**Files:**
+- Modify: `server/src/dh_server/hull.gleam` (validation)
+- Modify: `server/test/fixtures/dock_testbed_hulls/dock_testbed.json`, `server/test/fixtures/refit_testbed_hulls/refit_testbed.json`
+- Modify: `server/test/fixtures/dock_testbed_modules/wide.json`, `server/test/fixtures/refit_testbed_modules/{empty,muster}.json` as needed
+- Modify: `server/test/sim_test.gleam` (the two composite regression tests)
+- Modify: `docs/deckplan-format.md`
+
+**Interfaces:**
+- Consumes: Task 2's `hull.Slot(marker: String)`.
+- Produces: the guarantee Task 3's conversion script depends on — every slot tile's centre is blank.
+
+- [ ] **Step 1: Write the failing test**
+
+In `server/test/hull_test.gleam`, following the style of the existing rejection tests there:
+
+```gleam
+/// A slot tile is interior the module redecorates, never hull the module
+/// conjures. A refit may change what a room contains and how it is walled;
+/// it may not change the ship's outline, because a void patch cell is
+/// passthrough and so growth would be one-way and unremovable.
+pub fn a_void_slot_tile_is_rejected_test() {
+  let bad =
+    "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\", \"mass\": 1.0,
+       \"slots\": [ { \"digit\": 1, \"id\": \"a\", \"name\": \"A\" } ],
+       \"decks\": [ { \"name\": \"M\", \"grid\": [\"###\", \"#.#\", \"1##\"] } ],
+       \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" } }"
+  let assert Error(_) = hull.decode(bad)
+}
+```
+
+Confirm `hull.decode`'s real error-string style and match it.
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `cd server; gleam test`
+Expected: FAIL — the document decodes fine today.
+
+- [ ] **Step 3: Add the rule**
+
+In `hull.gleam`'s `validate`, reject any hull with a tile that carries a slot marker and a void centre. Name the offending slot and tile in the error.
+
+- [ ] **Step 4: Redraw the two testbed hulls**
+
+Make every slot tile's centre blank instead of `.` in `dock_testbed.json` and `refit_testbed.json`. **Row lengths must not change.** These hulls are now their full size unfitted.
+
+- [ ] **Step 5: Rework the two composite regression tests**
+
+`server/test/sim_test.gleam` (~1329-1385) has `refit_that_would_break_the_composite_is_refused_test` and `a_dock_that_would_break_the_composite_is_refused_test`. Both currently work by fitting a module that plates over void — `wide.json` "plates over her fore and aft rows", `muster.json` "floors the tile that the resulting docking tube would have to run through".
+
+Those mechanisms are gone. **Rework them to break the composite by walling instead of by growing** — a module owns its tiles' edges, so a module that walls off the tile the docking tube must run through should still trigger the same refusal. Adjust the fixture modules as needed.
+
+**If the refusal turns out to be unreachable once outlines are fixed, STOP and report it** — do not delete the tests. That would mean `berth_blocked` has become unreachable through content, which is a real finding about the validator and the human partner's call to make.
+
+- [ ] **Step 6: Document the rule**
+
+In `docs/deckplan-format.md`'s "Slots" section: a slot tile may not be void. A refit changes what a room *is*, never where the ship *ends*. Note the reason — a void patch cell is passthrough, so growth could never be undone — and that exterior silhouette is a separate concern.
+
+- [ ] **Step 7: Run both suites and commit**
+
+Run: `cd server; gleam test` then `cd harness; python -m pytest -v`
+Expected: both green.
+
+```bash
+cd server; gleam format src test
+git add server docs
+git commit -m "feat(deckplan): a slot tile may not be void; refits don't change a hull's outline (#M4)"
+```
+
+---
+
 ### Task 3: Convert every document
 
 **Files:**
