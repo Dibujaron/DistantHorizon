@@ -1,13 +1,13 @@
 {
   "schema": 1,
-  "id": "rijay.engine.consol_patch",
-  "name": "Consol patch engine",
+  "id": "consol.engine.co17f_2",
+  "name": "Consolidated CO-17F Block 2",
   "kind": "engine",
   "size": "m",
   "mass": 8.0,
   "provides": { "engine": 1 },
   "requires": { "power": 3 },
-  "thrust": 5000.0,
-  "torque": 22000.0,
+  "thrust": 1700.0,
+  "torque": 7500.0,
   "sprite": "engine_consol"
 }

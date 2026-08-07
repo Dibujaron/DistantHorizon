@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "id": "rijay.engine.wren_90b",
+  "name": "Rijay Wren 90-B",
+  "kind": "engine",
+  "size": "s",
+  "mass": 4.0,
+  "provides": { "engine": 1 },
+  "requires": { "power": 3 },
+  "thrust": 900.0,
+  "torque": 3000.0,
+  "sprite": "engine_rijay_small"
+}

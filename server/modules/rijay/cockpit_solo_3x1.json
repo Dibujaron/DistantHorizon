@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "id": "rijay.cockpit.solo_3x1",
+  "name": "Sparrow cockpit",
+  "mass": 3.0,
+  "provides": { "seats": 1 },
+  "requires": { "power": 2 },
+  "targets": [
+    {
+      "hull": "sparrow",
+      "slots": ["cockpit"],
+      "patches": [
+        {
+          "deck": 0, "x": 1, "y": 1,
+          "grid": [
+            "####h####",
+            "w   e   w",
+            " #  =  # "
+          ]
+        }
+      ]
+    }
+  ]
+}

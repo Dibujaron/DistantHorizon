@@ -1,13 +1,13 @@
 {
   "schema": 1,
-  "id": "rijay.engine.stock",
-  "name": "Rijay original engine",
+  "id": "rijay.engine.stork_240c2",
+  "name": "Rijay Stork 240-C2",
   "kind": "engine",
   "size": "m",
   "mass": 12.0,
   "provides": { "engine": 1 },
   "requires": { "power": 4 },
-  "thrust": 7000.0,
-  "torque": 20000.0,
+  "thrust": 2400.0,
+  "torque": 7000.0,
   "sprite": "engine_rijay"
 }

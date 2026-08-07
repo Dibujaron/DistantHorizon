@@ -32,7 +32,7 @@
   "requires": { "engine": 1 },
   "slots": [ { "digit": 1, "id": "bay", "name": "Bay" } ],
   "mounts": [ { "id": "engine_center", "kind": "engine", "size": "m" } ],
-  "default_loadout": { "parts": { "engine_center": "rijay.engine.consol_patch" } },
+  "default_loadout": { "parts": { "engine_center": "consol.engine.co17f_2" } },
   "cargo": {
     "capacity": 40,
     "handling": "breakbulk"

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "id": "mockingbird.payload.passenger",
+  "id": "rijay.payload.passenger",
   "hull": "mockingbird",
   "slot": "payload",
   "name": "Passenger accommodation",

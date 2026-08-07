@@ -5,10 +5,10 @@ matched to a hull by cheap declarative rules, authored as data. This is the desi
 M4 ("Modules for real", DESIGN.md Milestones) and the reference for the module content
 that lands after it.
 
-**Status:** M4 iteration 1 and iteration 2a have shipped, so the shapes and rules below
-describe code that exists rather than code we intend. Where something is still ahead of
-us — the Sparrow and Finch, exterior part layering, the refit *loop* — this document says
-so at that point and "The M4 slice" at the end draws the line.
+**Status:** M4 iteration 1, iteration 2a and iteration 2b have shipped, so the shapes and
+rules below describe code that exists rather than code we intend. Where something is still
+ahead of us — exterior part layering, the refit *loop* — this document says so at that
+point and "The M4 slice" at the end draws the line.
 
 See also: `docs/deckplan-format.md` (the per-cell ASCII format modules reuse), DESIGN.md
 "Ship customization" and "Content is data, not code".
@@ -73,7 +73,7 @@ Reuse does not vanish; it moves down a level, from the module *definition* to th
 - **Shared glyphs / sprites.** A bunk, a medbay console, a reactor fixture are shared
   registry glyphs; every hull's modules draw with the same vocabulary.
 - **Shared exterior parts.** The Rijay engine nacelle is one sprite the Mockingbird and
-  the Finch both mount.
+  the Goldfinch both mount.
 
 Layout is per-hull because layout is inherently hull-shaped, and there aren't many hulls.
 This is the trade the design deliberately accepts: cheap authoring of a few hulls' worth
@@ -159,8 +159,8 @@ on the Lower deck. Five of those ten — `cabin_fore_a`, `cabin_fore_b`, `cabin_
 `cabin_engineer`, `cabin_aft_stbd` — are identical 1×2 cabins, and one document,
 `server/modules/rijay/cabin_standard.json` (id `rijay.cabin.standard`), furnishes all
 five with one target apiece. It is filed under the manufacturer, `rijay`, rather than
-under `mockingbird`, because the Sparrow and Finch (iteration 2b) will add their own
-targets to that same file rather than growing bespoke cabin documents of their own.
+under `mockingbird`, because the Goldfinch (iteration 2b) adds twelve targets of her own
+to that same file rather than growing a bespoke cabin document — see "The Goldfinch" below.
 
 One further consequence of modules owning their slot outright: **a console inside a slot
 belongs to whichever module draws it.** The Mockingbird's bare hull has no consoles at
@@ -170,15 +170,106 @@ outright (`invalid_resolved_plan`: a plan with no helm fails validation), and a 
 module that forgets its `c` leaves the crew with nowhere to work cargo. Every hold module
 we ship therefore redraws that console.
 
+### The Mockingbird's engine mounts
+
+Iteration 2b split her single mount into three — `engine_port`, `engine_center`,
+`engine_stbd`, all `size: m` — matching the three `nozzle` anchors her exterior art has
+always carried. Every shipped engine's `thrust` and `torque` dropped to roughly a third of
+its pre-2b value at the same time, because the old numbers were authored against a
+one-mount hull and were implicitly "the whole ship's push" wearing one part's name. Her
+stock loadout is two Rijay Storks (`rijay.engine.stork_240c2`) flanking the Consol patch
+(`consol.engine.co17f_2`) at centre — the fleet part with less thrust than the Rijay
+original it displaced, but more torque: a part shoved into a hole it was not drawn for.
+Her reactor provides 25 power; her modules draw 14 and her three engines draw 4 + 3 + 4 =
+11, for exactly zero headroom. Swap the centre Consol for a proper Stork and the draw
+becomes 26 against the same 25-power reactor — the fit is refused with `tag_deficit:power`,
+the "putting it right" early-game upgrade enforced by the validator rather than by
+narration.
+
+### The Sparrow
+
+The Sparrow (`server/shipclasses/sparrow.json`) is the first hull authored since the
+Mockingbird, and the first shipped content to actually exercise several rules the engine
+has carried since iteration 1 but never had to prove: a **single deck** (every
+deck-linking rule was written against the Mockingbird's three), **multiple engine mounts
+on a hull, one of them left unfitted** (her `engine_center` ships empty — the lore's
+third-engine upgrade), **`mount size >= part size`** (until her `rijay.engine.wren_90b`,
+every shipped part was `m`, so the size rule had never once been exercised by content),
+and a pooled `requires: {engine: 1}` satisfied by two mounted engines rather than one.
+
+She has two slots — `cockpit` (digit 1) and `bay` (digit 2) — and three `size: s` mounts.
+Her stock fit is `rijay.cockpit.solo_3x1` and `rijay.bay.packet`, a five-pallet locker whose
+derived capacity is 5; `rijay.bay.ranger` is an endurance package instead — a bunk and no
+pallets, so a ranger fit falls back to the hull's authored `cargo.capacity` of 2. A slot
+holds one module, so on the Sparrow, range and speed are mutually exclusive for free.
+
+### The Goldfinch
+
+The Goldfinch (`server/shipclasses/goldfinch.json`) is a three-deck passenger liner: an
+Upper and a Lower deck of six identical 1×2 cabin slots each, and a Mezzanine between them
+carrying her two docking ports and the two offset stair columns that link all three decks —
+the same role the Mockingbird's own Mezzanine plays. She declares fifteen slots — a cockpit, twelve
+cabins, a galley and a hold — one shy of the sixteen a slot digit can address (see "The
+sixteen-slot ceiling" below). She is also the first hull to mix mount sizes on one ship:
+`engine_center` is `size: m` (a proper Stork on the stern) while `engine_port` and
+`engine_stbd`, small engines on struts, are `size: s`.
+
+Her twelve cabins are furnished entirely by `rijay.cabin.standard` — the same document
+that already carried the Mockingbird's five — through twelve new targets, mirrored
+port/starboard and stacked fore-to-aft across both cabin decks, that differ from one
+another only in `deck`, `x`, `y` and slot id: exactly **two** distinct overlay grids (one
+port-facing, one starboard-facing) repeated six times each. No Goldfinch-specific cabin
+document exists anywhere. This is the claim iteration 2a shipped and iteration 2b existed
+to test — that a module document is a portable concept, not a per-hull one — and it held
+under a hull that was never in the room when the rule was written.
+
+Her `hold` is a **3×2** slot right aft on the Lower deck, furnished by
+`rijay.hold.breakbulk_3x2`: four `p` pallets down the port and starboard columns, a two-tile
+centre aisle, one door forward and the cargo console `c` on the port wall — so her derived
+capacity is **4**. She is modest in the hold because she is a liner; the volume went to
+cabins. The 3-wide band immediately forward of it is **fixed hull**, a stair landing rather
+than cargo space: the Lower↔Mezzanine stair sits on its port flank, and the corridor runs
+straight down the centreline past it and into the hold, so no one ever changes deck by
+walking aft (see "A stair belongs off the corridor" below).
+
 ## Exterior parts
 
 Exterior parts and interior modules are **two orthogonal axes**, installed independently:
 
 - **Exterior parts** are shared across hulls: the Rijay nacelle the Mockingbird mounts is
-  the same document the Finch mounts. A part is
+  the same document the Goldfinch mounts. A part is
   `{id, name, kind, size, mass, provides, requires, thrust, torque, sprite}`, hung on a
   hull mount point of matching `kind` and sufficient `size`. Engines carry the `thrust`
   and `torque` that used to be global constants in `ship.gleam`.
+- **Part ids follow `<manufacturer>.<kind>.<model>`.** Rijay Drive Yards name an engine the
+  way they name a hull — after a bird, then its thrust class in units of ten, then a block
+  designation (`rijay.engine.stork_240c2`, `rijay.engine.wren_90b`) — and the engine birds
+  are deliberately distinct from the hull birds so the two namespaces never collide.
+  Consolidated Orbital get no bird at all: a part number is all a part gets from the Company
+  (`consol.engine.co17f_2`). The id names **the manufacturer that built the part, not the
+  hull it happens to be bolted to** — the Mockingbird's stock centre engine used to be
+  `rijay.engine.consol_patch`, which broke that rule and erased the joke the hull is built
+  on (her centre engine is foreign to the hull); it is now `consol.engine.co17f_2`.
+- **Module ids follow the same `<manufacturer>.<kind>.<model>` shape, for the same reason,
+  and iteration 2b renamed the whole catalog onto it.** Every shipped module used to be
+  filed under either `rijay` or under whichever hull it happened to ship on
+  (`goldfinch.cockpit.stock`, `mockingbird.commons.crew`) — the same mistake as
+  `rijay.engine.consol_patch` above, an id that names who *uses* a document rather than who
+  *built* it. Adding a second hull to a document is a one-line `targets` addition; renaming
+  its id afterwards is not, because the id is referenced in every hull's `default_loadout`.
+  Hull-namespacing bakes in "only this hull will ever use it" at exactly the moment the
+  design is trying to prove documents are portable — `rijay.cabin.standard` already served
+  two hulls from one file under the old scheme, so the rule was already being broken by the
+  first document that needed it. Every module now files under the manufacturer that built
+  it (`server/modules/rijay/`), and the `model` slot names the product, never the hull:
+  `goldfinch.cockpit.stock` became `rijay.cockpit.duo_3x1`, `mockingbird.hold.tank` became
+  `rijay.hold.tank_8x11`. The trailing `_WxH` is a **footprint suffix** — the patch's tile
+  footprint, width by height — and it appears exactly where a `kind` ships more than one
+  shape, on *every* member of that kind, so the set reads uniformly rather than singling
+  one model out: the cockpit kind ships three models across two shapes (3×1 and 2×2), so all
+  three carry a suffix (`.solo_3x1`, `.duo_3x1`, `.solo_2x2`); the bay kind ships two models
+  that are both 3×2, so neither carries one (`rijay.bay.packet`, `rijay.bay.ranger`); a kind
+  with a single shipped model, like `galley` or `commons`, never needs one either.
 - Some installables **link one of each** — a gun is an exterior turret part *and* a
   per-hull interior gun-room overlay. Some are exterior-only (an atmospheric landing/fin
   package — no interior change). Some are interior-only (a medbay).
@@ -294,11 +385,11 @@ These are the shipped shapes; the JSON schemas in `server/schemas/` (`module.sch
 `server/test/data_schema_test.gleam`, and the Gleam decoders they mirror are the source of
 truth for both.
 
-An **interior module** (`server/modules/<hull-or-manufacturer>/<id>.json` — filed under
-whichever name the *concept* belongs to: a hull-specific fixture like the cockpit files
-under its hull, a manufacturer part like the standard cabin files under its manufacturer,
-because it is one document even though each individual overlay it carries is still drawn
-against one hull's coordinate space and is not portable as a drawing):
+An **interior module** (`server/modules/<manufacturer>/<id>.json` — filed under the
+manufacturer named in its own id, per "Module ids follow..." above, even though each
+individual overlay it carries is still drawn against one hull's coordinate space and is not
+portable as a drawing; `server/modules/test_fixture/` is the one exception, holding the
+Python harness's fixture-hull module rather than a Rijay document):
 
 ```jsonc
 {
@@ -339,15 +430,15 @@ An **exterior part** (`server/parts/<id>.json` — flat, because parts *are* cro
 ```jsonc
 {
   "schema": 1,
-  "id": "rijay.engine.consol_patch",
-  "name": "Consol patch engine",
+  "id": "consol.engine.co17f_2",
+  "name": "Consolidated CO-17F Block 2",
   "kind": "engine",
   "size": "m",
-  "mass": 0.0,
+  "mass": 8.0,
   "provides": { "engine": 1 },
   "requires": { "power": 3 },
-  "thrust": 4800.0,
-  "torque": 21600.0,
+  "thrust": 1700.0,
+  "torque": 7500.0,
   "sprite": "engine_consol"
 }
 ```
@@ -440,9 +531,94 @@ are identical 1×2 cabins — furnished by one target-bearing document,
 `rijay.cabin.standard`, instead of five bespoke cabin files; her default loadout still
 reproduces her pre-M4 authored deck tile for tile.
 
-**Iteration 2b** is the Sparrow and Finch hulls — the anti-overfit test, since every rule
-above was written while looking at one hull, now authored against target lists and the
-standard cabin shape rather than bespoke per-hull cabin files.
+**Iteration 2b has also landed** — the Sparrow and the Goldfinch (see "The Sparrow", "The
+Goldfinch" above), the anti-overfit test the whole design rested on, since every rule above
+was written while looking at exactly one hull. The central claim held: `rijay.cabin.standard`
+furnishes both the Mockingbird and the Goldfinch from one document, and neither new hull
+needed a rule of its own. But drawing a second and third hull found real edges of the
+format that one hull alone never could.
+
+**The sixteen-slot ceiling.** Slot membership rides in a single hex character (`docs/deckplan-format.md`,
+"Slots"), so a hull can never carry more than sixteen slots — one per value `0`–`f`.
+The Goldfinch sits at fifteen. Nothing in iteration 1 or 2a came near this wall, because the
+Mockingbird's ten slots never had to; it took a second large hull to find it, and it is
+worth writing down now, before a hull that actually wants twenty gets designed against a
+format that cannot express it.
+
+**Three plan rules did not survive drawing a second and third hull** — two of them found
+by a failing test, below, and a third ("A stair belongs off the corridor", further down)
+found only in review:
+
+- *"Stairs must be vertically aligned across all decks" was wrong, and it produced an
+  unflyable ship.* `deckplan.stairs_target` scans **down first** and lets `deck + 1` win a
+  tie; `character.deck_after_step` switches deck only on a *non-stairs → stairs* step,
+  statelessly. A stairs tile present on all three of the Goldfinch's decks therefore always
+  sent a walker down and never up: her entire Upper deck — cockpit, helm and six of twelve
+  cabins — was unreachable from the boarding port, and 347 green tests did not notice,
+  because nothing asserted stair reversibility. The Mockingbird had always avoided this by
+  accident of drawing: each of her stair columns carries an `x` on exactly **two** decks.
+  The three real invariants are: **(a)** a stairs column holds an `x` on exactly two decks;
+  **(b)** every stairs tile must have at least one non-stairs walkable neighbour on its
+  own deck — the second because a stairs tile whose every non-void neighbour is also stairs
+  can be stood on but never *entered*, so the switch never fires; and **(c)** stairs belong
+  offset from a corridor, not parked on one, which "A stair belongs off the corridor" below
+  writes up in full. The first attempted fix satisfied (a) — two decks per column — but
+  violated (b) at the new tile it added, and still stranded the Upper deck.
+  `docs/deckplan-format.md` documented only the down-first scan and the void-skip; it now
+  states all three invariants too.
+- *A decor glyph on a tile edge silently becomes a blocking fixture.* The plan's own
+  Goldfinch cabin grid put a seat (`e`) on the fore tile's S edge and the aft tile's N edge.
+  `server/glyphs.json` registers `e` as a **centre** glyph only, and any edge character the
+  registry doesn't recognise decodes as a generic `Fixture` — which blocks, same as a wall.
+  Both halves of every cabin would have sealed shut from each other, and because the fore
+  tile's other three edges were `#`, a window and `#`, its bed would have been completely
+  unreachable. There is no validation for this: a document with a decor glyph on the wrong
+  side of a tile parses cleanly and fails only when someone actually walks the ship — worth
+  stating plainly, since nothing catches it at authoring time.
+
+**A stair belongs off the corridor.** A third stairs rule surfaced after those two, in
+review rather than in a test: **stairs belong offset from a corridor, not parked on one**,
+because stepping onto a stairs tile changes your deck. The Goldfinch's Lower corridor
+originally ended *on* the Mezzanine stair at (2,9) — the floors flanking it were walled in
+by the aft cabins and only a diagonal step from the corridor — so walking aft to the hold
+read *south onto the stairs, and you are now a deck up*, and the player pressed south,
+south, north, south to travel two tiles. Every deck stayed reachable, so neither invariant
+above caught it: the suite asserted **reachability** and never same-deck **traversability**,
+which is the strictly stronger property. The fix moved the Lower↔Mezzanine pair to the port
+flank at (1,10), turned the band at `y10` into a fixed-hull landing the corridor walks past,
+and cost the hold its forward row — 9 tiles to **3×2**, six pallets to four, derived capacity
+6 to 4.
+
+Her Upper↔Mezzanine pair then went the same way, in a second review pass, and it is the
+sharper illustration of the rule. That stair sat at (2,11), squarely on the `x2` centreline,
+and it was *legal* under every check: the aft hall is three tiles wide there, so a walker
+could squeeze past on either flank and the deck never split. That is a **mitigation, not a
+design** — the deck change still sat on the tile a player walks into holding "aft", and it
+only survived because the hall happened to be wide. Both halves moved to (3,11), on the
+starboard flank, and `x2` now runs clear from the cockpit passage to the stern.
+
+The mechanically interesting part is where the Mezzanine stair now resolves to. Its
+down-scan hits Lower (3,11), which is hold-slot **floor**, so the shaft blocks and the scan
+falls through to up — landing on Upper (3,11) and keeping the whole Upper deck reachable.
+Upper (3,11) is fixed hull carrying no slot digit, so no module patch moved and
+`check_bounds` stays clean over all fifteen fitted modules.
+
+`docs/deckplan-format.md` now states the rule alongside the other two, and
+`goldfinch_test.gleam` pins it three ways: a one-deck flood fill from the forward corridor
+that refuses to enter a stairs tile and must still reach every hold tile; the same flood
+fill over each whole cabin deck, whose non-stairs walkable tiles must form one connected
+component (35 on the Lower, 33 on the Upper); and — because that component check was green
+on the Upper deck even with the centreline stair, exactly on account of the three-wide
+bypass — a direct assertion that **no stairs tile of hers sits on the corridor column**.
+Only the third one is red against the old grid. That is the honest split: the component
+check catches a stair that severs a deck, and only the column check catches a stair that
+merely should not be there.
+
+Worth a line, since it came up while drawing the Goldfinch's cockpit: `provides.seats`, like
+`provides.berths` and `provides.fuel`, is authored bookkeeping the engine only sums —
+nothing derives it from the seat glyphs on a module's own map, unlike hold capacity, which
+`deckplan.pallet_count` genuinely counts off the resolved plan's pallet tiles (see "Derived
+numbers" below).
 
 **Iteration 2c** is **client-side exterior part layering**: mount geometry, the part
 `sprite` on the wire, and a swapped nacelle that actually shows.

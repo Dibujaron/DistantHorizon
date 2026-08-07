@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "id": "rijay.hold.breakbulk_3x2",
+  "name": "Break-bulk hold",
+  "mass": 6.0,
+  "requires": { "power": 1 },
+  "targets": [
+    {
+      "hull": "goldfinch",
+      "slots": ["hold"],
+      "patches": [
+        {
+          "deck": 2, "x": 1, "y": 11,
+          "grid": [
+            "####=####",
+            "cp     p#",
+            "         ",
+            "         ",
+            "#p     p#",
+            "#########"
+          ]
+        }
+      ]
+    }
+  ]
+}

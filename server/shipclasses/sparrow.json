@@ -1,0 +1,64 @@
+{
+  "schema": 3,
+  "id": "sparrow",
+  "name": "Sparrow",
+  "decks": [
+    {
+      "name": "Main",
+      "grid": [
+        "               ",
+        " .  .  .  .  . ",
+        "               ",
+        "   #########   ",
+        " . #       # . ",
+        "   1  1  1     ",
+        "               ",
+        " . #       # . ",
+        "               ",
+        "               ",
+        " . #       # . ",
+        "   2  2  2     ",
+        "               ",
+        " . #       # . ",
+        "   2  2  2     ",
+        "               ",
+        " . =Q     Q= . ",
+        "               ",
+        "               ",
+        " . #       # . ",
+        "   #########   ",
+        "               ",
+        " .  .  .  .  . ",
+        "               "
+      ]
+    }
+  ],
+  "mass": 12.0,
+  "provides": { "power": 12 },
+  "requires": { "engine": 1 },
+  "mounts": [
+    { "id": "engine_port",   "kind": "engine", "size": "s" },
+    { "id": "engine_center", "kind": "engine", "size": "s" },
+    { "id": "engine_stbd",   "kind": "engine", "size": "s" }
+  ],
+  "slots": [
+    { "digit": 1, "id": "cockpit", "name": "Cockpit" },
+    { "digit": 2, "id": "bay",     "name": "Pod bay" }
+  ],
+  "default_loadout": {
+    "modules": {
+      "cockpit": "rijay.cockpit.solo_3x1",
+      "bay":     "rijay.bay.packet"
+    },
+    "parts": {
+      "engine_port": "rijay.engine.wren_90b",
+      "engine_stbd": "rijay.engine.wren_90b"
+    }
+  },
+  "cargo": {
+    "capacity": 2,
+    "handling": "breakbulk"
+  },
+  "dock_port_orientation": 90.0,
+  "dock_standoff": 8.0
+}
