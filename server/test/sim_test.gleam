@@ -1015,34 +1015,46 @@ const station_space = "station:meridian_highport"
 /// The Mockingbird's default loadout, spelled out as the wire spells it â€”
 /// this is exactly what a refit UI would send back unchanged.
 const default_modules = [
-  #("cockpit", "mockingbird.cockpit.stock"),
+  #("cockpit", "rijay.cockpit.solo_2x2"),
   #("cabin_fore_a", "rijay.cabin.standard"),
   #("cabin_fore_b", "rijay.cabin.standard"),
-  #("crew_commons", "mockingbird.commons.crew"),
+  #("crew_commons", "rijay.commons.crew"),
   #("cabin_mess", "rijay.cabin.standard"),
-  #("payload", "mockingbird.payload.passenger"),
+  #("payload", "rijay.payload.passenger"),
   #("cabin_engineer", "rijay.cabin.standard"),
-  #("engineering", "mockingbird.engineering.stock"),
+  #("engineering", "rijay.engineering.stock"),
   #("cabin_aft_stbd", "rijay.cabin.standard"),
-  #("hold", "mockingbird.hold.breakbulk"),
+  #("hold", "rijay.hold.breakbulk_8x11"),
 ]
 
 /// The same loadout with the break-bulk hold swapped for the bunkerage tank â€”
 /// a different stamped deck, and a different pallet-derived hold.
 const tank_modules = [
-  #("cockpit", "mockingbird.cockpit.stock"),
+  #("cockpit", "rijay.cockpit.solo_2x2"),
   #("cabin_fore_a", "rijay.cabin.standard"),
   #("cabin_fore_b", "rijay.cabin.standard"),
-  #("crew_commons", "mockingbird.commons.crew"),
+  #("crew_commons", "rijay.commons.crew"),
   #("cabin_mess", "rijay.cabin.standard"),
-  #("payload", "mockingbird.payload.passenger"),
+  #("payload", "rijay.payload.passenger"),
   #("cabin_engineer", "rijay.cabin.standard"),
-  #("engineering", "mockingbird.engineering.stock"),
+  #("engineering", "rijay.engineering.stock"),
   #("cabin_aft_stbd", "rijay.cabin.standard"),
-  #("hold", "mockingbird.hold.tank"),
+  #("hold", "rijay.hold.tank_8x11"),
 ]
 
-const default_parts = [#("engine_center", "rijay.engine.consol_patch")]
+const default_parts = [
+  #("engine_port", "rijay.engine.stork_240c2"),
+  #("engine_center", "consol.engine.co17f_2"),
+  #("engine_stbd", "rijay.engine.stork_240c2"),
+]
+
+/// Three Rijay Storks where the stock fit runs a cheaper Consol centre
+/// engine: draws 26 against a reactor that provides 25 â€” one over.
+const greedy_parts = [
+  #("engine_port", "rijay.engine.stork_240c2"),
+  #("engine_center", "rijay.engine.stork_240c2"),
+  #("engine_stbd", "rijay.engine.stork_240c2"),
+]
 
 /// The fit `modules`/`parts` resolve to on the Mockingbird, through the same
 /// registries the sim loaded â€” so a test states its expectations in resolved
@@ -1158,13 +1170,13 @@ pub fn a_refused_refit_leaves_the_fit_untouched_test() {
   let assert Ok(before) = sim.ship_class(s, ship_id, 1000)
   let #(_space, _epoch) = receive_space_for(client, station_space)
 
-  // Her whole interior, but nothing on the engine mount: the hull's own
-  // `{"engine": 1}` goes uncovered, so the same pooled-tag rule that polices
-  // power refuses the fit â€” a refusal from deep inside the resolver,
-  // forwarded verbatim.
+  // Her whole interior, but three Rijay Storks in place of the cheaper
+  // Consol centre engine: the reactor gives 25, three Storks draw 26, so the
+  // same pooled-tag rule that polices power refuses the fit â€” a refusal
+  // from deep inside the resolver, forwarded verbatim.
   let assert Error(reason) =
-    sim.request_refit(s, char, default_modules, [], 1000)
-  assert reason == "tag_deficit:engine"
+    sim.request_refit(s, char, default_modules, greedy_parts, 1000)
+  assert reason == "tag_deficit:power"
 
   // Nothing moved: the resolved class is identical, field for field...
   let assert Ok(after) = sim.ship_class(s, ship_id, 1000)

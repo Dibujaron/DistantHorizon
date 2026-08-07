@@ -11,7 +11,7 @@ tile with a bed ("d") when fitted; the hull's own default loadout leaves the
 bay empty, so a fresh login shows a bare floor tile there.
 
 Refit replaces the WHOLE loadout, so every request below re-states the
-fixture's one engine part (`rijay.engine.consol_patch` on `engine_center`)
+fixture's one engine part (`consol.engine.co17f_2` on `engine_center`)
 even when the point of the request is the module slot -- omitting it would
 fail on `tag_deficit:engine` before the module handling is even exercised.
 """
@@ -30,7 +30,7 @@ SPAWN_STATION_SPACE = f"station:{SPAWN_STATION}"
 BAY_SLOT = "bay"
 BUNKROOM_MODULE = "test_fixture.bay.bunkroom"
 ENGINE_MOUNT = "engine_center"
-ENGINE_PART = "rijay.engine.consol_patch"
+ENGINE_PART = "consol.engine.co17f_2"
 DEFAULT_PARTS = [{"mount": ENGINE_MOUNT, "part": ENGINE_PART}]
 BUNKROOM_MODULES = [{"slot": BAY_SLOT, "module": BUNKROOM_MODULE}]
 
@@ -65,8 +65,8 @@ def _center_char(ship_class: dict, deck: int, x: int, y: int) -> str:
 
 async def test_welcome_carries_flight_stats(server):
     """Flight is derived, not authored: the fixture hull's 120.0 of dry mass
-    plus its 8.0 Consol patch make 128.0, and the engine's 5000 thrust /
-    22000 torque over that give these numbers. The same values are pinned
+    plus its 8.0 Consol part make 128.0, and the engine's 1700 thrust /
+    7500 torque over that give these numbers. The same values are pinned
     server-side by a Gleam test, so a mismatch here means they were mangled
     in transit rather than computed wrong. Proving welcome carries them over
     the wire is the prerequisite for every later assertion in this file: if
@@ -75,8 +75,8 @@ async def test_welcome_carries_flight_stats(server):
     async with DHClient(name="m4_flight") as client:
         welcome = await client.login("m4_flight_stats", "pw")
         flight = welcome["ship_class"]["flight"]
-        assert flight["accel"] == pytest.approx(5000.0 / 128.0)
-        assert flight["turn_rate"] == pytest.approx(22000.0 / 128.0)
+        assert flight["accel"] == pytest.approx(1700.0 / 128.0)
+        assert flight["turn_rate"] == pytest.approx(7500.0 / 128.0)
 
 
 async def test_refit_installs_a_module(server):

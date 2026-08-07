@@ -13,23 +13,33 @@ fn near(actual: Float, expected: Float) -> Bool {
   float.loosely_equals(actual, expected, tolerating: 0.001)
 }
 
-pub fn shipped_parts_load_test() {
+/// Part ids name the manufacturer that BUILT the part. The Consol patch
+/// engine is a Consolidated Orbital part fitted to a Rijay hull, and filing
+/// it under `rijay.` erased the joke the starter Mockingbird is built on.
+pub fn shipped_engine_parts_load_test() {
   let assert Ok(parts) = part.load_all("parts")
-  let assert Ok(patch) = dict.get(parts, "rijay.engine.consol_patch")
+  let assert Ok(patch) = dict.get(parts, "consol.engine.co17f_2")
   assert patch.kind == "engine"
   assert patch.size == "m"
-  let assert Ok(stock) = dict.get(parts, "rijay.engine.stock")
-  assert stock.thrust >. patch.thrust
-  assert stock.torque <. patch.torque
+  assert patch.mass == 8.0
+  let assert Ok(stork) = dict.get(parts, "rijay.engine.stork_240c2")
+  assert stork.size == "m"
+  assert stork.mass == 12.0
+  // The Sparrow's engine, and the first size-`s` part on disk. Until now
+  // every shipped part was `m`, so `mount size >= part size` had never once
+  // been exercised by content.
+  let assert Ok(wren) = dict.get(parts, "rijay.engine.wren_90b")
+  assert wren.size == "s"
+  assert wren.mass == 4.0
+  assert dict.get(parts, "rijay.engine.stock") == Error(Nil)
+  assert dict.get(parts, "rijay.engine.consol_patch") == Error(Nil)
 }
 
 /// Flight is EMERGENT, not authored: masses say what each thing is and the
 /// engine says what it pushes with, so `accel = thrust / mass` falls out of
 /// the loadout. Nothing here is back-solved from a target — 73.0 of hull,
-/// 47.0 of default modules and an 8.0 Consol patch give 128.0, and 5000 N of
-/// thrust over that is what she accelerates at. Swapping to the heavier Rijay
-/// original moves the total to 132.0, which is exactly why an engine's mass
-/// has to be real: it is one of the things the swap trades.
+/// 47.0 of default modules and three engines (12.0 + 8.0 + 12.0) give 152.0,
+/// and 6500 N of pooled thrust over that is what she accelerates at.
 /// (`mockingbird_test` owns the deck-fidelity half of the carve's promise.)
 pub fn the_mockingbird_default_fit_flight_derives_from_its_masses_test() {
   let assert Ok(h) = hull.load("shipclasses/mockingbird.json")
@@ -37,25 +47,35 @@ pub fn the_mockingbird_default_fit_flight_derives_from_its_masses_test() {
   let assert Ok(parts) = part.load_all("parts")
   let assert Ok(fit) =
     loadout.resolve(glyphs.default(), h, mods, parts, loadout.default_for(h))
-  assert fit.mass == 128.0
-  assert near(fit.class.flight.accel, 39.0625)
-  assert near(fit.class.flight.turn_rate, 171.875)
+  assert fit.mass == 152.0
+  assert near(fit.class.flight.accel, 42.76315789473684)
+  assert near(fit.class.flight.turn_rate, 141.44736842105263)
   assert fit.class.cargo_capacity == 60
   assert fit.class.handling == shipclass.BreakBulk
 }
 
+/// Isolates the swap itself rather than the whole default fit: `parts` names
+/// only `engine_center`, so `engine_port`/`engine_stbd` sit bare (mounting is
+/// per-mount, never all-or-nothing) and the total is hull 73.0 + modules 47.0
+/// + one 12.0 Stork = 132.0, against the 8.0 Consol's 128.0. Reactor draw
+/// (4 against a 25-power hull with 14 already spoken for) stays nowhere near
+/// the ceiling that `upgrading_the_centre_engine_overdraws_her_reactor_test`
+/// hits with all three mounts filled, so this is purely about the mass an
+/// engine's own choice trades, not about power.
 pub fn the_stock_engine_trades_turn_for_thrust_test() {
   let assert Ok(h) = hull.load("shipclasses/mockingbird.json")
   let assert Ok(mods) = module.load_all("modules")
   let assert Ok(parts) = part.load_all("parts")
   let base = loadout.default_for(h)
   let swapped =
-    loadout.Loadout(..base, parts: [#("engine_center", "rijay.engine.stock")])
+    loadout.Loadout(..base, parts: [
+      #("engine_center", "rijay.engine.stork_240c2"),
+    ])
   let assert Ok(fit) =
     loadout.resolve(glyphs.default(), h, mods, parts, swapped)
   // Heavier, but it pushes harder: quicker in a straight line, lazier to turn.
-  assert near(fit.class.flight.accel, 53.0303)
-  assert near(fit.class.flight.turn_rate, 151.5152)
+  assert near(fit.class.flight.accel, 18.1818)
+  assert near(fit.class.flight.turn_rate, 53.0303)
 }
 
 /// Every pytest harness test spawns from the fixture hull, and
@@ -74,8 +94,8 @@ pub fn the_harness_fixture_hull_flight_is_pinned_test() {
       parts,
       loadout.default_for(h),
     )
-  assert near(fit.class.flight.accel, 39.0625)
-  assert near(fit.class.flight.turn_rate, 171.875)
+  assert near(fit.class.flight.accel, 13.28125)
+  assert near(fit.class.flight.turn_rate, 58.59375)
 }
 
 /// A hull that requires `{"engine": 1}` cannot resolve with nothing mounted —

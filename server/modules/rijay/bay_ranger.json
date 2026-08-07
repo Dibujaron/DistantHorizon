@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "id": "rijay.bay.ranger",
+  "name": "Ranger endurance package",
+  "mass": 4.0,
+  "provides": { "berths": 1, "fuel": 8 },
+  "requires": { "power": 2 },
+  "targets": [
+    {
+      "hull": "sparrow",
+      "slots": ["bay"],
+      "patches": [
+        {
+          "deck": 0, "x": 1, "y": 3,
+          "grid": [
+            "####=####",
+            "wd     ew",
+            "         ",
+            "         ",
+            "#   t   #",
+            " #  =  # "
+          ]
+        }
+      ]
+    }
+  ]
+}

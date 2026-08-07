@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "id": "rijay.bay.packet",
+  "name": "Packet locker",
+  "mass": 2.0,
+  "requires": { "power": 1 },
+  "targets": [
+    {
+      "hull": "sparrow",
+      "slots": ["bay"],
+      "patches": [
+        {
+          "deck": 0, "x": 1, "y": 3,
+          "grid": [
+            "#c##=####",
+            "#p     p#",
+            "         ",
+            "         ",
+            "#p  p  p#",
+            " #  =  # "
+          ]
+        }
+      ]
+    }
+  ]
+}

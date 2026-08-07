@@ -25,6 +25,7 @@ everywhere.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import socket
@@ -32,6 +33,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Iterator
 
 import pytest
 
@@ -45,11 +47,22 @@ SERVER_LOG_PATH = SERVER_DIR / ".test_server.log"
 # shipped ship. Absolute path since the server runs with cwd=server/. (#33)
 TEST_SHIP_CLASS = HARNESS_DIR / "fixtures" / "test_fixture.json"
 
+# The real Sparrow hull, for the one harness test that walks *shipped*
+# content instead of the synthetic fixture (Task 9, iteration 2b). This is
+# `server/shipclasses/sparrow.json` itself, not a harness-local copy, so the
+# walk fails loudly if that document ever changes shape underneath it.
+SPARROW_SHIP_CLASS = SERVER_DIR / "shipclasses" / "sparrow.json"
+SPARROW_SERVER_LOG_PATH = SERVER_DIR / ".test_server_sparrow.log"
+
 HOST = "127.0.0.1"
 # Dedicated test port so a stray dev/"production" server on the default
 # 8484 never collides with (or invalidates) the harness. Overridable via
 # DH_PORT for callers that want a different dedicated port.
 TEST_PORT = int(os.environ.get("DH_PORT", "8585"))
+# A second dedicated port for the Sparrow's own server process (see `server`
+# vs `sparrow_server` below) -- distinct from TEST_PORT so the two `gleam
+# run` processes never collide.
+SPARROW_PORT = int(os.environ.get("DH_SPARROW_PORT", "8586"))
 # Stamp DH_PORT into this process's own environment (a no-op if the caller
 # already set it) so anything that reads os.environ["DH_PORT"] at import
 # time -- dh_client.py's DEFAULT_URL, in particular -- agrees with the port
@@ -92,20 +105,24 @@ def _kill_process_tree(proc: subprocess.Popen) -> None:
         proc.wait(timeout=10)
 
 
-@pytest.fixture(scope="session")
-def server():
-    """Spawn a real dh_server for the whole test session.
+@contextlib.contextmanager
+def _run_server(ship_class: Path, port: int, log_path: Path) -> Iterator[None]:
+    """Spawn a real `gleam run` dh_server on `port`, serving `ship_class` to
+    every login, for as long as the caller's `with` block (a fixture's
+    yield) is open. Shared by every fixture in this module so `server` and
+    `sparrow_server` differ only in which hull and which port they use --
+    the start/wait/teardown logic itself stays in one place.
 
-    Refuses to run if 127.0.0.1:<TEST_PORT> is already accepting
-    connections: a stale or shared server would invalidate every test
-    result (same principle as benchmark.py's freshness guard).
+    Refuses to run if `host:port` is already accepting connections: a stale
+    or shared server would invalidate every test result (same principle as
+    benchmark.py's freshness guard).
     """
-    if _port_accepting(HOST, TEST_PORT):
+    if _port_accepting(HOST, port):
         pytest.fail(
-            f"{HOST}:{TEST_PORT} is already accepting connections -- a stale "
+            f"{HOST}:{port} is already accepting connections -- a stale "
             "or shared server would invalidate these tests. Find and stop it "
             "first, e.g. on Windows:\n"
-            f"  netstat -ano | findstr {TEST_PORT}\n"
+            f"  netstat -ano | findstr {port}\n"
             "  taskkill /F /T /PID <pid>"
         )
 
@@ -120,10 +137,10 @@ def server():
     env = dict(os.environ)
     env.pop("DH_WORLD", None)  # use the server's own default world doc
     env["DATABASE_URL"] = UNREACHABLE_DATABASE_URL  # force accept-all; see module docstring
-    env["DH_PORT"] = str(TEST_PORT)  # dedicated test port; see module docstring
-    env["DH_SHIP_CLASS"] = TEST_SHIP_CLASS.as_posix()  # test-only fixture hull; see TEST_SHIP_CLASS (#33)
+    env["DH_PORT"] = str(port)  # dedicated test port; see module docstring
+    env["DH_SHIP_CLASS"] = ship_class.as_posix()  # the hull every login on this server spawns into
 
-    log_file = open(SERVER_LOG_PATH, "w", encoding="utf-8")
+    log_file = open(log_path, "w", encoding="utf-8")
     proc = subprocess.Popen(
         [gleam, "run"],
         cwd=str(SERVER_DIR),
@@ -139,7 +156,7 @@ def server():
         if proc.poll() is not None:
             exited_early = True
             break
-        if _port_accepting(HOST, TEST_PORT):
+        if _port_accepting(HOST, port):
             started = True
             break
         time.sleep(0.25)
@@ -147,11 +164,37 @@ def server():
     if not started:
         _kill_process_tree(proc)
         log_file.close()
-        log_tail = SERVER_LOG_PATH.read_text(encoding="utf-8", errors="replace")[-4000:]
+        log_tail = log_path.read_text(encoding="utf-8", errors="replace")[-4000:]
         reason = "server process exited early" if exited_early else "timed out waiting for the port"
         pytest.fail(f"failed to start dh_server ({reason}); last log output:\n{log_tail}")
 
-    yield
+    try:
+        yield
+    finally:
+        _kill_process_tree(proc)
+        log_file.close()
 
-    _kill_process_tree(proc)
-    log_file.close()
+
+@pytest.fixture(scope="session")
+def server():
+    """Spawn a real dh_server for the whole test session, serving the
+    synthetic test fixture hull (TEST_SHIP_CLASS) every existing harness
+    test runs against."""
+    with _run_server(TEST_SHIP_CLASS, TEST_PORT, SERVER_LOG_PATH):
+        yield
+
+
+@pytest.fixture(scope="session")
+def sparrow_server():
+    """A second, independent dh_server for the one harness test that walks
+    the real Sparrow hull (Task 9, iteration 2b) rather than the synthetic
+    fixture -- a distinct process on a distinct port (SPARROW_PORT) because
+    DH_SHIP_CLASS is fixed for a server's whole lifetime, and every other
+    test in the session needs the fixture hull's known shape. Session-scoped
+    like `server` even though only one test module uses it today, for the
+    same reason `server` is: two FixtureDefs importing the same
+    session-scoped fixture into two modules would spawn it twice (see
+    conftest.py's docstring), so this is registered there exactly once too.
+    """
+    with _run_server(SPARROW_SHIP_CLASS, SPARROW_PORT, SPARROW_SERVER_LOG_PATH):
+        yield

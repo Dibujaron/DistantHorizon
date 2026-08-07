@@ -307,7 +307,7 @@ Ship Classes:
       - Two engines instead of three (by default); upgradeable to three.
       - Basically just a small central cylindrical pod with a cockpit in front, with an engine strapped to either side at the back.
       - With atmo landing package, gains wings on the engines.
-  - The Finch
+  - The Goldfinch
     - Dedicated passenger carrier
     - Similar to the mockingbird, especially in cockpit and neck.
     - Body is much slimmer than the mockingbird, with two rows of windows on the sides (something like an A380 but not as long).

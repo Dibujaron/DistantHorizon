@@ -54,12 +54,14 @@ registry is the list.
 
 - **Center glyphs** (what a tile *is*) carry a `tile` kind — `floor` (walkable),
   `void` (outside the hull; not a tile), or `stairs` (walkable; connects decks)
-  — plus optional flags: a `console` kind (`h`=helm, `c`=cargo, `b`=broker), a
-  `dock` port (`Q`), or a `spawn` tile (`s`). Consoles/dock/spawn are all
-  `floor`-kind. A letter in the **center** is a console/marker; the same letter
-  on an **edge-mid** is a fixture — position disambiguates. Pass-1 decor adds
-  four more `floor`-kind center glyphs that are purely cosmetic (no console/
-  dock/spawn flag, still walkable): `r`=rug, `e`=seat, `d`=bed, and `p`=cargo
+  — plus optional flags: a `dock` port (`Q`) or a `spawn` tile (`s`), both
+  `floor`-kind. Consoles are **not** center glyphs any more: the pass-2 decor
+  migration moved `h`/`c`/`b` (helm/cargo/broker) off the center and onto walls
+  (see "Edge glyphs" below). A letter's meaning still depends on where it
+  sits — `d` in the **center** is a floor bed, the same `d` on an **edge-mid**
+  is a wall bunk — position disambiguates. Pass-1 decor adds
+  four more `floor`-kind center glyphs that are purely cosmetic (no dock/spawn
+  flag, still walkable): `r`=rug, `e`=seat, `d`=bed, and `p`=cargo
   pallet — the last one doubles as the unit a hull's breakbulk capacity is
   derived from (see "Derived cargo capacity" below). Pass-2 decor adds four
   neighbour-aware center glyphs, also purely cosmetic and walkable: `f`=fountain
@@ -73,13 +75,16 @@ registry is the list.
 - **Edge glyphs** (N/E/S/W mid characters, what's on that side) carry an
   edge kind: `open` (space, passable), `wall` (`#`, blocks), `door` (`=`,
   passable, auto-opens), or `fixture` (a named wall decoration — blocks like a
-  wall and renders its art). `v`=viewscreen is the single wall-screen glyph:
+  wall and renders its art). `h`/`c`/`b` (helm/cargo/broker) are **console**
+  fixtures: wall-mounted, operated from the adjacent floor tile they face —
+  consoles used to be center glyphs, but pass-2 decor moved them to the wall.
+  `v`=viewscreen is the single wall-screen glyph:
   it stands for either a bridge viewscreen or a domestic TV, there's no
   separate TV glyph — context (which room it's in) tells them apart, not the
   character. `w`=window is a wall that carries a view instead of a screen.
   `d`=bunk (edge) is a wall-mounted bed — **distinct from centre `d`=bed**:
-  the same letter means "floor bed" in the center and "wall bunk" on an edge,
-  same as the console letters. Authoring convention (not enforced — that's
+  the same letter means "floor bed" in the center and "wall bunk" on an edge.
+  Authoring convention (not enforced — that's
   #24): a bunk may only mount over a floor bed (centre `d`) or over another
   wall bunk, so bunks stack in a legible way; nothing currently checks this.
   Any edge char not in the registry parses as a generic fixture, so nothing
@@ -237,6 +242,67 @@ Decks connect only through **stairs/ladders** (`x` center tiles): standing on an
 **passes through intermediate levels that are void at that tile** but a solid
 floor blocks it — so a stair can bypass a level the column doesn't exist on
 (e.g. the Mockingbird's forward stairs skipping the void mezzanine).
+
+The down-first scan and the void-skip describe *how* a step resolves, but they are not
+by themselves enough to draw a flyable stair column — the Goldfinch (iteration 2b) shipped
+briefly unflyable because a plan that satisfied both anyway put every deck's `x` at the
+same tile, and the down-first scan then sent a walker down and only ever down, stranding
+her Upper deck. The invariants an author actually needs are:
+
+- **A stairs column holds an `x` on exactly two decks.** A third `x` at the same tile
+  makes the down-first scan permanently prefer the lower pair and orphans whatever is
+  above; use a second, offset column (a short connector tile between the two, as the
+  Mockingbird's Mezzanine and the Goldfinch's both do) to link three or more decks.
+- **Every stairs tile needs at least one non-stairs walkable neighbour on its own deck.**
+  The deck switch (`character.deck_after_step`) fires only on a *non-stairs → stairs*
+  step; a stairs tile whose every open neighbour is also stairs can be stood on but never
+  *entered* in the switching sense, so it never triggers a switch either way.
+- **Stairs belong offset from a corridor, not parked on one.** Stepping onto a stairs tile
+  changes your deck, so a stair is never a tile you walk *through*: put one on a corridor
+  and pressing on down that corridor lands you a deck away, with everything past it
+  reachable only by a bounce — down, along, back up — which reads to a player as the
+  controls lying to them. Nothing catches this. Every deck stays reachable, the two
+  invariants above still hold, and every existing check stays green, which is exactly how
+  the Goldfinch shipped with the aft end of her Lower corridor sitting on the Mezzanine
+  stair (iteration 2b). So it is an authoring rule: **draw the stair to one side and let
+  the corridor run clear past it** — as both of her columns now do, on the port flank at
+  (1,10) and the starboard flank at (3,11), leaving `x2` unbroken from the cockpit passage
+  to the stern — **or let the corridor terminate at the stair by design.** A hall wide
+  enough to squeeze around a centreline stair is a *mitigation*, not the design: it leaves
+  the deck change sitting on the tile a player walks into when they hold "aft", and it
+  survives only because the hall happens to be three wide. Offsetting is strictly better,
+  because the corridor never meets the stair at all.
+  `server/test/goldfinch_test.gleam` pins both halves for that hull: a one-deck flood fill
+  that refuses to enter a stairs tile at all, on each of her cabin decks, and a direct
+  check that no stairs tile of hers sits on her corridor column.
+- **Draw the stair into an alcove — never leave one open on two facing sides.** Offsetting
+  a stair off the main corridor stops the *thoroughfare* running onto it, but a stair left
+  open on both N and S (or both E and W) is still a tile you walk *through* on whatever
+  flank it sits on: hold "aft" down that flank and the deck change fires on a tile you only
+  meant to pass. The Goldfinch's aft stair shipped exactly that way (iteration 2b) — offset
+  to `x3` as the rule above asks, and still standing open north, south *and* west, with only
+  the hull skin to its east. Every reachability and connectivity check stayed green, because
+  a bypass existed and `x2` was clear. Wall the sides the stair does not open onto and leave
+  it **one mouth** onto the corridor, as both halves of her starboard column now do (Upper
+  and Mezzanine `(3,11)`, each open only west); a stair that turns a corner (two *adjacent*
+  open sides, like her Lower `(1,10)`) is fine, because no straight run passes over it.
+  **One mouth, not zero:** walling a stair on all four sides is not the stricter version of
+  this rule, it is invariant (b) violated — a sealed stair strands its deck at 1 reachable
+  tile while the whole-ship walk still reports that deck as "reached" (you land on the
+  sealed tile) and the one-component check, which refuses to enter stairs at all, never
+  looks. `server/test/goldfinch_test.gleam` pins both ends: no stairs tile of hers is open
+  on both facing sides of either axis, and none has zero open sides — read off the FITTED
+  plan, so a wall a module draws counts.
+- **Stairs are hull geometry, and a module must never draw them.** A stair column's
+  legality depends on the whole deck stack (exactly two decks per column, a non-stairs
+  neighbour on each), which is a fact about the hull, not about any one slot a module
+  overlays. A module's overlay is a sparse, unchecked patch (`docs/modules.md`) with no
+  reachability analysis behind it — `loadout.resolve` stamps rows without ever asking
+  whether the result is still flyable — so a patch that drew an `x` inside a slot could
+  silently turn a two-deck column into a three-deck one, orphaning whatever is above it,
+  with every existing test still green because nothing was ever looking at that tile.
+  `server/test/module_test.gleam` enforces this: no shipped module patch, on any hull,
+  may draw a stairs glyph.
 
 The **Mockingbird becomes a three-deck ship**: Upper (cockpit, quarters, mess,
 commons, aft passage), a rear Mezzanine (the former docking half-flight, now its

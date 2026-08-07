@@ -229,8 +229,18 @@
   "mass": 120.0,
   "provides": { "power": 10 },
   "requires": { "engine": 1 },
-  "mounts": [ { "id": "engine_center", "kind": "engine", "size": "m" } ],
-  "default_loadout": { "parts": { "engine_center": "rijay.engine.consol_patch" } },
+  "mounts": [
+    { "id": "engine_port",   "kind": "engine", "size": "m" },
+    { "id": "engine_center", "kind": "engine", "size": "m" },
+    { "id": "engine_stbd",   "kind": "engine", "size": "m" }
+  ],
+  "default_loadout": {
+    "parts": {
+      "engine_port":   "rijay.engine.stork_240c2",
+      "engine_center": "consol.engine.co17f_2",
+      "engine_stbd":   "rijay.engine.stork_240c2"
+    }
+  },
   "cargo": {
     "capacity": 40,
     "handling": "breakbulk"
