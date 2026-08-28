@@ -130,10 +130,12 @@ This makes tile exclusion the way to reserve structure that runs *through* a slo
 SW corner of a corridor tile blank and no module fitted to the surrounding slot can touch that
 tile — not its floor, and not its walls either, because `stamp` skips a patch tile with a void
 centre glyph in full, all nine characters. The Sparrow's fore bay is the shipped example: two
-flanking tiles carry digit `3`, the tile between them carries nothing, and her spine survives
-every possible refit rather than depending on each module author remembering to leave a gap.
-Prefer this to a convention whenever a route must survive refit — nothing in the validator
-does reachability analysis, so unbuildable beats discouraged.
+flanking tiles carry digit `3`, the tile between them carries nothing, and that corridor tile's
+own floor and walls survive every possible refit rather than depending on each module author
+remembering to leave a gap. Its endpoints are still module-owned and unchecked, though — a
+future cockpit or bay module could seal the facing edge and leave the corridor tile intact but
+unreachable. Prefer this to a convention whenever a route must survive refit — nothing in the
+validator does reachability analysis, so unbuildable beats discouraged.
 
 A module rewrites its slot completely — including *both* halves of any wall
 between two slot tiles, since both tiles are its own. The only edges it shares

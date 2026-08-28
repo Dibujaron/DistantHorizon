@@ -208,8 +208,8 @@ deliberately carries no slot digit: it is the shipped example of "Slots" in
 `docs/deckplan-format.md`, a tile excluded from a slot to keep a corridor through it fixed
 hull regardless of what gets fitted either side.
 
-Her stock fit is `rijay.cockpit.solo_3x1` and `rijay.bay.packet`, a five-pallet locker whose
-derived capacity is 5; `rijay.bay.ranger` is an endurance package instead — a bunk and no
+Her stock fit is `rijay.cockpit.solo_3x1` and `rijay.bay.packet`, a six-pallet locker whose
+derived capacity is 6; `rijay.bay.ranger` is an endurance package instead — a bunk and no
 pallets, so a ranger fit falls back to the hull's authored `cargo.capacity` of 2. A slot
 holds one module, so on the Sparrow, range and speed are mutually exclusive for free.
 

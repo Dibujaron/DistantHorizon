@@ -1,3 +1,4 @@
+import dh_server/deckplan
 import dh_server/glyphs
 import dh_server/hull
 import dh_server/loadout
@@ -5,6 +6,7 @@ import dh_server/module
 import dh_server/part
 import gleam/dict
 import gleam/list
+import gleam/option
 
 /// One deck, no stairs, no mezzanine. Every deck-linking rule we have was
 /// written against a three-deck ship; she is the first hull that has none.
@@ -133,8 +135,20 @@ pub fn the_fore_bunk_fits_beside_two_engines_but_not_three_test() {
       #("engine_port", "rijay.engine.wren_90b"),
       #("engine_stbd", "rijay.engine.wren_90b"),
     ])
-  let assert Ok(_) =
+  let assert Ok(fit) =
     loadout.resolve(glyphs.default(), h, modules, parts, liveaboard)
+  // The positive half of the corridor guarantee: with the fore bunk actually
+  // fitted, (2,2) must come out of the bake as plain hull floor, in no slot,
+  // with open north and south edges. If `stamp` is ever refactored to fold
+  // over a patch's full tile extent and skip only a void tile's centre
+  // character, a fore module could still wall this tile off and seal the
+  // helm from the hold — and every other test here would stay green.
+  let assert Ok(corridor_deck) = deckplan.deck_at(fit.class.plan, 0)
+  let assert Ok(corridor) = deckplan.cell_at_xy(corridor_deck, 2, 2)
+  assert corridor.tile == deckplan.Floor
+  assert corridor.slot == option.None
+  assert !deckplan.edge_blocks(corridor_deck, 2, 2, deckplan.N)
+  assert !deckplan.edge_blocks(corridor_deck, 2, 2, deckplan.S)
   // Three engines: 2 + 1 + 1 + 9 = 13 of 12. Refused.
   let greedy =
     loadout.Loadout(..liveaboard, parts: [
@@ -158,9 +172,9 @@ pub fn a_fore_module_may_not_pave_the_corridor_test() {
   let assert Ok(h) = hull.load("shipclasses/sparrow.json")
   let assert Ok(modules) = module.load_all("modules")
   let assert Ok(parts) = part.load_all("parts")
-  // Identical to the shipped bunk except for ONE character: the centre glyph
-  // of the middle tile is a floor space rather than void, so the stamp claims
-  // a tile the hull never offered.
+  // Differs from the shipped bunk only in the middle tile's centre glyph: a
+  // floor space rather than void. That one character is the one `is_void`
+  // reads, so the stamp claims a tile the hull never offered.
   let assert Ok(trespasser) =
     module.decode(
       "{ \"schema\": 1, \"id\": \"test.fore.greedy\", \"hull\": \"sparrow\",
