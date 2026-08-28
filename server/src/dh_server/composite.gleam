@@ -34,7 +34,7 @@ pub const tube_length = 4
 
 /// A docking port on a concourse: the walkable stub tile a ship moors onto
 /// (`x`, `y`, composite frame, deck 0) and the port's outward normal
-/// `orientation` in world DEGREES (y-up, 0 = +x/east). Derived from a `Q`
+/// `orientation` in world DEGREES (y-up, 0 = +x/east). Derived from a `q`
 /// glyph in the concourse (issue #31): its tile is the berth, and the edge
 /// whose door faces void gives the orientation. The interior stitch (`build`)
 /// reads only x/y; `orientation` drives the moored space-side pose. The moored

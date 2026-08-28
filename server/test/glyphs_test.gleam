@@ -23,11 +23,11 @@ pub fn center_floor_and_void_test() {
 
 pub fn center_console_and_dock_test() {
   let reg = glyphs.default()
-  // Consoles are wall (edge) fixtures now; `Q` is the only centre console (dock).
+  // Consoles are wall (edge) fixtures now; `q` is the only centre console (dock).
   assert glyphs.center(reg, "b").console == None
   assert glyphs.edge_console_kind(reg, "b") == Ok("broker")
-  assert glyphs.center(reg, "Q").console == Some("dock")
-  assert glyphs.center(reg, "Q").dock == True
+  assert glyphs.center(reg, "q").console == Some("dock")
+  assert glyphs.center(reg, "q").dock == True
   assert glyphs.center(reg, "s").spawn == True
   assert glyphs.center(reg, "s").console == None
 }
@@ -55,11 +55,11 @@ pub fn unknown_edge_is_fixture_test() {
 
 pub fn console_kind_and_glyph_roundtrip_test() {
   let reg = glyphs.default()
-  // `Q` (dock) is the only centre console; helm/cargo/broker are wall fixtures.
-  assert glyphs.console_kind(reg, "Q") == Ok("dock")
+  // `q` (dock) is the only centre console; helm/cargo/broker are wall fixtures.
+  assert glyphs.console_kind(reg, "q") == Ok("dock")
   assert glyphs.console_kind(reg, "h") == Error(Nil)
   assert glyphs.console_kind(reg, " ") == Error(Nil)
-  assert glyphs.console_glyph(reg, "dock") == "Q"
+  assert glyphs.console_glyph(reg, "dock") == "q"
   assert glyphs.console_glyph(reg, "helm") == ""
   assert glyphs.console_glyph(reg, "nope") == ""
 }
@@ -81,6 +81,15 @@ pub fn is_decor_test() {
   assert glyphs.is_decor(reg, " ") == False
   assert glyphs.is_decor(reg, "x") == False
   assert glyphs.is_decor(reg, "h") == False
-  assert glyphs.is_decor(reg, "Q") == False
+  assert glyphs.is_decor(reg, "q") == False
   assert glyphs.is_decor(reg, "s") == False
+}
+
+/// The dock port is lowercase like every other glyph that says what a tile
+/// IS. Uppercase is reserved wholesale for slot membership — see
+/// `docs/deckplan-format.md`. `Q` was the one exception and it is gone.
+pub fn the_dock_port_glyph_is_lowercase_test() {
+  let reg = glyphs.default()
+  assert glyphs.center(reg, "q").dock == True
+  assert glyphs.center(reg, "Q").dock != True
 }

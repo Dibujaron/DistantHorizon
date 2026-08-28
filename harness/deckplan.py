@@ -1,6 +1,6 @@
 """Client-side deck-plan v3 walkability, mirroring server is_walkable
 (server/src/dh_server/deckplan.gleam). A tile is walkable iff its center
-glyph (grid[3*ty+1][3*tx+1]) is not '.'. Only '.' is void; ' ', 'x', 'Q'
+glyph (grid[3*ty+1][3*tx+1]) is not '.'. Only '.' is void; ' ', 'x', 'q'
 and decor letters are all walkable floor."""
 from __future__ import annotations
 import math

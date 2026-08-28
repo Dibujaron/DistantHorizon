@@ -78,7 +78,7 @@ pub type Station {
     /// handling path; container hulls can only trade where this is True).
     crane: Bool,
     /// Resolved from the station class: walkable concourse interior; None means
-    /// crews cannot go ashore. Its `Q` glyphs are the station's berths
+    /// crews cannot go ashore. Its `q` glyphs are the station's berths
     /// (`station_berths`, issue #31).
     concourse: Option(deckplan.DeckPlan),
     /// Per-instance trade terms (stays in the world doc, not the class).
@@ -216,7 +216,7 @@ pub fn get_station(world: World, station_id: String) -> Result(Station, Nil) {
   list.find(world.stations, fn(s) { s.id == station_id })
 }
 
-/// A station's berths, derived from the `Q` docking-port glyphs in its
+/// A station's berths, derived from the `q` docking-port glyphs in its
 /// concourse (issue #31): one berth per port, its tile the glyph's position and
 /// its `orientation` the world-degree direction of the edge whose door faces
 /// void. Empty if the station has no concourse or no ports. This is the single
@@ -530,7 +530,7 @@ fn market_entry_decoder() -> decode.Decoder(MarketEntry) {
 /// Decode one world station instance: per-instance placement/economy plus a
 /// `class` reference resolved against `classes` (issue #30). The resolved
 /// station carries the class's `dock_radius`/`crane`/`concourse`; berths are
-/// derived from the concourse's `Q` glyphs at use (`station_berths`). An
+/// derived from the concourse's `q` glyphs at use (`station_berths`). An
 /// unknown class id fails the decode.
 fn station_decoder(
   classes: Dict(String, StationClass),

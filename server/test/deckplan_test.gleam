@@ -387,11 +387,11 @@ pub fn from_rows_derives_markers_like_the_decoder_test() {
   // A one-deck plan: tile(0,0) is void, tile(0,1) is a docking port.
   // Grid: 1 tile wide (3 chars), 2 tiles tall (6 rows).
   // Tile (0,0) center at row 1, col 1; Tile (0,1) center at row 4, col 1.
-  let rows = ["   ", " . ", "   ", "   ", " Q ", "   "]
+  let rows = ["   ", " . ", "   ", "   ", " q ", "   "]
   let assert Ok(plan) = deckplan.from_rows(glyphs.default(), [#("Main", rows)])
   // Should derive one deck from parsing.
   assert list.length(plan.decks) == 1
-  // Should derive one dock console from the "Q" glyph at (0,1).
+  // Should derive one dock console from the "q" glyph at (0,1).
   assert list.length(plan.consoles) == 1
   let assert Ok(Console(_, kind, _, x, y)) = list.first(plan.consoles)
   assert kind == "dock"

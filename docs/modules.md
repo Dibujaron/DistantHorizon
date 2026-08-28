@@ -141,7 +141,7 @@ line carefully: it binds the Mockingbird's **hull-owned perimeters** only, not e
 on her. She was carved out of an existing map she must keep reproducing tile for tile, and
 blanking a *corridor's* slot-facing wall would change that hull tile's own authored edge —
 so her cockpit passage, the aft corridor and junction, both stairwells, the Mezzanine and
-its `Q` ports, and the hull skin keep their walls permanently. A divider that sits
+its `q` ports, and the hull skin keep their walls permanently. A divider that sits
 **between two slot tiles**, by contrast, is already slot-owned on both sides, so redrawing
 it into the module changes nothing the reproduction check watches — the iteration 2a
 re-carve moved every such divider (a cabin's own walls and door, a bulkhead between two

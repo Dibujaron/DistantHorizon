@@ -8,7 +8,7 @@ const rows = [
   "#       #",
   "#########",
   "#########",
-  "=Q     p#",
+  "=q     p#",
   "#########",
 ]
 
@@ -83,7 +83,7 @@ pub fn capacity_derives_from_pallet_tiles_on_decode_test() {
     "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\",
        \"decks\": [ { \"name\": \"Main\", \"grid\": [
          \"#h#######\", \"#   p  p#\", \"#########\",
-         \"#########\", \"=Q     p#\", \"#########\" ] } ],
+         \"#########\", \"=q     p#\", \"#########\" ] } ],
        \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" },
        \"flight\": { \"accel\": 40.0, \"turn_rate\": 180.0 } }"
   let assert Ok(c) = shipclass.decode(doc)
@@ -96,7 +96,7 @@ pub fn capacity_falls_back_to_authored_value_when_no_pallets_are_drawn_test() {
     "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\",
        \"decks\": [ { \"name\": \"Main\", \"grid\": [
          \"#h#######\", \"#       #\", \"#########\",
-         \"#########\", \"=Q      #\", \"#########\" ] } ],
+         \"#########\", \"=q      #\", \"#########\" ] } ],
        \"cargo\": { \"capacity\": 10, \"handling\": \"breakbulk\" },
        \"flight\": { \"accel\": 40.0, \"turn_rate\": 180.0 } }"
   let assert Ok(c) = shipclass.decode(doc)

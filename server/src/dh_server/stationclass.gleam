@@ -6,8 +6,8 @@
 //// `server/stationclasses/`, loaded at startup and keyed by id.
 ////
 //// Berths are NOT authored here as a list: they derive from the concourse's
-//// `Q` docking-port glyphs (issue #31), so the concourse is the single source
-//// of docking geometry — a `Q` in the grid IS a berth.
+//// `q` docking-port glyphs (issue #31), so the concourse is the single source
+//// of docking geometry — a `q` in the grid IS a berth.
 
 import dh_server/deckplan.{type DeckPlan}
 import dh_server/glyphs.{type Registry}

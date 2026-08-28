@@ -4,7 +4,7 @@
     { "glyph": " ", "id": "floor", "tile": "floor", "description": "Open floor — walkable." },
     { "glyph": ".", "id": "void", "tile": "void", "description": "Outside the hull; not a tile, never walkable." },
     { "glyph": "x", "id": "stairs", "tile": "stairs", "sprite": "stairs", "color": 8, "description": "Stair/ladder; connects to the vertically-aligned tile on an adjacent deck." },
-    { "glyph": "Q", "id": "docking_port", "tile": "floor", "console": "dock", "dock": true, "sprite": "picto_airlock", "description": "Docking port / airlock (walkable floor); a mooring/boarding tile. Its outward normal is the edge whose door (=) faces void." },
+    { "glyph": "q", "id": "docking_port", "tile": "floor", "console": "dock", "dock": true, "sprite": "picto_airlock", "description": "Docking port / airlock (walkable floor); a mooring/boarding tile. Its outward normal is the edge whose door (=) faces void." },
     { "glyph": "s", "id": "spawn", "tile": "floor", "spawn": true, "description": "Spawn / arrival tile (walkable floor); where crew appear ashore." },
     { "glyph": "r", "id": "rug", "tile": "floor", "sprite": "rug", "color": 14, "description": "Decorative rug (walkable floor); honours the NE-corner colour code." },
     { "glyph": "e", "id": "seat", "tile": "floor", "sprite": "seat", "color": 12, "description": "Seat / chair (walkable floor); honours the NE-corner colour code." },

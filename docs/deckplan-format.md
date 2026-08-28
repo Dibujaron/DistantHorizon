@@ -54,7 +54,7 @@ registry is the list.
 
 - **Center glyphs** (what a tile *is*) carry a `tile` kind — `floor` (walkable),
   `void` (outside the hull; not a tile), or `stairs` (walkable; connects decks)
-  — plus optional flags: a `dock` port (`Q`) or a `spawn` tile (`s`), both
+  — plus optional flags: a `dock` port (`q`) or a `spawn` tile (`s`), both
   `floor`-kind. Consoles are **not** center glyphs any more: the pass-2 decor
   migration moved `h`/`c`/`b` (helm/cargo/broker) off the center and onto walls
   (see "Edge glyphs" below). A letter's meaning still depends on where it
@@ -179,7 +179,7 @@ tiles on a slot's **hull-owned perimeter** — where the neighbouring tile is
 fixed structure, not another slot. The Mockingbird was carved out of an existing
 map and keeps those perimeter walls permanently: her cockpit passage, the
 corridor and junction that thread her aft rooms, both stairwells, the whole
-Mezzanine with its `Q` ports, and the hull skin. That is a known, accepted cost
+Mezzanine with its `q` ports, and the hull skin. That is a known, accepted cost
 on the corridor-facing side; hulls authored from scratch should follow the
 rules above throughout.
 
@@ -209,22 +209,22 @@ list explicitly (`s3:helm`) — the composite needs ids that glyphs can't expres
 they're derived from the glyphs. Hand-authored docs omit them. There is no
 `rooms` list.
 
-### Docking ports and berths (`Q`)
+### Docking ports and berths (`q`)
 
-A **docking port** (`Q`) is a full tile that moors to a station or another hull.
+A **docking port** (`q`) is a full tile that moors to a station or another hull.
 It must have **at least one door (`=`) on an edge that faces void** — the *outer*
-door the gangway connects through (a `Q` with no void-facing door is an authoring
+door the gangway connects through (a `q` with no void-facing door is an authoring
 error, rejected at load). Other doors/shape are free (an L-bend, three doors,
 whatever). That void-facing edge is the port's **outward normal**.
 
-The same `Q` rule is the single source of docking geometry for both ships and
+The same `q` rule is the single source of docking geometry for both ships and
 stations (issue #31):
 
 - A **ship's** mooring/spawn tile is the docking port whose outer door faces
   void on the **port (west)** side (the side that meets the gangway under side-on
   mooring).
-- A **station's berths** are its concourse `Q` ports whose door faces void on the
-  **north** side (the mouth opening to the space above the concourse). Each `Q`
+- A **station's berths** are its concourse `q` ports whose door faces void on the
+  **north** side (the mouth opening to the space above the concourse). Each `q`
   is one berth — there is no separate `berths` list. A ship's moored world
   position is the berth tile plus its class's `dock_standoff` (tiles/metres)
   along the outward normal; the standoff is authored **per ship class** because
@@ -335,7 +335,7 @@ A **ship class** (`server/shipclasses/*.json`):
   "name": "Mockingbird",
   "decks": [
     { "name": "Upper",     "grid": [ /* rows of 3×W chars; `h` marks the helm */ ] },
-    { "name": "Mezzanine", "grid": [ /* ... `Q` marks the docking ports ... */ ] },
+    { "name": "Mezzanine", "grid": [ /* ... `q` marks the docking ports ... */ ] },
     { "name": "Lower",     "grid": [ /* ... `c` marks the cargo console ... */ ] }
   ],
   "cargo":    { "capacity": 40, "handling": "breakbulk" },
@@ -354,14 +354,14 @@ plus `dock_radius` and `crane`, minus the ship-only `cargo`/`dock_*` fields:
   "name": "Highport",
   "dock_radius": 150.0,
   "crane": true,
-  "decks": [ { "name": "Concourse", "grid": [ /* `b` brokers, `s` spawn, `Q` berths */ ] } ]
+  "decks": [ { "name": "Concourse", "grid": [ /* `b` brokers, `s` spawn, `q` berths */ ] } ]
 }
 ```
 
 A world (`server/worlds/*.json`) references a station class by id and carries
 only per-instance data (`id`, `name`, `class`, `parent`, `orbit`, `market`);
 the class supplies the concourse/`dock_radius`/`crane`, and berths derive from
-its `Q` glyphs (issue #30/#31).
+its `q` glyphs (issue #30/#31).
 
 No `rooms`, `consoles`, or `spawn` lists — those are read from the grid glyphs.
 (`cargo` is the hold's capacity/handling block, not the cargo console;

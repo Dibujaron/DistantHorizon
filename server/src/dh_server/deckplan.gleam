@@ -380,11 +380,11 @@ pub fn find_console_of_kind(
   list.find(plan.consoles, fn(c) { c.kind == kind })
 }
 
-/// Every docking port (`Q`) on the plan and its outward normal — the edge
+/// Every docking port (`q`) on the plan and its outward normal — the edge
 /// whose door (`=`) faces `Void`. `#(deck, x, y, outward_dir)`, in the
 /// consoles' row-major order. Ships derive their mooring tile from the
 /// west-facing port; stations derive each berth from a north-facing port —
-/// one shared rule so a `Q` in the grid is the single source of docking
+/// one shared rule so a `q` in the grid is the single source of docking
 /// geometry (issue #31).
 ///
 /// A docking port MUST carry at least one door on an edge that faces void
@@ -561,7 +561,7 @@ fn plan_from_entries(
 /// carry them at their top level, station concourses as a nested object.
 ///
 /// Consoles and the spawn/mooring tile are AUTHORED as center glyphs in the
-/// deck grids (`h`/`c`/`b` consoles, `Q` docking ports; `s` a bare spawn tile)
+/// deck grids (`h`/`c`/`b` consoles, `q` docking ports; `s` a bare spawn tile)
 /// and derived at parse time. The wire form (encode) instead carries the
 /// derived, namespaced `consoles` + `spawn` explicitly — the composite needs
 /// namespaced ids that glyphs can't express — so when those fields are present
@@ -597,7 +597,7 @@ pub fn decoder(reg: glyphs.Registry) -> decode.Decoder(DeckPlan) {
 
 /// Derive the console list (auto-generated ids) and the spawn/mooring tile
 /// from the authored center glyphs across every deck. The mooring tile is the
-/// docking port (`Q`) whose outer door faces void on the port (west) side;
+/// docking port (`q`) whose outer door faces void on the port (west) side;
 /// failing that, any `s` spawn tile, or the first docking port.
 fn derive_markers(
   reg: glyphs.Registry,

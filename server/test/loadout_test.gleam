@@ -14,7 +14,7 @@ import gleam/option
 //
 // The corridor carries the two markers every resolved class needs: a helm
 // console (the wall glyph "h" on tile (0,0)'s east side) and a docking port
-// ("Q" at tile (1,0)) whose north door faces void off the top of the grid.
+// ("q" at tile (1,0)) whose north door faces void off the top of the grid.
 const hull_doc = "{
   \"schema\": 3,
   \"id\": \"testhull\",
@@ -27,7 +27,7 @@ const hull_doc = "{
   \"cargo\": { \"capacity\": 7, \"handling\": \"breakbulk\" },
   \"decks\": [ { \"name\": \"Main\", \"grid\": [
     \"####=#\",
-    \"# h Q#\",
+    \"# h q#\",
     \"#### #\",
     \"#### #\",
     \"#    #\",
@@ -50,7 +50,7 @@ const hull_no_helm_doc = "{
   \"cargo\": { \"capacity\": 7, \"handling\": \"breakbulk\" },
   \"decks\": [ { \"name\": \"Main\", \"grid\": [
     \"####=#\",
-    \"#   Q#\",
+    \"#   q#\",
     \"#### #\",
     \"#### #\",
     \"#    #\",
@@ -531,7 +531,7 @@ const hull_two_slots_doc = "{
   \"cargo\": { \"capacity\": 7, \"handling\": \"breakbulk\" },
   \"decks\": [ { \"name\": \"Main\", \"grid\": [
     \"####=#\",
-    \"# h Q#\",
+    \"# h q#\",
     \"#### #\",
     \"#### #\",
     \"#    #\",
