@@ -14,7 +14,7 @@
         "   1  1  1     ",
         "               ",
         " . #       # . ",
-        "               ",
+        "   3     3     ",
         "               ",
         " . #       # . ",
         "   2  2  2     ",
@@ -23,9 +23,6 @@
         "   2  2  2     ",
         "               ",
         " . =Q     Q= . ",
-        "               ",
-        "               ",
-        " . #       # . ",
         "   #########   ",
         "               ",
         " .  .  .  .  . ",
@@ -43,7 +40,8 @@
   ],
   "slots": [
     { "digit": 1, "id": "cockpit", "name": "Cockpit" },
-    { "digit": 2, "id": "bay",     "name": "Pod bay" }
+    { "digit": 2, "id": "bay",     "name": "Pod bay" },
+    { "digit": 3, "id": "fore",    "name": "Fore bay" }
   ],
   "default_loadout": {
     "modules": {

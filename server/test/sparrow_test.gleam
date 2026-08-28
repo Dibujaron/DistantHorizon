@@ -11,7 +11,21 @@ pub fn she_is_a_single_deck_hull_test() {
   let assert Ok(h) = hull.load("shipclasses/sparrow.json")
   assert h.id == "sparrow"
   assert list.length(h.decks) == 1
-  assert list.length(h.slots) == 2
+  assert list.length(h.slots) == 3
+}
+
+/// The fore slot ships EMPTY: `docs/lore.md` is explicit that she has no bed
+/// unless you fit one, so `default_loadout` names only `cockpit` and `bay`.
+/// She already carried the first unfitted MOUNT on any hull (`engine_center`);
+/// this makes her the first with an unfitted SLOT, which nothing else on disk
+/// exercises. The hull's own floor stands where the module would have gone.
+pub fn she_resolves_with_the_fore_slot_empty_test() {
+  let assert Ok(h) = hull.load("shipclasses/sparrow.json")
+  let assert Ok(modules) = module.load_all("modules")
+  let assert Ok(parts) = part.load_all("parts")
+  let lo = loadout.default_for(h)
+  assert list.length(lo.modules) == 2
+  let assert Ok(_) = loadout.resolve(glyphs.default(), h, modules, parts, lo)
 }
 
 /// Two engines shipped of three mounts. `engine_center` is the first unfitted
