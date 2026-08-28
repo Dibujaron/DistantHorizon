@@ -126,6 +126,19 @@ contiguous. Only tiles carrying the digit belong to the slot, and `loadout.check
 refuses any module whose overlay puts a non-void centre glyph on a tile that carries a
 different digit or none at all (`out_of_slot_bounds`).
 
+**A slot tile may never be void.** A refit changes what a room *is* — its
+floor decor, its walls, its console — never where the ship *ends*. A void
+patch cell is passthrough (`stamp` skips it in full), so if a module could
+draw floor over a void slot tile the hull's outline would grow one-way and
+unremovably: nothing could ever un-fit that floor back to void. So a slot
+tile is always floor, fitted or not — an unfitted hull is already her full,
+fixed size. Exterior silhouette (mounts, sprites) is a separate concern for a
+later iteration's exterior layering; slot membership never grows or shrinks a
+hull's interior outline. This is machine-checked at hull load (`hull.decode`'s
+`validate` rejects a hull carrying a void tile that also carries a slot
+marker, naming the offending slot and tile) — both today's SW-corner digit and
+the tile-centre marker it is migrating to name the same rule.
+
 This makes tile exclusion the way to reserve structure that runs *through* a slot. Leave the
 SW corner of a corridor tile blank and no module fitted to the surrounding slot can touch that
 tile — not its floor, and not its walls either, because `stamp` skips a patch tile with a void
