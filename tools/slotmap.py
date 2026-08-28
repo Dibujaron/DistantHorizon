@@ -1,10 +1,11 @@
 """Print a hull's slot map: which parts of a ship a refit can change.
 
-Slot membership lives in each tile's SW corner as a hex digit
-(`docs/deckplan-format.md`, "Slots"), which is unreadable in the raw JSON
-because it is buried in a 3x3 block per tile. This paints that digit into the
-middle of each tile so you can see the regions against the ship's own walls
-and doors.
+Slot membership lives in each tile's CENTRE as an uppercase letter
+(`docs/deckplan-format.md`, "Slots") -- or, while a document is still
+mid-migration, the legacy SW-corner hex digit the letter replaces -- which is
+unreadable in the raw JSON because it is buried in a 3x3 block per tile. This
+paints that marker into the middle of each tile so you can see the regions
+against the ship's own walls and doors.
 
     python tools/slotmap.py server/shipclasses/mockingbird.json
 
@@ -15,7 +16,7 @@ flies, with her default modules stamped in, pass a resolved map:
     python tools/slotmap.py server/shipclasses/mockingbird.json \
         --structure server/test/fixtures/mockingbird_authored.json
 
-Anything that is not a digit is fixed hull no module can touch.
+Anything without a marker is fixed hull no module can touch.
 """
 
 import argparse
@@ -23,6 +24,7 @@ import json
 import sys
 
 VOID = "."
+_LETTERS = "ABCDEFGHIJKLMNOP"
 
 
 def load_decks(path):
@@ -30,26 +32,33 @@ def load_decks(path):
         return json.load(fh)["decks"]
 
 
-def slot_digit(grid, x, y):
-    """The SW-corner hex digit of tile (x, y), or None if it is not in a slot."""
-    ch = grid[3 * y + 2][3 * x]
-    return ch if ch in "0123456789abcdef" else None
+def slot_key(grid, x, y):
+    """Tile (x, y)'s slot-membership key: its centre marker letter if it
+    carries one, else its legacy SW-corner hex digit converted to the same
+    letter, else None if it is not in a slot at all."""
+    centre = grid[3 * y + 1][3 * x + 1]
+    if centre in _LETTERS:
+        return centre
+    sw = grid[3 * y + 2][3 * x]
+    return _LETTERS[int(sw, 16)] if sw in "0123456789abcdef" else None
 
 
 def paint(hull_grid, structure_grid):
-    """Structure's rows with each slotted tile's centre replaced by its digit."""
+    """Structure's rows with each slotted tile's centre replaced by its
+    marker letter."""
     out = [list(row) for row in structure_grid]
     height, width = len(structure_grid) // 3, len(structure_grid[0]) // 3
     for y in range(height):
         for x in range(width):
-            digit = slot_digit(hull_grid, x, y)
-            if digit is None:
+            marker = slot_key(hull_grid, x, y)
+            if marker is None:
                 continue
-            # Always the digit, never the furniture that happens to sit there:
-            # the question this tool answers is "what can a refit change?", and
-            # keeping decor would hide precisely the most furnished slots. The
-            # walls and doors around it still read as rooms.
-            out[3 * y + 1][3 * x + 1] = digit
+            # Always the marker, never the furniture that happens to sit
+            # there: the question this tool answers is "what can a refit
+            # change?", and keeping decor would hide precisely the most
+            # furnished slots. The walls and doors around it still read as
+            # rooms.
+            out[3 * y + 1][3 * x + 1] = marker
     return ["".join(row) for row in out]
 
 
@@ -69,7 +78,10 @@ def main():
 
     with open(args.hull, encoding="utf-8") as fh:
         hull = json.load(fh)
-    slots = {s["digit"]: s for s in hull.get("slots", [])}
+    slots = {
+        s["marker"] if "marker" in s else _LETTERS[s["digit"]]: s
+        for s in hull.get("slots", [])
+    }
     if not slots:
         print(f"{hull['id']}: no slots -- nothing on this hull is modular.")
         return 0
@@ -90,15 +102,14 @@ def main():
         print()
         for y in range(len(hd["grid"]) // 3):
             for x in range(len(hd["grid"][0]) // 3):
-                d = slot_digit(hd["grid"], x, y)
-                if d:
-                    counts[d] = counts.get(d, 0) + 1
+                marker = slot_key(hd["grid"], x, y)
+                if marker:
+                    counts[marker] = counts.get(marker, 0) + 1
 
     print("slots (a refit may rewrite these; everything else is fixed hull):")
-    for digit, slot in sorted(slots.items(), key=lambda kv: str(kv[0])):
-        key = f"{digit:x}" if isinstance(digit, int) else str(digit)
-        print(f"  {key}  {slot['id']:<14} {slot['name']:<22} "
-              f"{counts.get(key, 0):3} tiles")
+    for marker, slot in sorted(slots.items()):
+        print(f"  {marker}  {slot['id']:<14} {slot['name']:<22} "
+              f"{counts.get(marker, 0):3} tiles")
     return 0
 
 
