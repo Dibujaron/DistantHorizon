@@ -7,8 +7,8 @@ Every other harness test walks the synthetic single-slot fixture hull
 a second port -- DH_SHIP_CLASS is fixed for a server's whole lifetime, and
 every other harness test needs the fixture hull's known shape), and drives a
 character the length of her: cockpit, the unmarked corridor between cockpit
-and bay, both pallet rows of the bay, to a dock port one tile short of her
-stern cap.
+and bay, both pallet rows of the bay, to a dock port on her sternmost row,
+hard against her stern cap.
 
 Issue #33's walk driver (walk.py + deckplan.py) was written and proven only
 against the Mockingbird's three decks. The Sparrow is the first *shipped*
@@ -70,9 +70,9 @@ SPARROW_URL = f"ws://127.0.0.1:{SPARROW_PORT}/ws"
 
 
 async def test_walk_sparrow_bow_to_stern(sparrow_server):
-    """Stand from the helm (the bow) and walk to a dock port (the stern,
-    barring the last tile-and-a-bit of aft corridor before the hull cap) via
-    the BFS driver against the real composite plan. The route is only
+    """Stand from the helm (the bow) and walk to a dock port (the stern
+    itself -- her dock row is now her sternmost interior row) via the BFS
+    driver against the real composite plan. The route is only
     findable, and only walkable to completion, if the cockpit's exit door,
     the unmarked corridor tiles, the bay's own fore and aft doors, and the
     dock row's open floor all resolved onto the hull the way the shipped
