@@ -48,7 +48,8 @@ pub fn a_bare_integer_mass_decodes_test() {
 pub fn slot_lookup_test() {
   let assert Ok(h) = hull.decode(doc)
   let assert Ok(slot) = hull.slot_by_id(h, "cockpit")
-  assert slot.digit == 1
+  // digit 1 -> the 1-index-th uppercase letter, "B".
+  assert slot.marker == "B"
   assert hull.slot_by_id(h, "nope") == Error(Nil)
 }
 
@@ -63,6 +64,62 @@ pub fn duplicate_slot_digit_is_rejected_test() {
   let bad =
     "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\", \"mass\": 1.0,
        \"slots\": [ { \"digit\": 1, \"id\": \"a\", \"name\": \"A\" },
+                    { \"digit\": 1, \"id\": \"b\", \"name\": \"B\" } ],
+       \"decks\": [ { \"name\": \"M\", \"grid\": [\"###\", \"# #\", \"###\"] } ],
+       \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" } }"
+  let assert Error(_) = hull.decode(bad)
+}
+
+// ----------------------------------------------------- slot markers (M4) --
+
+pub fn a_slot_authored_with_marker_decodes_directly_test() {
+  let doc =
+    "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\", \"mass\": 1.0,
+       \"slots\": [ { \"marker\": \"D\", \"id\": \"a\", \"name\": \"A\" } ],
+       \"decks\": [ { \"name\": \"M\", \"grid\": [\"###\", \"# #\", \"###\"] } ],
+       \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" } }"
+  let assert Ok(h) = hull.decode(doc)
+  let assert Ok(slot) = hull.slot_by_id(h, "a")
+  assert slot.marker == "D"
+}
+
+pub fn a_slot_authored_with_the_legacy_digit_converts_to_a_marker_test() {
+  // digit 3 -> the 3-index-th uppercase letter, "D" — same value a "marker":
+  // "D" slot would decode to, so both encodings land on one type.
+  let doc =
+    "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\", \"mass\": 1.0,
+       \"slots\": [ { \"digit\": 3, \"id\": \"a\", \"name\": \"A\" } ],
+       \"decks\": [ { \"name\": \"M\", \"grid\": [\"###\", \"# #\", \"###\"] } ],
+       \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" } }"
+  let assert Ok(h) = hull.decode(doc)
+  let assert Ok(slot) = hull.slot_by_id(h, "a")
+  assert slot.marker == "D"
+}
+
+pub fn a_multi_letter_slot_marker_is_rejected_test() {
+  let bad =
+    "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\", \"mass\": 1.0,
+       \"slots\": [ { \"marker\": \"AB\", \"id\": \"a\", \"name\": \"A\" } ],
+       \"decks\": [ { \"name\": \"M\", \"grid\": [\"###\", \"# #\", \"###\"] } ],
+       \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" } }"
+  let assert Error(_) = hull.decode(bad)
+}
+
+pub fn a_lowercase_slot_marker_is_rejected_test() {
+  let bad =
+    "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\", \"mass\": 1.0,
+       \"slots\": [ { \"marker\": \"a\", \"id\": \"a\", \"name\": \"A\" } ],
+       \"decks\": [ { \"name\": \"M\", \"grid\": [\"###\", \"# #\", \"###\"] } ],
+       \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" } }"
+  let assert Error(_) = hull.decode(bad)
+}
+
+/// The two authoring forms are NOT independent namespaces: a hull can't
+/// dodge the uniqueness check by spelling the same slot two ways.
+pub fn a_marker_and_an_equivalent_digit_collide_as_duplicates_test() {
+  let bad =
+    "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\", \"mass\": 1.0,
+       \"slots\": [ { \"marker\": \"B\", \"id\": \"a\", \"name\": \"A\" },
                     { \"digit\": 1, \"id\": \"b\", \"name\": \"B\" } ],
        \"decks\": [ { \"name\": \"M\", \"grid\": [\"###\", \"# #\", \"###\"] } ],
        \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" } }"

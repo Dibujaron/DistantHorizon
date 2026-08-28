@@ -196,15 +196,15 @@ pub fn default_for_is_the_hulls_authored_loadout_test() {
 pub fn stamp_owns_the_ne_color_and_the_hull_owns_the_sw_slot_test() {
   // The two data-carrying corners are asymmetric. The patch writes "4" into
   // its NE corner and leaves its SW corner blank; the hull's bay tile has no
-  // colour digit and carries slot digit "1".
+  // colour digit and carries slot digit "1" (marker "B").
   let m = a_module("m.p", "0.0", "{}", "[\"  4\", \" p \", \"   \"]")
   let assert Ok(fit) = fit_of([m], bay_loadout("m.p"))
   let assert Ok(g) = deckplan.deck_at(fit.class.plan, 0)
   let assert Ok(c) = deckplan.cell_at_xy(g, 0, 1)
   // NE corner is module-owned: a module repaints the bay it is installed in.
   assert c.color == option.Some(4)
-  // SW corner is hull-owned: the tile is still in slot 1 after the stamp.
-  assert c.slot == option.Some(1)
+  // SW corner is hull-owned: the tile is still in slot "B" after the stamp.
+  assert c.slot == option.Some("B")
 }
 
 pub fn derived_capacity_follows_the_stamp_test() {

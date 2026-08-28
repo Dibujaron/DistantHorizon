@@ -1,7 +1,12 @@
 """Client-side deck-plan v3 walkability, mirroring server is_walkable
 (server/src/dh_server/deckplan.gleam). A tile is walkable iff its center
 glyph (grid[3*ty+1][3*tx+1]) is not '.'. Only '.' is void; ' ', 'x', 'q'
-and decor letters are all walkable floor."""
+and decor letters are all walkable floor.
+
+An uppercase A-Z centre glyph is a hull SLOT MARKER (M4, "slot markers in
+the tile centre") — a slot tile is always floor the module drawn there will
+overwrite, so it reads as walkable floor here exactly like a space; no
+special case needed, since only '.' is treated as void."""
 from __future__ import annotations
 import math
 

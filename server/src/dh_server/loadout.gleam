@@ -275,10 +275,10 @@ fn merge_all(
 }
 
 /// Every non-void overlay cell must land on a hull cell carrying one of the
-/// target's claimed slots' digits — the cheap bounds check that stops a
+/// target's claimed slots' markers — the cheap bounds check that stops a
 /// module scribbling on hull structure. Multiple slots widen the set of
-/// digits a cell may carry, never the geometry: claiming a slot does not
-/// license writing anywhere outside the digits that back it. This reads the
+/// markers a cell may carry, never the geometry: claiming a slot does not
+/// license writing anywhere outside the markers that back it. This reads the
 /// AUTHORED hull, never the previously resolved plan, so a refit always
 /// validates against the same fixed structure.
 fn check_bounds(
@@ -294,9 +294,9 @@ fn check_bounds(
     // target whose `slots` names an id off the hull
     // (`target_slot_not_on_hull`), so by the time `fitted` reaches here every
     // lookup below is guaranteed to hit — this can never actually drop an id.
-    let digits =
+    let markers =
       list.filter_map(target.slots, fn(id) {
-        hull.slot_by_id(h, id) |> result.map(fn(s) { s.digit })
+        hull.slot_by_id(h, id) |> result.map(fn(s) { s.marker })
       })
     list.try_fold(target.patches, Nil, fn(_, p) {
       case deckplan.deck_at(base, p.deck) {
@@ -308,8 +308,8 @@ fn check_bounds(
               Error(Nil) -> Error("out_of_slot_bounds:" <> m.id)
               Ok(cell) ->
                 case cell.slot {
-                  Some(digit) ->
-                    case list.contains(digits, digit) {
+                  Some(marker) ->
+                    case list.contains(markers, marker) {
                       True -> Ok(Nil)
                       False -> Error("out_of_slot_bounds:" <> m.id)
                     }

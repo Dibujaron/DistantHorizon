@@ -202,17 +202,17 @@ fn stock_plan() -> DeckPlan {
 }
 
 /// A walker gets from the Lower corridor to every tile of the hold without
-/// ever changing deck. The hold's extent is read off the slot digits rather
+/// ever changing deck. The hold's extent is read off the slot markers rather
 /// than hardcoded, so this keeps meaning what it says if the hold is ever
 /// re-drawn.
 pub fn her_lower_corridor_reaches_the_hold_on_one_deck_test() {
   let assert Ok(h) = hull.load("shipclasses/goldfinch.json")
   let assert Ok(hold) = hull.slot_by_id(h, "hold")
   let assert Ok(lower) = deckplan.deck_at(stock_plan(), 2)
-  let hold_tiles = tiles_of_slot(lower, hold.digit)
+  let hold_tiles = tiles_of_slot(lower, hold.marker)
   assert hold_tiles != []
   // (2,3) is the forward corridor abeam the first pair of cabins: fixed
-  // hull, no slot digit, and as far forward of the hold as the deck goes.
+  // hull, no slot marker, and as far forward of the hold as the deck goes.
   let reached = walk_one_deck(lower, [#(2, 3)], [])
   let unreachable =
     list.filter(hold_tiles, fn(t) { !list.contains(reached, t) })
@@ -360,14 +360,14 @@ fn non_stairs_walkable_tiles(grid: DeckGrid) -> List(#(Int, Int)) {
   })
 }
 
-/// Every tile of `grid` carrying slot `digit`, in row/column order.
-fn tiles_of_slot(grid: DeckGrid, digit: Int) -> List(#(Int, Int)) {
+/// Every tile of `grid` carrying slot `marker`, in row/column order.
+fn tiles_of_slot(grid: DeckGrid, marker: String) -> List(#(Int, Int)) {
   list.index_map(grid.cells, fn(row, y) {
     list.index_map(row, fn(cell, x) { #(cell.slot, x, y) })
   })
   |> list.flatten
   |> list.filter_map(fn(c) {
-    case c.0 == Some(digit) {
+    case c.0 == Some(marker) {
       True -> Ok(#(c.1, c.2))
       False -> Error(Nil)
     }

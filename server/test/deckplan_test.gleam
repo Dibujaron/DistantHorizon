@@ -351,21 +351,43 @@ pub fn derive_edge_console_test() {
   assert deckplan.find_console(plan, "helm") == Ok(c)
 }
 
-// ------------------------------------------------------ slot digits (M4) --
+// ----------------------------------------------------- slot markers (M4) --
+
+/// A slot marker is an uppercase letter in the tile CENTRE. It reads as
+/// plain floor, because a slot tile is always floor the module will draw on.
+pub fn an_uppercase_centre_is_floor_and_records_its_slot_test() {
+  let reg = glyphs.default()
+  let assert Ok(g) = deckplan.parse_deck_with(reg, "t", ["###", "#B#", "###"])
+  let assert Ok(cell) = deckplan.cell_at_xy(g, 0, 0)
+  assert cell.tile == deckplan.Floor
+  assert cell.slot == option.Some("B")
+  assert cell.decor == option.None
+}
+
+/// The old SW-corner hex digit still parses while documents are migrating.
+pub fn an_sw_hex_digit_still_records_its_slot_test() {
+  let reg = glyphs.default()
+  let assert Ok(g) = deckplan.parse_deck_with(reg, "t", ["###", "# #", "2##"])
+  let assert Ok(cell) = deckplan.cell_at_xy(g, 0, 0)
+  assert cell.slot == option.Some("C")
+}
 
 pub fn sw_corner_marks_slot_test() {
-  // Two tiles: the left one in slot 1 (SW = "1"), the right one unmarked.
+  // Two tiles: the left one in slot 1 (SW = "1" -> marker "B"), the right
+  // one unmarked.
   let assert Ok(g) = deckplan.parse_deck("t", ["######", "#    #", "1##  #"])
   let assert Ok(a) = deckplan.cell_at_xy(g, 0, 0)
   let assert Ok(b) = deckplan.cell_at_xy(g, 1, 0)
-  assert a.slot == option.Some(1)
+  assert a.slot == option.Some("B")
   assert b.slot == option.None
 }
 
 pub fn sw_corner_accepts_high_hex_digits_test() {
+  // "f" (15) is the last hex digit, so it maps to the last of 16 possible
+  // legacy slot markers, "P".
   let assert Ok(g) = deckplan.parse_deck("t", ["###", "# #", "f##"])
   let assert Ok(c) = deckplan.cell_at_xy(g, 0, 0)
-  assert c.slot == option.Some(15)
+  assert c.slot == option.Some("P")
 }
 
 pub fn non_hex_sw_corner_is_no_slot_test() {
@@ -376,6 +398,15 @@ pub fn non_hex_sw_corner_is_no_slot_test() {
 
 pub fn slot_digit_round_trips_through_rows_test() {
   let rows = ["###", "# #", "3##"]
+  let assert Ok(g) = deckplan.parse_deck("t", rows)
+  let assert Ok(g2) = deckplan.parse_deck("t", deckplan.deck_to_rows(g))
+  assert deckplan.cell_at_xy(g, 0, 0) == deckplan.cell_at_xy(g2, 0, 0)
+}
+
+pub fn slot_marker_round_trips_through_rows_test() {
+  // An already-converted (centre-marker) tile round-trips too, and its SW
+  // corner re-serialises as plain wall junction rather than a stale digit.
+  let rows = ["###", "#B#", "###"]
   let assert Ok(g) = deckplan.parse_deck("t", rows)
   let assert Ok(g2) = deckplan.parse_deck("t", deckplan.deck_to_rows(g))
   assert deckplan.cell_at_xy(g, 0, 0) == deckplan.cell_at_xy(g2, 0, 0)
