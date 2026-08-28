@@ -1,17 +1,20 @@
 """Print a hull's slot map: which parts of a ship a refit can change.
 
 Slot membership lives in each tile's CENTRE as an uppercase letter
-(`docs/deckplan-format.md`, "Slots") -- or, while a document is still
-mid-migration, the legacy SW-corner hex digit the letter replaces -- which is
-unreadable in the raw JSON because it is buried in a 3x3 block per tile. This
-paints that marker into the middle of each tile so you can see the regions
-against the ship's own walls and doors.
+(`docs/deckplan-format.md`, "Slots"). On a BARE hull that already makes the
+raw JSON legible on its own -- the marker sits right there in the middle of
+each tile's 3x3 block -- so running this tool with no `--structure` is close
+to an identity render of the hull's own grid; it earns its keep mainly for
+the per-slot tile-count summary and, more importantly, for `--structure`.
 
     python tools/slotmap.py server/shipclasses/mockingbird.json
 
-By default the walls shown are the HULL's own — so slot regions read as empty
-floor, which is what an unfitted ship actually is. To see the ship as she
-flies, with her default modules stamped in, pass a resolved map:
+A RESOLVED map is a different story: once a module is stamped in, its own
+glyphs (furniture, consoles, the module's own centre character) overwrite
+the slot marker at every tile it touches, so the marker is gone from the
+fitted ship's own grid even though the tile still belongs to that slot. This
+tool re-paints the hull's markers onto the resolved geometry so you can see
+where slot regions actually landed once the ship is flying:
 
     python tools/slotmap.py server/shipclasses/mockingbird.json \
         --structure server/test/fixtures/mockingbird_authored.json
@@ -24,7 +27,6 @@ import json
 import sys
 
 VOID = "."
-_LETTERS = "ABCDEFGHIJKLMNOP"
 
 
 def load_decks(path):
@@ -33,14 +35,10 @@ def load_decks(path):
 
 
 def slot_key(grid, x, y):
-    """Tile (x, y)'s slot-membership key: its centre marker letter if it
-    carries one, else its legacy SW-corner hex digit converted to the same
-    letter, else None if it is not in a slot at all."""
+    """Tile (x, y)'s slot-membership key: its centre marker letter, or None
+    if it is not in a slot at all."""
     centre = grid[3 * y + 1][3 * x + 1]
-    if centre in _LETTERS:
-        return centre
-    sw = grid[3 * y + 2][3 * x]
-    return _LETTERS[int(sw, 16)] if sw in "0123456789abcdef" else None
+    return centre if centre.isalpha() and centre.isupper() else None
 
 
 def paint(hull_grid, structure_grid):
@@ -78,10 +76,7 @@ def main():
 
     with open(args.hull, encoding="utf-8") as fh:
         hull = json.load(fh)
-    slots = {
-        s["marker"] if "marker" in s else _LETTERS[s["digit"]]: s
-        for s in hull.get("slots", [])
-    }
+    slots = {s["marker"]: s for s in hull.get("slots", [])}
     if not slots:
         print(f"{hull['id']}: no slots -- nothing on this hull is modular.")
         return 0

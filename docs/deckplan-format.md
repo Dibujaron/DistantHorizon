@@ -26,10 +26,11 @@ SW  S  SE      (2,0)=SW  (2,1)=S   (2,2)=SE
 
 The parser reads **five positions**: the center, and the four edge-mids
 (N/E/S/W). The four corners carry no collision data (you never walk through a
-corner) and never change walkability — but the **NE and SW corners** carry
-further facts (see "Colour" and "Slots" below). NW/SE remain purely cosmetic —
-draw `#` there for a tidy-looking hull, but they carry no data. Nothing is ever a
-syntax error; a blank simply means "no wall here."
+corner) and never change walkability — but the **NE corner** carries a further
+fact (see "Colour" below), and the **center** carries a second fact beyond
+tile kind: slot membership (see "Slots" below). NW/SE/SW remain purely
+cosmetic — draw `#` there for a tidy-looking hull, but they carry no data.
+Nothing is ever a syntax error; a blank simply means "no wall here."
 
 Each tile owns **all four of its own walls**. A partition between two rooms is
 therefore a *double* wall — which is exactly what lets you decorate one room's
@@ -89,11 +90,13 @@ registry is the list.
   wall bunk, so bunks stack in a legible way; nothing currently checks this.
   Any edge char not in the registry parses as a generic fixture, so nothing
   is ever a syntax error.
-- **Corners**: NW/SE are cosmetic — use `#` for a clean hull outline; the
+- **Corners**: NW/SE/SW are cosmetic — use `#` for a clean hull outline; the
   renderer auto-joins wall corners, so a blank corner between two walls still
-  renders closed. **NE and SW are not cosmetic**: NE is the tile's colour digit
-  (see "Colour" below) and SW is its slot digit (see "Slots" below). Corners
-  never carry collision data and decor never changes walkability.
+  renders closed. **NE is not cosmetic**: it's the tile's colour digit (see
+  "Colour" below). Corners never carry collision data and decor never changes
+  walkability. (An uppercase letter in the SW corner, specifically, isn't a
+  syntax error either — it's just ignored, like any other corner character;
+  slot membership rides the CENTRE now, see "Slots" below.)
 
 ### Colour
 
@@ -110,21 +113,34 @@ affects walkability or collision.
 
 ### Slots
 
-A tile's **SW corner** carries a hex digit `0`–`f` naming the hull **slot** the
-tile belongs to — the modulable regions a refit may overwrite (`docs/modules.md`).
-A blank, `#`, or any other non-hex character means "fixed hull structure": no
-module may touch that tile.  To read a hull's slots at a glance rather than
-hunting SW corners in the raw JSON, run `python tools/slotmap.py <hull.json>`,
-which paints each slot's digit into its tiles (add `--structure <resolved.json>`
-to draw the walls of a fitted ship rather than the bare hull's). The hull's `slots` table maps each digit to a slot
-id and human name. Slot regions are exactly as fluid as the hull author draws
-them — following a taper, non-rectangular, whatever — and there is no rectangle
+**Lowercase says what a tile IS; uppercase says which slot it BELONGS TO.**
+A tile's **CENTRE** carries the tile's kind — space/`.`/`x`, or a lowercase
+decor glyph — or, if the hull author instead writes an **uppercase letter**
+`A`–`Z` there, that letter names the hull **slot** the tile belongs to — the
+modulable regions a refit may overwrite (`docs/modules.md`). A slot-marked
+centre always reads as floor: a slot tile is always floor the module will
+draw on, regardless of what glyph the letter would otherwise register as (it
+never will — the registry never assigns a meaning to `A`–`Z`). Anything
+without a marker — blank, `.`, `x`, or a lowercase decor glyph — is "fixed
+hull structure": no module may touch that tile. This is a **single**
+encoding: a hex digit that happens to land in the SW corner is just an
+ordinary, ignored corner character now (see "Corners" above) — it names
+nothing.
+
+To read a hull's slots at a glance rather than hunting markers in the raw
+JSON (though on a bare hull the marker is now sitting right there in the
+tile's own centre), run `python tools/slotmap.py <hull.json>` (add
+`--structure <resolved.json>` to draw the walls of a fitted ship, where the
+module's own centre glyph has overwritten the marker, rather than the bare
+hull's). The hull's `slots` table maps each marker to a slot id and human
+name. Slot regions are exactly as fluid as the hull author draws them —
+following a taper, non-rectangular, whatever — and there is no rectangle
 list anywhere.
 
 A slot is an arbitrary SET of tiles, never required to be a rectangle or even to be
-contiguous. Only tiles carrying the digit belong to the slot, and `loadout.check_bounds`
+contiguous. Only tiles carrying the marker belong to the slot, and `loadout.check_bounds`
 refuses any module whose overlay puts a non-void centre glyph on a tile that carries a
-different digit or none at all (`out_of_slot_bounds`).
+different marker or none at all (`out_of_slot_bounds`).
 
 **A slot tile may never be void.** A refit changes what a room *is* — its
 floor decor, its walls, its console — never where the ship *ends*. A void
@@ -134,21 +150,23 @@ unremovably: nothing could ever un-fit that floor back to void. So a slot
 tile is always floor, fitted or not — an unfitted hull is already her full,
 fixed size. Exterior silhouette (mounts, sprites) is a separate concern for a
 later iteration's exterior layering; slot membership never grows or shrinks a
-hull's interior outline. This is machine-checked at hull load (`hull.decode`'s
-`validate` rejects a hull carrying a void tile that also carries a slot
-marker, naming the offending slot and tile) — both today's SW-corner digit and
-the tile-centre marker it is migrating to name the same rule.
+hull's interior outline. In practice this is now true **by construction** —
+a centre marker always parses as floor, never void, so the two facts can't
+even be written on the same tile — but `hull.decode`'s `validate` still
+rejects the combination too (naming the offending slot and tile), as a
+belt-and-suspenders invariant guard.
 
 This makes tile exclusion the way to reserve structure that runs *through* a slot. Leave the
-SW corner of a corridor tile blank and no module fitted to the surrounding slot can touch that
-tile — not its floor, and not its walls either, because `stamp` skips a patch tile with a void
-centre glyph in full, all nine characters. The Sparrow's fore bay is the shipped example: two
-flanking tiles carry digit `3`, the tile between them carries nothing, and that corridor tile's
-own floor and walls survive every possible refit rather than depending on each module author
-remembering to leave a gap. Its endpoints are still module-owned and unchecked, though — a
-future cockpit or bay module could seal the facing edge and leave the corridor tile intact but
-unreachable. Prefer this to a convention whenever a route must survive refit — nothing in the
-validator does reachability analysis, so unbuildable beats discouraged.
+centre of a corridor tile blank (plain floor, no marker) and no module fitted to the
+surrounding slot can touch that tile — not its floor, and not its walls either, because
+`stamp` skips a patch tile with a void centre glyph in full, all nine characters. The
+Sparrow's fore bay is the shipped example: two flanking tiles carry marker `D`, the tile
+between them carries nothing, and that corridor tile's own floor and walls survive every
+possible refit rather than depending on each module author remembering to leave a gap. Its
+endpoints are still module-owned and unchecked, though — a future cockpit or bay module
+could seal the facing edge and leave the corridor tile intact but unreachable. Prefer this
+to a convention whenever a route must survive refit — nothing in the validator does
+reachability analysis, so unbuildable beats discouraged.
 
 A module rewrites its slot completely — including *both* halves of any wall
 between two slot tiles, since both tiles are its own. The only edges it shares
@@ -180,9 +198,14 @@ The authoring rules that follow:
   where a door must exist no matter what is fitted.
 - **Never author a wall fixture or a console on a hull tile facing a slot.**
   A fixture is a wall to the OR, so it seals the edge and no module can open it.
-- **A stamp never overwrites the SW corner.** Slot regions are hull-owned, so
-  the resolved plan still carries them and a second refit finds the same
-  region.
+- **Slot membership is read off the AUTHORED hull document, never a resolved
+  plan.** `loadout.stamp` overwrites a tile's centre with the module's own
+  glyph, so a fitted tile's slot marker is gone from the resolved map even
+  though the hull still owns that region — `loadout.check_bounds` reads the
+  hull's `slots`/grid, not the stamped output. (`loadout.stamp` also leaves
+  the hull's own SW corner character untouched on every tile it patches — a
+  holdover from the legacy SW-digit encoding, now vestigial: the SW corner
+  carries no data of its own to protect any more, per "Slots" above.)
 
 **This cannot be retrofitted** to a hull carved out of an existing map that must
 keep reproducing that map exactly: blanking a slot-facing wall is collision- and

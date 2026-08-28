@@ -103,7 +103,7 @@ A hull declares two kinds of attach point:
   room absorbs the slot next door (no shipped document needs this yet). Constraint:
   **at most one module per slot** (claiming a slot twice, including a multi-slot
   target's own other slots, is `duplicate_slot:<id>`), and every non-void cell of an
-  overlay must land on a hull tile carrying its target slot's digit (a cheap bounds
+  overlay must land on a hull tile carrying its target slot's marker (a cheap bounds
   check, so a module can't scribble on hull structure). Naming a module for a hull it
   has no target on, or a slot it has no target for, is refused with
   `module_not_drawn_for_slot`.
@@ -121,16 +121,19 @@ not arbitrary limitations.
 
 ### Slot marking
 
-Slot membership rides in the tile's **SW corner** character — a hex digit `0`–`f`
-selecting the slot id, mirroring how the **NE corner** already carries the colour digit
-(`docs/deckplan-format.md`, "Colour"). A non-hex SW corner means "not in a slot" (fixed
-hull structure). Slot regions are therefore exactly as fluid as the hull author draws
-them — following the taper, non-rectangular, whatever — with no rectangle lists. The hull
-JSON adds a `slots` table mapping each digit to a slot id and a human name.
+**Lowercase says what a tile IS; uppercase says which slot it BELONGS TO.** Slot
+membership rides in the tile's **CENTRE** character — an uppercase letter `A`–`Z`
+selecting the slot id — distinct from the **NE corner**, which carries the colour digit
+(`docs/deckplan-format.md`, "Colour") and is untouched by any of this. Anything without
+an uppercase centre (blank, `.`, `x`, or a lowercase decor glyph) means "not in a slot"
+(fixed hull structure). Slot regions are therefore exactly as fluid as the hull author
+draws them — following the taper, non-rectangular, whatever — with no rectangle lists.
+The hull JSON adds a `slots` table mapping each marker to a slot id and a human name.
 
 The authoring rules that fall out of this — how to draw the *perimeter* a slot shares
-with fixed hull structure, and why a stamp never overwrites the SW corner — are written
-up in `docs/deckplan-format.md`, "Slots", and not repeated here. The short version:
+with fixed hull structure, and why slot membership is read off the authored hull
+document rather than a resolved plan — are written up in `docs/deckplan-format.md`,
+"Slots", and not repeated here. The short version:
 because collision and rendering OR the two facing edges, the hull's side of a perimeter
 can only ever *add* restriction, so author it **open** and draw that perimeter's walls
 and doors on the module side, where the default module rather than the hull decides how
@@ -202,9 +205,9 @@ third-engine upgrade), **`mount size >= part size`** (until her `rijay.engine.wr
 every shipped part was `m`, so the size rule had never once been exercised by content),
 and a pooled `requires: {engine: 1}` satisfied by two mounted engines rather than one.
 
-She has three slots — `cockpit` (digit 1), `bay` (digit 2), and `fore` (digit 3, tiles
-`(1,2)` and `(3,2)` only) — and three `size: s` mounts. `fore`'s middle tile, `(2,2)`,
-deliberately carries no slot digit: it is the shipped example of "Slots" in
+She has three slots — `cockpit` (marker `B`), `bay` (marker `C`), and `fore` (marker `D`,
+tiles `(1,2)` and `(3,2)` only) — and three `size: s` mounts. `fore`'s middle tile,
+`(2,2)`, deliberately carries no slot marker: it is the shipped example of "Slots" in
 `docs/deckplan-format.md`, a tile excluded from a slot to keep a corridor through it fixed
 hull regardless of what gets fitted either side.
 
@@ -228,8 +231,9 @@ The Goldfinch (`server/shipclasses/goldfinch.json`) is a three-deck passenger li
 Upper and a Lower deck of six identical 1×2 cabin slots each, and a Mezzanine between them
 carrying her two docking ports and the two offset stair columns that link all three decks —
 the same role the Mockingbird's own Mezzanine plays. She declares fifteen slots — a cockpit, twelve
-cabins, a galley and a hold — one shy of the sixteen a slot digit can address (see "The
-sixteen-slot ceiling" below). She is also the first hull to mix mount sizes on one ship:
+cabins, a galley and a hold — one shy of the sixteen slots a single hex digit could once
+address, back when this hull was drawn (see "The sixteen-slot ceiling" below; the ceiling
+is twenty-six now). She is also the first hull to mix mount sizes on one ship:
 `engine_center` is `size: m` (a proper Stork on the stern) while `engine_port` and
 `engine_stbd`, small engines on struts, are `size: s`.
 
@@ -324,7 +328,7 @@ with zero code:
 - `berths`, and any future capability, work identically.
 
 The structural checks are equally cheap: **≤1 module per slot**, **every non-void overlay
-cell lands on that slot's digit**, and **the mount's kind and size fit the part**. That is
+cell lands on that slot's marker**, and **the mount's kind and size fit the part**. That is
 the entire validator — no geometry, no reachability, no walkability analysis. Walkability
 is the hull author's responsibility, fixed at class-design time; the module guarantees its
 own insides by construction. The bounds check reads the **authored** hull, never the
@@ -519,12 +523,14 @@ M4 is a multi-iteration milestone; the first iteration is the vertical slice tha
 all the hard machinery and the minimum content to prove it. **Iteration 1 has landed**, and
 what it landed is the whole engine:
 
-- The deck-plan **slot digit** (SW corner, `docs/deckplan-format.md`), the authored **hull
-  document** (`hull.gleam`) with its `slots` table, `mounts`, dry `mass` and capability
-  tags, and the **module** and **part** documents and registries.
+- The deck-plan **slot marker** (tile centre, `docs/deckplan-format.md`; originally the SW
+  corner as a hex digit, moved to the centre as an uppercase letter — see "The
+  sixteen-slot ceiling" below), the authored **hull document** (`hull.gleam`) with its
+  `slots` table, `mounts`, dry `mass` and capability tags, and the **module** and **part**
+  documents and registries.
 - The **overlay-stamp engine** and the **pooled-tag validator** (`loadout.gleam`): void =
-  passthrough, the SW corner never overwritten, `sum(provides) ≥ sum(requires)` per tag,
-  and the three structural checks.
+  passthrough, slot membership read off the authored hull rather than the stamped
+  output, `sum(provides) ≥ sum(requires)` per tag, and the three structural checks.
 - **Per-ship resolved fits** in the sim — the single shared `ShipClass` in `sim.gleam` is
   gone; every ship carries her own resolved class, baked at load and re-baked on refit.
 - **Flight stats from data**: no `main_accel`/`turn_rate` constants remain in
@@ -557,12 +563,16 @@ furnishes both the Mockingbird and the Goldfinch from one document, and neither 
 needed a rule of its own. But drawing a second and third hull found real edges of the
 format that one hull alone never could.
 
-**The sixteen-slot ceiling.** Slot membership rides in a single hex character (`docs/deckplan-format.md`,
-"Slots"), so a hull can never carry more than sixteen slots — one per value `0`–`f`.
-The Goldfinch sits at fifteen. Nothing in iteration 1 or 2a came near this wall, because the
-Mockingbird's ten slots never had to; it took a second large hull to find it, and it is
-worth writing down now, before a hull that actually wants twenty gets designed against a
-format that cannot express it.
+**The sixteen-slot ceiling — found, then lifted.** Slot membership originally rode in the
+tile's **SW corner** as a single hex digit (`docs/deckplan-format.md`, "Slots"), so a hull
+could never carry more than sixteen slots — one per value `0`–`f`. The Goldfinch sat at
+fifteen. Nothing in iteration 1 or 2a came near this wall, because the Mockingbird's ten
+slots never had to; it took a second large hull to find it. That corner was also
+unreadable in the raw JSON — a slot's marker was buried in a 3×3 block per tile, off in a
+corner nobody looks at, which is why `tools/slotmap.py` exists at all. Moving the marker
+to the tile's **CENTRE**, authored directly as an uppercase letter, fixed both problems at
+once: it's now the first thing you see reading the raw grid, and the width of `A`–`Z`
+lifted the ceiling from sixteen to **twenty-six**.
 
 **Three plan rules did not survive drawing a second and third hull** — two of them found
 by a failing test, below, and a third ("A stair belongs off the corridor", further down)
@@ -619,7 +629,7 @@ starboard flank, and `x2` now runs clear from the cockpit passage to the stern.
 The mechanically interesting part is where the Mezzanine stair now resolves to. Its
 down-scan hits Lower (3,11), which is hold-slot **floor**, so the shaft blocks and the scan
 falls through to up — landing on Upper (3,11) and keeping the whole Upper deck reachable.
-Upper (3,11) is fixed hull carrying no slot digit, so no module patch moved and
+Upper (3,11) is fixed hull carrying no slot marker, so no module patch moved and
 `check_bounds` stays clean over all fifteen fitted modules.
 
 `docs/deckplan-format.md` now states the rule alongside the other two, and
@@ -655,8 +665,8 @@ touches the core engine.
 ## What this settles in DESIGN.md
 
 - **"How much interior can a module rewrite?"** — **answered, and DESIGN.md now carries the
-  answer rather than the question.** A module rewrites only its slot, marked by the SW
-  digit, via the authored overlay (`void` = passthrough); the hull owns all structure
+  answer rather than the question.** A module rewrites only its slot, marked by the
+  centre marker, via the authored overlay (`void` = passthrough); the hull owns all structure
   outside slots and every corridor, so connectivity is guaranteed by authoring and never
   analysed. Modules *may* add walls and doors **within their slot** (that is how passenger
   staterooms get carved out of an open bay) but never move the hull's existing structure.
