@@ -50,8 +50,7 @@ pub type Dir {
 /// One tile: what it IS at centre plus its four edges `#(n, e, s, w)`, an
 /// optional decor glyph, an optional palette colour index, and (M4) the hull
 /// SLOT this tile belongs to. Colour rides the NE corner; slot is an
-/// uppercase letter in the CENTRE (or, while documents migrate, the legacy
-/// SW-corner hex digit) — see `docs/deckplan-format.md`.
+/// uppercase letter in the CENTRE — see `docs/deckplan-format.md`.
 pub type Cell {
   Cell(
     tile: Tile,
@@ -59,10 +58,8 @@ pub type Cell {
     decor: option.Option(String),
     color: option.Option(Int),
     /// Slot membership: an uppercase letter selecting one of the hull's slots
-    /// (`docs/modules.md`), authored as the tile-CENTRE marker or (while
-    /// documents migrate) the legacy SW-corner hex digit, converted the same
-    /// way as `hull.Slot`'s `digit` field. `None` for fixed hull structure
-    /// that no module may overwrite.
+    /// (`docs/modules.md`), authored as the tile-CENTRE marker. `None` for
+    /// fixed hull structure that no module may overwrite.
     slot: option.Option(String),
   )
 }
@@ -154,10 +151,7 @@ pub fn parse_deck_with(
           ),
           decor: parse_decor(reg, cell_at(cells_g, 3 * y + 1, 3 * x + 1)),
           color: parse_hex_digit(cell_at(cells_g, 3 * y, 3 * x + 2)),
-          slot: parse_slot(
-            cell_at(cells_g, 3 * y + 1, 3 * x + 1),
-            cell_at(cells_g, 3 * y + 2, 3 * x),
-          ),
+          slot: parse_slot_marker(cell_at(cells_g, 3 * y + 1, 3 * x + 1)),
         )
       })
     })
@@ -202,9 +196,8 @@ fn parse_decor(reg: glyphs.Registry, ch: String) -> option.Option(String) {
 }
 
 /// A corner hex digit 0-f -> 0-15; anything else (blank, "#", junk) is None.
-/// The NE corner (colour) still uses this encoding; the SW corner (the
-/// legacy slot encoding) also parses it, then converts through
-/// `marker_of_digit`.
+/// The NE corner (colour) is the only caller — the SW corner carries no data
+/// any more, an ordinary derived wall-junction character.
 fn parse_hex_digit(ch: String) -> option.Option(Int) {
   case int.base_parse(ch, 16) {
     Ok(n) if n >= 0 && n <= 15 -> Some(n)
@@ -223,45 +216,6 @@ pub fn parse_slot_marker(ch: String) -> option.Option(String) {
         False -> None
       }
     }
-    _ -> None
-  }
-}
-
-/// A tile's slot membership: the CENTRE marker if it carries one, else the
-/// legacy SW-corner hex digit converted to the same letter (`marker_of_digit`),
-/// else `None`. Both encodings coexist while documents migrate (M4).
-fn parse_slot(center_ch: String, sw_ch: String) -> option.Option(String) {
-  case parse_slot_marker(center_ch) {
-    Some(marker) -> Some(marker)
-    None ->
-      case parse_hex_digit(sw_ch) {
-        Some(digit) -> marker_of_digit(digit)
-        None -> None
-      }
-  }
-}
-
-/// The uppercase letter at 0-based index `n`: `0` -> `"A"` … `15` -> `"P"`.
-/// `None` outside that range — the range a single hex digit can carry, so
-/// this is also the range `hull.gleam`'s legacy `digit` field accepts.
-pub fn marker_of_digit(n: Int) -> option.Option(String) {
-  case n {
-    0 -> Some("A")
-    1 -> Some("B")
-    2 -> Some("C")
-    3 -> Some("D")
-    4 -> Some("E")
-    5 -> Some("F")
-    6 -> Some("G")
-    7 -> Some("H")
-    8 -> Some("I")
-    9 -> Some("J")
-    10 -> Some("K")
-    11 -> Some("L")
-    12 -> Some("M")
-    13 -> Some("N")
-    14 -> Some("O")
-    15 -> Some("P")
     _ -> None
   }
 }

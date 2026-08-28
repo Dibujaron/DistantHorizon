@@ -364,43 +364,18 @@ pub fn an_uppercase_centre_is_floor_and_records_its_slot_test() {
   assert cell.decor == option.None
 }
 
-/// The old SW-corner hex digit still parses while documents are migrating.
-pub fn an_sw_hex_digit_still_records_its_slot_test() {
+/// One encoding. A hex digit in the SW corner is just a corner character now.
+pub fn an_sw_digit_no_longer_marks_a_slot_test() {
   let reg = glyphs.default()
   let assert Ok(g) = deckplan.parse_deck_with(reg, "t", ["###", "# #", "2##"])
   let assert Ok(cell) = deckplan.cell_at_xy(g, 0, 0)
-  assert cell.slot == option.Some("C")
-}
-
-pub fn sw_corner_marks_slot_test() {
-  // Two tiles: the left one in slot 1 (SW = "1" -> marker "B"), the right
-  // one unmarked.
-  let assert Ok(g) = deckplan.parse_deck("t", ["######", "#    #", "1##  #"])
-  let assert Ok(a) = deckplan.cell_at_xy(g, 0, 0)
-  let assert Ok(b) = deckplan.cell_at_xy(g, 1, 0)
-  assert a.slot == option.Some("B")
-  assert b.slot == option.None
-}
-
-pub fn sw_corner_accepts_high_hex_digits_test() {
-  // "f" (15) is the last hex digit, so it maps to the last of 16 possible
-  // legacy slot markers, "P".
-  let assert Ok(g) = deckplan.parse_deck("t", ["###", "# #", "f##"])
-  let assert Ok(c) = deckplan.cell_at_xy(g, 0, 0)
-  assert c.slot == option.Some("P")
+  assert cell.slot == option.None
 }
 
 pub fn non_hex_sw_corner_is_no_slot_test() {
   let assert Ok(g) = deckplan.parse_deck("t", ["###", "# #", "###"])
   let assert Ok(c) = deckplan.cell_at_xy(g, 0, 0)
   assert c.slot == option.None
-}
-
-pub fn slot_digit_round_trips_through_rows_test() {
-  let rows = ["###", "# #", "3##"]
-  let assert Ok(g) = deckplan.parse_deck("t", rows)
-  let assert Ok(g2) = deckplan.parse_deck("t", deckplan.deck_to_rows(g))
-  assert deckplan.cell_at_xy(g, 0, 0) == deckplan.cell_at_xy(g2, 0, 0)
 }
 
 pub fn slot_marker_round_trips_through_rows_test() {
@@ -413,26 +388,19 @@ pub fn slot_marker_round_trips_through_rows_test() {
 }
 
 /// The centre is a single character, so decor and a slot marker cannot both
-/// occupy it: decor wins, and slot membership does NOT survive a
-/// parse-serialise-parse round trip on a decorated slot tile. This is
-/// deliberate, not a data loss bug — slot membership is authoritative on the
+/// occupy it: a decor glyph is never a slot marker (lowercase isn't in
+/// A-Z), so a decorated tile simply never carries a slot in the first place.
+/// Deliberate, not a data-loss bug — slot membership is authoritative on the
 /// AUTHORED hull document (`loadout.check_bounds` reads the hull, never a
 /// resolved plan), so a resolved plan is never where a consumer should ask
 /// which slot a tile belongs to.
-pub fn decor_wins_the_centre_so_a_decorated_slot_tile_loses_its_slot_on_round_trip_test() {
+pub fn a_decor_glyph_never_carries_a_slot_test() {
   let reg = glyphs.default()
-  // Bed decor ("d") in the centre, legacy SW digit "1" (-> marker "B").
-  let rows = ["###", "#d#", "1##"]
+  let rows = ["###", "#d#", "###"]
   let assert Ok(g) = deckplan.parse_deck_with(reg, "t", rows)
   let assert Ok(cell) = deckplan.cell_at_xy(g, 0, 0)
   assert cell.decor == option.Some("d")
-  assert cell.slot == option.Some("B")
-
-  let assert Ok(g2) =
-    deckplan.parse_deck_with(reg, "t", deckplan.deck_to_rows(g))
-  let assert Ok(cell2) = deckplan.cell_at_xy(g2, 0, 0)
-  assert cell2.decor == option.Some("d")
-  assert cell2.slot == option.None
+  assert cell.slot == option.None
 }
 
 // --------------------------------------------------------- from_rows (#M4) --

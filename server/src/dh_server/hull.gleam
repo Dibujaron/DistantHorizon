@@ -23,11 +23,8 @@ import gleam/string
 import simplifile
 
 /// One modulable interior region. `marker` is the uppercase letter hull
-/// tiles carry in their CENTRE (`docs/deckplan-format.md`, "Slots") — or,
-/// while a document migrates, the equivalent legacy SW-corner hex digit,
-/// authored as `digit` and converted the same way as `deckplan.marker_of_digit`
-/// (index 0 -> `"A"` … 15 -> `"P"`); `id` is what a module names in its
-/// `slot` field.
+/// tiles carry in their CENTRE (`docs/deckplan-format.md`, "Slots"); `id` is
+/// what a module names in its `slot` field.
 pub type Slot {
   Slot(marker: String, id: String, name: String)
 }
@@ -162,8 +159,12 @@ fn is_single_uppercase_letter(marker: String) -> Bool {
 /// over a void slot tile would grow the hull's outline one-way and
 /// unremovably. Parses every deck's rows (the same parser the resolved plan
 /// runs) and rejects the first tile whose CENTRE is void yet whose parsed
-/// `Cell.slot` carries a marker — catching both encodings (`docs/deckplan-format.md`,
-/// "Slots") through the one parsed shape, whichever wrote the marker.
+/// `Cell.slot` carries a marker (`docs/deckplan-format.md`, "Slots").
+///
+/// Since a CENTRE slot marker always parses as `Floor` (`deckplan.parse_center`
+/// gives a marker precedence over the registry), this pair can no longer
+/// occur through the ordinary parser — this check is now a belt-and-suspenders
+/// invariant guard rather than a reachable rejection.
 ///
 /// A deck whose rows don't even PARSE (bad width, ragged rows, ...) is left
 /// alone here — rows are kept as raw text precisely so `resolve` is the one
@@ -288,29 +289,10 @@ fn deck_decoder() -> decode.Decoder(#(String, List(String))) {
 }
 
 fn slot_decoder() -> decode.Decoder(Slot) {
-  use marker <- decode.then(
-    decode.one_of(marker_field_decoder(), or: [digit_field_decoder()]),
-  )
+  use marker <- decode.field("marker", decode.string)
   use id <- decode.field("id", decode.string)
   use name <- decode.field("name", decode.string)
   decode.success(Slot(marker: marker, id: id, name: name))
-}
-
-/// A slot authored with its marker directly: `{"marker": "D", ...}`.
-fn marker_field_decoder() -> decode.Decoder(String) {
-  decode.field("marker", decode.string, decode.success)
-}
-
-/// A slot authored with the legacy hex `digit`: `{"digit": 3, ...}`, kept
-/// while documents migrate. Converted through the same index as the
-/// deck-plan's SW-corner fallback, so `digit: 3` decodes to `marker: "D"`.
-fn digit_field_decoder() -> decode.Decoder(String) {
-  decode.field("digit", decode.int, fn(digit) {
-    case deckplan.marker_of_digit(digit) {
-      Some(marker) -> decode.success(marker)
-      None -> decode.failure("", "slot digit 0-15")
-    }
-  })
 }
 
 fn mount_decoder() -> decode.Decoder(Mount) {
