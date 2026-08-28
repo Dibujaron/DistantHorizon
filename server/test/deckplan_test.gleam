@@ -412,6 +412,29 @@ pub fn slot_marker_round_trips_through_rows_test() {
   assert deckplan.cell_at_xy(g, 0, 0) == deckplan.cell_at_xy(g2, 0, 0)
 }
 
+/// The centre is a single character, so decor and a slot marker cannot both
+/// occupy it: decor wins, and slot membership does NOT survive a
+/// parse-serialise-parse round trip on a decorated slot tile. This is
+/// deliberate, not a data loss bug — slot membership is authoritative on the
+/// AUTHORED hull document (`loadout.check_bounds` reads the hull, never a
+/// resolved plan), so a resolved plan is never where a consumer should ask
+/// which slot a tile belongs to.
+pub fn decor_wins_the_centre_so_a_decorated_slot_tile_loses_its_slot_on_round_trip_test() {
+  let reg = glyphs.default()
+  // Bed decor ("d") in the centre, legacy SW digit "1" (-> marker "B").
+  let rows = ["###", "#d#", "1##"]
+  let assert Ok(g) = deckplan.parse_deck_with(reg, "t", rows)
+  let assert Ok(cell) = deckplan.cell_at_xy(g, 0, 0)
+  assert cell.decor == option.Some("d")
+  assert cell.slot == option.Some("B")
+
+  let assert Ok(g2) =
+    deckplan.parse_deck_with(reg, "t", deckplan.deck_to_rows(g))
+  let assert Ok(cell2) = deckplan.cell_at_xy(g2, 0, 0)
+  assert cell2.decor == option.Some("d")
+  assert cell2.slot == option.None
+}
+
 // --------------------------------------------------------- from_rows (#M4) --
 
 pub fn from_rows_derives_markers_like_the_decoder_test() {

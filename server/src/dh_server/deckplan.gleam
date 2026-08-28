@@ -888,6 +888,10 @@ pub fn deck_to_rows(g: DeckGrid) -> List(String) {
 fn tile_block(g: DeckGrid, x: Int, y: Int) -> #(String, String, String) {
   let assert Ok(cell) = cell_at_xy(g, x, y)
   let #(n, e, s, w) = cell.edges
+  // The centre is one character: decor wins it over a slot marker, so a
+  // decorated slot tile re-parses with slot: None — deliberate, not a bug,
+  // because slot membership is authoritative on the hull document, not a
+  // resolved plan (loadout.check_bounds reads the hull, never this output).
   let c = case cell.decor {
     Some(glyph) -> glyph
     None ->
