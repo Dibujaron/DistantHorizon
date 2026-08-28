@@ -3,6 +3,7 @@ import dh_server/hull
 import dh_server/loadout
 import dh_server/module
 import dh_server/part
+import gleam/dict
 import gleam/list
 
 /// One deck, no stairs, no mezzanine. Every deck-linking rule we have was
@@ -111,4 +112,70 @@ pub fn a_medium_engine_does_not_fit_her_small_mount_test() {
     ])
   let assert Error(e) = loadout.resolve(glyphs.default(), h, modules, parts, lo)
   assert e == "mount_too_small:engine_port"
+}
+
+/// The fore bay is a genuine refit decision and the power budget is what makes
+/// it one. She provides 12: cockpit 2 + packet 1 leaves 9, which is exactly
+/// three Wrens. Fitting the bunk spends one of those, so a bunk and a third
+/// engine cannot coexist — speed or a place to sleep, never both.
+pub fn the_fore_bunk_fits_beside_two_engines_but_not_three_test() {
+  let assert Ok(h) = hull.load("shipclasses/sparrow.json")
+  let assert Ok(modules) = module.load_all("modules")
+  let assert Ok(parts) = part.load_all("parts")
+  let with_bunk = [
+    #("cockpit", "rijay.cockpit.solo_3x1"),
+    #("bay", "rijay.bay.packet"),
+    #("fore", "rijay.fore.bunk"),
+  ]
+  // Two engines: cockpit 2 + packet 1 + bunk 1 + engines 6 = 10 of 12.
+  let liveaboard =
+    loadout.Loadout(hull: "sparrow", modules: with_bunk, parts: [
+      #("engine_port", "rijay.engine.wren_90b"),
+      #("engine_stbd", "rijay.engine.wren_90b"),
+    ])
+  let assert Ok(_) =
+    loadout.resolve(glyphs.default(), h, modules, parts, liveaboard)
+  // Three engines: 2 + 1 + 1 + 9 = 13 of 12. Refused.
+  let greedy =
+    loadout.Loadout(..liveaboard, parts: [
+      #("engine_port", "rijay.engine.wren_90b"),
+      #("engine_center", "rijay.engine.wren_90b"),
+      #("engine_stbd", "rijay.engine.wren_90b"),
+    ])
+  let assert Error(e) =
+    loadout.resolve(glyphs.default(), h, modules, parts, greedy)
+  assert e == "tag_deficit:power"
+}
+
+/// Her spine is hull, not slot. The fore row's centre tile carries no slot
+/// digit, so `check_bounds` refuses any fore module whose overlay puts a
+/// non-void centre glyph there — the corridor between cockpit and hold cannot
+/// be paved by a refit, and the refusal is a CONTENT error naming the file at
+/// fault. This is the single-deck equivalent of the stairs invariants: nothing
+/// does reachability analysis, so the geometry has to be unbuildable rather
+/// than merely discouraged.
+pub fn a_fore_module_may_not_pave_the_corridor_test() {
+  let assert Ok(h) = hull.load("shipclasses/sparrow.json")
+  let assert Ok(modules) = module.load_all("modules")
+  let assert Ok(parts) = part.load_all("parts")
+  // Identical to the shipped bunk except for ONE character: the centre glyph
+  // of the middle tile is a floor space rather than void, so the stamp claims
+  // a tile the hull never offered.
+  let assert Ok(trespasser) =
+    module.decode(
+      "{ \"schema\": 1, \"id\": \"test.fore.greedy\", \"hull\": \"sparrow\",
+         \"slot\": \"fore\", \"name\": \"Greedy\", \"mass\": 1.0,
+         \"requires\": {},
+         \"patches\": [ { \"deck\": 0, \"x\": 1, \"y\": 2,
+           \"grid\": [\"###...###\", \"#d=   =e#\", \" # ... # \"] } ] }",
+    )
+  let modules = dict.insert(modules, trespasser.id, trespasser)
+  let lo =
+    loadout.Loadout(..loadout.default_for(h), modules: [
+      #("cockpit", "rijay.cockpit.solo_3x1"),
+      #("bay", "rijay.bay.packet"),
+      #("fore", "test.fore.greedy"),
+    ])
+  let assert Error(e) = loadout.resolve(glyphs.default(), h, modules, parts, lo)
+  assert e == "out_of_slot_bounds:test.fore.greedy"
 }
