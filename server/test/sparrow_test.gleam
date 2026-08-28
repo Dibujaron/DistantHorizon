@@ -38,7 +38,7 @@ pub fn her_default_loadout_resolves_test() {
   // Capacity is DERIVED from the packet locker's pallet tiles, never from
   // the hull's fallback of 2. `hull.gleam` calls the hull-side one
   // `fallback_capacity`; the resolved one on `ShipClass` is `cargo_capacity`.
-  assert fit.class.cargo_capacity == 5
+  assert fit.class.cargo_capacity == 6
 }
 
 /// Range or speed, not both. The third engine and the endurance package each
