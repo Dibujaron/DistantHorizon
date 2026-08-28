@@ -62,7 +62,7 @@
     },
     "slots": {
       "type": "array",
-      "description": "Optional field (decode.optional_field, default []). Modulable interior regions (docs/modules.md, M4). A tile joins a slot by carrying that slot's hex digit in its SW corner; everything without a digit is fixed hull structure no module may overwrite.",
+      "description": "Optional field (decode.optional_field, default []). Modulable interior regions (docs/modules.md, M4). A tile joins a slot by carrying that slot's uppercase letter marker in its CENTRE; everything without a marker is fixed hull structure no module may overwrite.",
       "items": { "$ref": "#/$defs/slot" }
     },
     "default_loadout": {
@@ -90,7 +90,7 @@
         "name": { "type": "string" },
         "grid": {
           "type": "array",
-          "description": "3*height rows of 3*width chars: each tile is a 3x3 block. Centre glyph = ' ' floor, '.' void, 'x' stairs, 's' spawn, or 'q' docking port — spawn/docking are DERIVED from these glyphs. N/E/S/W edge-mids = ' ' open, '#' wall, '=' door, letter fixture — h=helm, c=cargo, b=broker are wall-mounted console fixtures, DERIVED into the consoles list the same way. See docs/deckplan-format.md. Row count and each row's length must be multiples of 3 and consistent (enforced by the Gleam decoder, not by this schema).",
+          "description": "3*height rows of 3*width chars: each tile is a 3x3 block. Centre glyph = ' ' floor, '.' void, 'x' stairs, 's' spawn, 'q' docking port, or an uppercase letter naming the slot this tile belongs to — spawn/docking are DERIVED from these glyphs, and slot membership is cross-checked against the hull's own `slots` table. N/E/S/W edge-mids = ' ' open, '#' wall, '=' door, letter fixture — h=helm, c=cargo, b=broker are wall-mounted console fixtures, DERIVED into the consoles list the same way. The NE corner is an optional colour hex digit ('0'-'9', 'a'-'f'); the SW corner carries no data any more (docs/deckplan-format.md). Row count and each row's length must be multiples of 3 and consistent (enforced by the Gleam decoder, not by this schema).",
           "items": { "type": "string" }
         }
       }
@@ -138,15 +138,14 @@
     },
     "slot": {
       "type": "object",
-      "description": "One modulable interior region. Both `digit` and `id` must be unique across a hull's slots — enforced by hull.validate, not by this schema: JSON Schema draft-06 has no way to say \"this property is unique across the items of an array\".",
+      "description": "One modulable interior region. Both `marker` and `id` must be unique across a hull's slots — enforced by hull.validate, not by this schema: JSON Schema draft-06 has no way to say \"this property is unique across the items of an array\".",
       "additionalProperties": false,
-      "required": ["digit", "id", "name"],
+      "required": ["marker", "id", "name"],
       "properties": {
-        "digit": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 15,
-          "description": "The hex digit hull tiles carry in their SW corner to join this slot (range enforced by the Gleam decoder's validate step too)."
+        "marker": {
+          "type": "string",
+          "pattern": "^[A-Z]$",
+          "description": "The uppercase letter hull tiles carry in their CENTRE to join this slot. Uppercase means slot membership; lowercase says what a tile is."
         },
         "id": {
           "type": "string",

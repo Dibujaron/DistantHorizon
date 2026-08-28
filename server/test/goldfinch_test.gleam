@@ -204,13 +204,18 @@ fn stock_plan() -> DeckPlan {
 /// A walker gets from the Lower corridor to every tile of the hold without
 /// ever changing deck. The hold's extent is read off the slot markers rather
 /// than hardcoded, so this keeps meaning what it says if the hold is ever
-/// re-drawn.
+/// re-drawn. Slot markers are read off the AUTHORED hull's own bare deck, not
+/// the fitted `stock_plan` — the hold module's patch owns the tile centre
+/// same as any other module, so it overwrites the marker there once
+/// installed (M4). The walk itself still runs on `stock_plan`, because
+/// same-deck traversability is a property of the ship as fitted.
 pub fn her_lower_corridor_reaches_the_hold_on_one_deck_test() {
   let assert Ok(h) = hull.load("shipclasses/goldfinch.json")
   let assert Ok(hold) = hull.slot_by_id(h, "hold")
-  let assert Ok(lower) = deckplan.deck_at(stock_plan(), 2)
-  let hold_tiles = tiles_of_slot(lower, hold.marker)
+  let assert Ok(bare_lower) = deckplan.deck_at(bare_plan(), 2)
+  let hold_tiles = tiles_of_slot(bare_lower, hold.marker)
   assert hold_tiles != []
+  let assert Ok(lower) = deckplan.deck_at(stock_plan(), 2)
   // (2,3) is the forward corridor abeam the first pair of cabins: fixed
   // hull, no slot marker, and as far forward of the hold as the deck goes.
   let reached = walk_one_deck(lower, [#(2, 3)], [])

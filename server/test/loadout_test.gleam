@@ -8,8 +8,8 @@ import gleam/dict
 import gleam/list
 import gleam/option
 
-// A 2x2-tile hull: a fixed corridor row on top, a two-tile slot-1 bay below.
-// The bay's tiles carry SW digit "1"; the corridor tile above the bay's right
+// A 2x2-tile hull: a fixed corridor row on top, a two-tile bay below whose
+// tiles carry centre marker "B"; the corridor tile above the bay's right
 // half leaves its south edge OPEN so a module can put a door there.
 //
 // The corridor carries the two markers every resolved class needs: a helm
@@ -22,7 +22,7 @@ const hull_doc = "{
   \"mass\": 96.0,
   \"provides\": { \"power\": 10 },
   \"requires\": { \"engine\": 1 },
-  \"slots\": [ { \"digit\": 1, \"id\": \"bay\", \"name\": \"Bay\" } ],
+  \"slots\": [ { \"marker\": \"B\", \"id\": \"bay\", \"name\": \"Bay\" } ],
   \"mounts\": [ { \"id\": \"engine_center\", \"kind\": \"engine\", \"size\": \"m\" } ],
   \"cargo\": { \"capacity\": 7, \"handling\": \"breakbulk\" },
   \"decks\": [ { \"name\": \"Main\", \"grid\": [
@@ -30,8 +30,8 @@ const hull_doc = "{
     \"# h q#\",
     \"#### #\",
     \"#### #\",
-    \"#    #\",
-    \"1##1##\"
+    \"#B  B#\",
+    \"######\"
   ] } ]
 }"
 
@@ -45,7 +45,7 @@ const hull_no_helm_doc = "{
   \"mass\": 96.0,
   \"provides\": { \"power\": 10 },
   \"requires\": { \"engine\": 1 },
-  \"slots\": [ { \"digit\": 1, \"id\": \"bay\", \"name\": \"Bay\" } ],
+  \"slots\": [ { \"marker\": \"B\", \"id\": \"bay\", \"name\": \"Bay\" } ],
   \"mounts\": [ { \"id\": \"engine_center\", \"kind\": \"engine\", \"size\": \"m\" } ],
   \"cargo\": { \"capacity\": 7, \"handling\": \"breakbulk\" },
   \"decks\": [ { \"name\": \"Main\", \"grid\": [
@@ -53,8 +53,8 @@ const hull_no_helm_doc = "{
     \"#   q#\",
     \"#### #\",
     \"#### #\",
-    \"#    #\",
-    \"1##1##\"
+    \"#B  B#\",
+    \"######\"
   ] } ]
 }"
 
@@ -193,18 +193,31 @@ pub fn default_for_is_the_hulls_authored_loadout_test() {
     ])
 }
 
-pub fn stamp_owns_the_ne_color_and_the_hull_owns_the_sw_slot_test() {
-  // The two data-carrying corners are asymmetric. The patch writes "4" into
-  // its NE corner and leaves its SW corner blank; the hull's bay tile has no
-  // colour digit and carries slot digit "1" (marker "B").
+/// The NE colour corner and the slot marker are asymmetric in who owns them
+/// post-stamp — but no longer in the way the old name of this test claimed.
+/// The marker moved into the CENTRE (M4), which is one of the eight cells a
+/// stamp DOES overwrite, so it does NOT survive being fitted: this is
+/// intended (docs/deckplan-format.md, "Slots") — a hull document is always
+/// loaded alongside a resolved plan, and tile coordinates index both grids
+/// identically, so slot membership is read off the hull, never the fit.
+pub fn the_module_owns_the_ne_color_and_the_hull_document_owns_the_slot_marker_test() {
+  // The patch writes "4" into its NE corner and leaves its own centre a
+  // pallet; the hull's bay tile has no colour digit and carries slot marker
+  // "B" on its OWN document, not on the stamped one.
   let m = a_module("m.p", "0.0", "{}", "[\"  4\", \" p \", \"   \"]")
   let assert Ok(fit) = fit_of([m], bay_loadout("m.p"))
   let assert Ok(g) = deckplan.deck_at(fit.class.plan, 0)
   let assert Ok(c) = deckplan.cell_at_xy(g, 0, 1)
   // NE corner is module-owned: a module repaints the bay it is installed in.
   assert c.color == option.Some(4)
-  // SW corner is hull-owned: the tile is still in slot "B" after the stamp.
-  assert c.slot == option.Some("B")
+  // The centre marker does NOT survive the stamp: the module's patch owns
+  // the centre like any other non-SW cell, and this one draws a pallet.
+  assert c.slot == option.None
+  // Slot membership is still authoritative on the hull document itself.
+  let assert Ok(bare) = deckplan.from_rows(glyphs.default(), a_hull().decks)
+  let assert Ok(hull_deck) = deckplan.deck_at(bare, 0)
+  let assert Ok(hull_cell) = deckplan.cell_at_xy(hull_deck, 0, 1)
+  assert hull_cell.slot == option.Some("B")
 }
 
 pub fn derived_capacity_follows_the_stamp_test() {
@@ -405,7 +418,7 @@ pub fn oversized_part_is_rejected_test() {
 pub fn a_patch_running_off_the_grid_is_rejected_test() {
   // Distinct from the wrong-slot case: the right-hand tile of this two-tile
   // patch lands at x=2 on a two-tile-wide deck, so there is no cell to check
-  // its slot digit against at all.
+  // its slot marker against at all.
   let assert Ok(m) =
     module.decode(
       "{ \"schema\": 1, \"id\": \"m.overhang\", \"hull\": \"testhull\",
@@ -517,7 +530,7 @@ pub fn a_patch_naming_a_deck_the_hull_lacks_is_a_content_error_test() {
 // ------------------------------------------------------ multi-slot targets --
 
 // `hull_doc`'s bay, split into two adjacent single-tile slots so a module can
-// be drawn to claim both at once. Only the SW digits differ.
+// be drawn to claim both at once. Only the centre markers differ.
 const hull_two_slots_doc = "{
   \"schema\": 3,
   \"id\": \"testhull\",
@@ -525,8 +538,8 @@ const hull_two_slots_doc = "{
   \"mass\": 96.0,
   \"provides\": { \"power\": 10 },
   \"requires\": { \"engine\": 1 },
-  \"slots\": [ { \"digit\": 1, \"id\": \"bay_a\", \"name\": \"Bay A\" },
-               { \"digit\": 2, \"id\": \"bay_b\", \"name\": \"Bay B\" } ],
+  \"slots\": [ { \"marker\": \"B\", \"id\": \"bay_a\", \"name\": \"Bay A\" },
+               { \"marker\": \"C\", \"id\": \"bay_b\", \"name\": \"Bay B\" } ],
   \"mounts\": [ { \"id\": \"engine_center\", \"kind\": \"engine\", \"size\": \"m\" } ],
   \"cargo\": { \"capacity\": 7, \"handling\": \"breakbulk\" },
   \"decks\": [ { \"name\": \"Main\", \"grid\": [
@@ -534,8 +547,8 @@ const hull_two_slots_doc = "{
     \"# h q#\",
     \"#### #\",
     \"#### #\",
-    \"#    #\",
-    \"1##2##\"
+    \"#B  C#\",
+    \"######\"
   ] } ]
 }"
 
