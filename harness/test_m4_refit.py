@@ -5,14 +5,14 @@ deck the server serves, not a cosmetic label -- so these assertions read the
 deck plan on the wire before and after, not a module list.
 
 The fixture hull (harness/fixtures/test_fixture.json) carries one slot,
-"bay" (SW-corner digit 1), on an otherwise-plain floor tile at Main deck
-(x=4, y=2). `server/modules/test_fixture/bunkroom.json` overlays that single
-tile with a bed ("d") when fitted; the hull's own default loadout leaves the
-bay empty, so a fresh login shows that tile's slot marker ("B" -- the
-resolved letter for the fixture's legacy `digit: 1`, M4 "slot markers in the
-tile centre") sitting in its centre. The tile is still plain, walkable
-floor -- an uppercase centre glyph is slot membership, not a different tile
-kind -- it just isn't rendered as a bare space anymore.
+"bay" (centre marker "B", M4 "slot markers in the tile centre"), on an
+otherwise-plain floor tile at Main deck (x=4, y=2).
+`server/modules/test_fixture/bunkroom.json` overlays that single tile with a
+bed ("d") when fitted; the hull's own default loadout leaves the bay empty,
+so a fresh login shows that tile's slot marker ("B") sitting in its centre.
+The tile is still plain, walkable floor -- an uppercase centre glyph is slot
+membership, not a different tile kind -- it just isn't rendered as a bare
+space anymore.
 
 Refit replaces the WHOLE loadout, so every request below re-states the
 fixture's one engine part (`consol.engine.co17f_2` on `engine_center`)
@@ -97,10 +97,9 @@ async def test_refit_installs_a_module(server):
 
         # Sanity on the fixture itself: pre-refit, the bay is unfurnished --
         # still plain walkable floor, but its centre carries the bay slot's
-        # marker letter ("B": the resolved letter for the fixture's legacy
-        # `digit: 1`) rather than a blank space, because an uppercase centre
-        # glyph is slot membership, independent of what (if anything) is
-        # drawn there.
+        # marker letter ("B") rather than a blank space, because an
+        # uppercase centre glyph is slot membership, independent of what
+        # (if anything) is drawn there.
         assert _center_char(original_class, 0, *PATCHED_TILE) == "B"
 
         result = await _refit(client, BUNKROOM_MODULES, DEFAULT_PARTS)
