@@ -149,6 +149,11 @@ rooms that are both slots) out of the hull into the modules that furnish them. A
 accepted cost on the corridor-facing perimeters only; hulls authored from scratch should
 follow the rules throughout.
 
+**Slot ids name the space, not the expected occupant** — `fore`, not `cabin` — for the same
+reason module ids name their manufacturer rather than a hull (see "Module ids follow the
+same `<manufacturer>.<kind>.<model>` shape" below): a name that encodes an assumption is
+expensive to undo once it is written into every `default_loadout` on disk.
+
 ### The Mockingbird's ten slots
 
 Iteration 2a re-carved the Mockingbird from her original five slots into ten, at the same
@@ -197,11 +202,25 @@ third-engine upgrade), **`mount size >= part size`** (until her `rijay.engine.wr
 every shipped part was `m`, so the size rule had never once been exercised by content),
 and a pooled `requires: {engine: 1}` satisfied by two mounted engines rather than one.
 
-She has two slots — `cockpit` (digit 1) and `bay` (digit 2) — and three `size: s` mounts.
-Her stock fit is `rijay.cockpit.solo_3x1` and `rijay.bay.packet`, a five-pallet locker whose
-derived capacity is 5; `rijay.bay.ranger` is an endurance package instead — a bunk and no
+She has three slots — `cockpit` (digit 1), `bay` (digit 2), and `fore` (digit 3, tiles
+`(1,2)` and `(3,2)` only) — and three `size: s` mounts. `fore`'s middle tile, `(2,2)`,
+deliberately carries no slot digit: it is the shipped example of "Slots" in
+`docs/deckplan-format.md`, a tile excluded from a slot to keep a corridor through it fixed
+hull regardless of what gets fitted either side.
+
+Her stock fit is `rijay.cockpit.solo_3x1` and `rijay.bay.packet`, a six-pallet locker whose
+derived capacity is 6; `rijay.bay.ranger` is an endurance package instead — a bunk and no
 pallets, so a ranger fit falls back to the hull's authored `cargo.capacity` of 2. A slot
 holds one module, so on the Sparrow, range and speed are mutually exclusive for free.
+
+The `fore` slot ships **empty** in `default_loadout` — she has no bed unless her crew fits
+one. `rijay.fore.bunk` ("Watch bunk", mass `1.0`, `provides: {berths: 1}`,
+`requires: {power: 1}`) is the one module drawn for it, and its patch's middle column is
+void on every row, so fitting it never touches `(2,2)`; a negative test proves a fore
+module with a non-void middle is refused with `out_of_slot_bounds`. Her reactor provides
+12 power; cockpit (`2`) + packet (`1`) + bunk (`1`) + three Wren engines (`3 × 3 = 9`) is
+`13`, one over budget — so a fitted bunk and a third engine can never both be aboard at
+once, the tag-deficit budget enforcing the tradeoff rather than a rule against it.
 
 ### The Goldfinch
 
