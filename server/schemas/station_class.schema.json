@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-06/schema#",
   "$id": "https://distanthorizon.dev/schemas/station_class.schema.json",
   "title": "Station class document",
-  "description": "A reusable station design: its concourse deck plan (deck-plan format v3, docs/deckplan-format.md) plus docking characteristics (dock_radius, crane). Worlds reference a station class by id and carry only per-instance placement/economy (issue #30). Derived from the Gleam decoders in server/src/dh_server/stationclass.gleam (station_class_decoder) and server/src/dh_server/deckplan.gleam (decoder, embedded at the top level via decode.then) — those decoders are the source of truth; this schema is documentation and a typo-catcher. additionalProperties is false at every object level even though the decoders ignore unknown fields, precisely so this schema catches typos. Berths are NOT authored here: they derive from the concourse's Q docking-port glyphs (issue #31).",
+  "description": "A reusable station design: its concourse deck plan (deck-plan format v3, docs/deckplan-format.md) plus docking characteristics (dock_radius, crane). Worlds reference a station class by id and carry only per-instance placement/economy (issue #30). Derived from the Gleam decoders in server/src/dh_server/stationclass.gleam (station_class_decoder) and server/src/dh_server/deckplan.gleam (decoder, embedded at the top level via decode.then) — those decoders are the source of truth; this schema is documentation and a typo-catcher. additionalProperties is false at every object level even though the decoders ignore unknown fields, precisely so this schema catches typos. Berths are NOT authored here: they derive from the concourse's q docking-port glyphs (issue #31).",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "id", "name", "dock_radius", "decks"],
@@ -20,7 +20,7 @@
     },
     "decks": {
       "type": "array",
-      "description": "The concourse deck plan (usually a single deck). Consoles (b=broker), the spawn tile (s), and berths (Q docking ports) are authored as center glyphs and derived at load.",
+      "description": "The concourse deck plan (usually a single deck). Consoles (b=broker), the spawn tile (s), and berths (q docking ports) are authored as center glyphs and derived at load.",
       "items": { "$ref": "#/$defs/deck" }
     },
     "consoles": {

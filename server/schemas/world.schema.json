@@ -107,7 +107,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "name", "class", "parent", "orbit"],
-      "description": "A world station instance: per-instance placement/economy plus a `class` reference (issue #30). dock_radius/crane/concourse come from the referenced station class, and berths derive from that concourse's Q glyphs (issue #31) — none of them live here.",
+      "description": "A world station instance: per-instance placement/economy plus a `class` reference (issue #30). dock_radius/crane/concourse come from the referenced station class, and berths derive from that concourse's q glyphs (issue #31) — none of them live here.",
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
@@ -187,7 +187,7 @@
         },
         "consoles": {
           "type": "array",
-          "description": "Optional. Authored as center glyphs (h/c/b/Q) and derived at load; the server re-emits it (namespaced) over the wire.",
+          "description": "Optional. Authored as center glyphs (h/c/b/q) and derived at load; the server re-emits it (namespaced) over the wire.",
           "items": { "$ref": "#/$defs/console" }
         },
         "spawn": { "$ref": "#/$defs/spawn" }
