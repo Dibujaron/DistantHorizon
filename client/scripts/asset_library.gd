@@ -24,13 +24,24 @@ class SpriteSet:
 		return Vector2i(int(meta.get("px_w", 0)), int(meta.get("px_h", 0)))
 
 	## Texture-pixel positions of every anchor of `kind` from meta.json
-	## (e.g. "nozzle" on ships, "berth" on stations).
+	## (e.g. "mount" on ships, "berth" on stations).
 	func anchors(kind: String) -> Array[Vector2]:
 		var out: Array[Vector2] = []
 		for a: Variant in meta.get("anchors", []):
 			if a is Dictionary and str(a.get("kind", "")) == kind:
 				out.append(Vector2(float(a["x_px"]), float(a["y_px"])))
 		return out
+
+	## Texture-pixel position of the mount anchor named `mount_id`, or
+	## Vector2.INF when this sprite has none — a fitted mount with no anchor
+	## is a data bug in one of two trees, so the caller push_errors rather
+	## than guessing a position.
+	func mount_anchor(mount_id: String) -> Vector2:
+		for a: Variant in meta.get("anchors", []):
+			if a is Dictionary and str(a.get("kind", "")) == "mount" \
+					and str(a.get("id", "")) == mount_id:
+				return Vector2(float(a["x_px"]), float(a["y_px"]))
+		return Vector2.INF
 
 	## Whether this hull carries interior-fit metadata (deckplan tile grid
 	## position inside the sprite) — see composer.py ExportSpec.interior.

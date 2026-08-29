@@ -22,17 +22,20 @@
   ],
   "anchors": [
     {
-      "kind": "nozzle",
+      "kind": "mount",
+      "id": "engine_port",
       "x_px": 5.538461538461538,
       "y_px": 42.80769230769231
     },
     {
-      "kind": "nozzle",
+      "kind": "mount",
+      "id": "engine_center",
       "x_px": 10.384615384615385,
       "y_px": 42.80769230769231
     },
     {
-      "kind": "nozzle",
+      "kind": "mount",
+      "id": "engine_stbd",
       "x_px": 15.230769230769232,
       "y_px": 42.80769230769231
     }

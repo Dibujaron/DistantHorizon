@@ -20,7 +20,8 @@ def test_mockingbird_is_hull_with_heights():
     hull = ship_mockingbird()
     kinds = {l.height.kind for l in hull.layers if l.height is not None}
     assert {"cyl_x", "dome", "flat"} <= kinds          # authored variety, not doming
-    assert len([a for a in hull.anchors if a.kind == "nozzle"]) == 3
+    mounts = {a.id for a in hull.anchors if a.kind == "mount"}
+    assert mounts == {"engine_port", "engine_center", "engine_stbd"}
     assert any(l.role == "glow" for l in hull.layers)  # glow separated for exclusion
     assert any(l.role == "sheet_only" for l in hull.layers)  # painted highlight split
 
@@ -31,7 +32,15 @@ def test_longhorn_foil_is_flat_plate():
     hull = ship_longhorn()
     foils = [l for l in hull.layers if l.height and l.height.kind == "flat"]
     assert foils, "Longhorn must have flat-plate layers (the hammer foil)"
-    assert len([a for a in hull.anchors if a.kind == "nozzle"]) == 2
+    assert len([a for a in hull.anchors if a.kind == "mount"]) == 2
+
+
+def test_mount_anchors_are_ordered_port_to_starboard():
+    """Ids are the contract, but a reader should still be able to trust the
+    left-to-right order in the file."""
+    from manufacturers import ship_mockingbird
+    ids = [a.id for a in ship_mockingbird().anchors if a.kind == "mount"]
+    assert ids == ["engine_port", "engine_center", "engine_stbd"]
 
 
 def _rect_alpha(h, w, y0, y1, x0, x1):

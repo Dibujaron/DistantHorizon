@@ -174,7 +174,10 @@ def ship_longhorn():
                             PHE_GRAY_D, sw=1.6), flat(0.28)))
         L.append(Layer(f'<ellipse cx="{sx * 40}" cy="52" rx="6" ry="5" '
                        f'fill="url(#glow)"/>', role="glow"))
-        A.append(Anchor("nozzle", sx * 40, 52))
+        # The Longhorn is decorative parked traffic with no hull document —
+        # these ids are documentation, not a cross-tree contract.
+        A.append(Anchor("mount", sx * 40, 52,
+                        id="engine_port" if sx < 0 else "engine_stbd"))
     # the hammer: thin, winglike, purpose unclear (ask Porter)
     hammer = mirror([(0, -108), (18, -107), (38, -102), (50, -94), (46, -86),
                      (28, -82), (10, -80), (0, -80)])
@@ -273,11 +276,12 @@ def rijay_cockpit(cy, w):
 MB_Y, MB_SP, MB_R, MB_LN, MB_FL = 40, 21, 7.5, 28, 0.8
 
 def mb_drums(stock=False):
-    """-> (layers, nozzle anchors). Each drum is its own cyl_x layer so the
+    """-> (layers, mount anchors). Each drum is its own cyl_x layer so the
     per-row cylinder profile follows that drum's silhouette alone."""
     y, r, ln = MB_Y, MB_R, MB_LN
     layers, anchors = [], []
-    for i in (-1, 0, 1):
+    for i, mount_id in ((-1, "engine_port"), (0, "engine_center"),
+                        (1, "engine_stbd")):
         cx = i * MB_SP
         layers.append(Layer(rrect(cx - r, y, 2 * r, ln, r * .95, RIJ_BLUE,
                                   sw=2.2), cyl_x(0.40, 0.78)))
@@ -292,7 +296,7 @@ def mb_drums(stock=False):
         layers.append(Layer(
             f'<ellipse cx="{cx:.1f}" cy="{y + ln + 3.5:.1f}" rx="{r * .5:.1f}" '
             f'ry="5.5" fill="{GLOW_CORE}" stroke="none"/>', role="glow"))
-        anchors.append(Anchor("nozzle", cx, y + ln + 3.5))
+        anchors.append(Anchor("mount", cx, y + ln + 3.5, id=mount_id))
     return layers, anchors
 
 def mb_dorsal_fins():

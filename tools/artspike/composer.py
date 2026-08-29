@@ -57,9 +57,12 @@ def dome(lo, hi, blur=6.0):
 
 @dataclass(frozen=True)
 class Anchor:
-    kind: str            # "nozzle"
+    kind: str            # "mount" (a hull hardpoint) | "berth" (a station slot)
     x: float             # model units
     y: float
+    id: str = ""         # mount anchors only: the hull document's mount id.
+                         # NAMED, not indexed — reordering a build loop must
+                         # never silently swap two engines.
 
 
 @dataclass
@@ -332,7 +335,7 @@ def export_ship(spec, out_root, z_scale=6.5):
         "px_per_unit": px_per_unit, "frame": list(frame),
         "classic_px": spec.classic_px,
         "c1_base": list(spec.c1_base), "c2_base": list(spec.c2_base),
-        "anchors": [{"kind": a.kind,
+        "anchors": [{"kind": a.kind, "id": a.id,
                      "x_px": (a.x - frame[0]) * px_per_unit,
                      "y_px": (a.y - frame[1]) * px_per_unit}
                     for a in hull.anchors],
