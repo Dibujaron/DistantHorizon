@@ -288,3 +288,25 @@ def test_export_longhorn_foil_shades_flat(tmp_path):
         fx = int((mx - meta["frame"][0]) * meta["px_per_unit"])
         fy = int((-95 - meta["frame"][1]) * meta["px_per_unit"])
         assert n[fy, fx, 2] > 0.9, "hammer foil must shade as a thin flat plate"
+
+
+def test_rijay_engine_part_has_one_attach_anchor():
+    from manufacturers import part_engine_rijay
+    part = part_engine_rijay()
+    attach = [a for a in part.anchors if a.kind == "attach"]
+    assert len(attach) == 1, "a part attaches at exactly one point"
+    assert any(l.height is not None for l in part.layers), "authored relief"
+
+
+def test_parts_and_hulls_share_one_base_px_per_unit():
+    """The scale canon: a part drawn on a hull must not need rescaling. The
+    2x `*_interior` renders double classic_px AND px_scale, so it is the BASE
+    ratio (classic_px / model_units / px_scale) that must be universal —
+    exactly the quantity export_ship calls base_ppu."""
+    from composer import PART_EXPORTS, SHIP_EXPORTS
+
+    def base(s):
+        return s.classic_px / s.model_units / s.px_scale
+
+    ratios = {base(s) for s in SHIP_EXPORTS} | {base(p) for p in PART_EXPORTS}
+    assert len(ratios) == 1, f"multiple scales in play: {ratios}"

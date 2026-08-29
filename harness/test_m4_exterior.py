@@ -15,6 +15,10 @@ What's enforced right now vs. excused, and why:
   lifts itself the moment that hull's art lands — no further edits needed.
 - `test_every_shipped_hull_has_art` is xfail for the same reason (Sparrow
   and Goldfinch aren't shipped yet); remove that guard once both land.
+- `test_every_part_sprite_key_has_art` is xfail, keyed on the ONE part
+  sprite directory that lands last (`engine_rijay_small`, Task 11) even
+  though `engine_consol` (Task 7) is also still missing right now — once
+  Task 11 lands, both are guaranteed present and the guard self-lifts.
 There is deliberately NO module-level guard: a blanket xfail keyed on
 Sparrow's art would also swallow the Mockingbird check, which is the one
 hull this file can actually verify today.
@@ -27,6 +31,8 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SHIPCLASSES = ROOT / "server" / "shipclasses"
 SHIP_ART = ROOT / "client" / "assets" / "ships"
+PARTS = ROOT / "server" / "parts"
+PART_ART = ROOT / "client" / "assets" / "parts"
 
 
 def _hulls_with_art():
@@ -64,3 +70,23 @@ def test_mount_ids_match_anchor_ids(hull_id):
     assert declared == drawn, (
         f"{hull_id}: hull document declares {sorted(declared)}, "
         f"sprite meta draws {sorted(drawn)}")
+
+
+@pytest.mark.xfail(
+    not (PART_ART / "engine_rijay_small").exists(),
+    reason="engine_consol lands in task 7, engine_rijay_small in task 11",
+    strict=False)
+def test_every_part_sprite_key_has_art():
+    """A part document's `sprite` is what rides the wire; if the directory is
+    missing the client draws nothing and the mount looks unfitted."""
+    missing = []
+    for path in sorted(PARTS.glob("*.json")):
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        sprite = doc.get("sprite")
+        if sprite is None:
+            continue
+        art = PART_ART / sprite
+        for f in ("albedo.png", "normal.png", "mask.png", "meta.json"):
+            if not (art / f).exists():
+                missing.append(f"{doc['id']} -> {sprite}/{f}")
+    assert not missing, "part art missing: " + ", ".join(missing)

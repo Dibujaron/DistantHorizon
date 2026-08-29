@@ -238,6 +238,44 @@ RIJ_C1, RIJ_C2 = (59, 141, 224), (238, 242, 246)
 PHE_C1, PHE_C2 = (217, 122, 40), (223, 227, 230)
 
 
+@dataclass(frozen=True)
+class PartSpec:
+    """An exterior part exported on its own, to be layered onto a hull at a
+    named mount anchor. Shares the hulls' px_per_unit so the client needs no
+    per-part scale correction — see the scale canon on ExportSpec.
+
+    px_scale mirrors ExportSpec's: a hull's `*_interior` render is 2x, and a
+    part layered onto it must be too, so every part ships a 1x twin for space
+    and a 2x `<name>_interior` twin for the walk-mode backdrop."""
+    name: str                     # the part document's `sprite` key
+    build: object                 # () -> Hull, carrying one "attach" Anchor
+    classic_px: int
+    model_units: int
+    c1: tuple
+    c2: tuple
+    palette: tuple
+    c1_base: tuple
+    c2_base: tuple
+    px_scale: int = 1
+
+
+def _rijay_part(name, fn_name, px_scale=1):
+    return PartSpec(name, lambda: _part(fn_name), 45 * px_scale, 195,
+                    ((59, 141, 224),), ((238, 242, 246),),
+                    tuple(RIJAY_PALETTE), RIJ_C1, RIJ_C2, px_scale=px_scale)
+
+
+PART_EXPORTS = [
+    _rijay_part("engine_rijay", "part_engine_rijay"),
+    _rijay_part("engine_rijay_interior", "part_engine_rijay", px_scale=2),
+]
+
+
+def _part(fn_name):
+    import manufacturers
+    return getattr(manufacturers, fn_name)()
+
+
 def _mb(stock):
     from manufacturers import ship_mockingbird
     return ship_mockingbird(stock=stock)
@@ -269,7 +307,13 @@ SHIP_EXPORTS = [
                RIJ_C1, RIJ_C2, interior=MB_INTERIOR),
     # Longhorn livery: c1 = the orange trim, c2 = the gray body (it has no
     # truss white — the body IS the paintable surface on a liner)
-    ExportSpec("longhorn", _lh, 41, 195,
+    # classic_px is 45, not the Classic game's 41: the scale canon (Task 6)
+    # requires one base px_per_unit (classic_px/model_units) across every
+    # export, ships and parts alike, so relative sizes read true world-wide —
+    # 45/195 matches the Mockingbird family's ratio; see
+    # test_parts_and_hulls_share_one_base_px_per_unit. This is an export-scale
+    # correction only; ship_longhorn()'s drawn geometry is untouched.
+    ExportSpec("longhorn", _lh, 45, 195,
                ((217, 122, 40), (168, 90, 30)),
                ((138, 143, 151), (223, 227, 230)),
                tuple(PHE_PALETTE), PHE_C1, (138, 143, 151)),
@@ -287,7 +331,10 @@ def _downsample(arr, size, mode):
 
 
 def compose_ship(spec):
-    """full-res compose: returns dict of working arrays + frame"""
+    """full-res compose: returns dict of working arrays + frame
+
+    Reads only spec.build, spec.c1, spec.c2 and spec.palette, so it works
+    unchanged on a PartSpec — a part composes exactly like a ship."""
     hull = spec.build()
     frame = hull_frame(hull)
     albedo = rasterize(flatten(hull, sheet=False), frame)
@@ -350,6 +397,53 @@ def export_ship(spec, out_root, z_scale=6.5):
             "origin_px": [(ox - frame[0]) * px_per_unit,
                           (oy - frame[1]) * px_per_unit],
         }
+    (out / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    return meta
+
+
+def export_part(spec, out_root, z_scale=6.5):
+    """Same compose/downsample/normal recipe as export_ship, but the meta
+    carries an ATTACH point instead of anchors and an interior fit: the part
+    is positioned so this pixel lands on its hull's mount anchor."""
+    c = compose_ship(spec)
+    frame, hull = c["frame"], c["hull"]
+    px_per_unit = spec.classic_px / spec.model_units
+    # Same rounding contract as export_ship: dims round at the BASE scale then
+    # multiply, so a 2x twin is exactly double its 1x and the attach point
+    # cannot drift a pixel.
+    base_ppu = px_per_unit / spec.px_scale
+    pw = max(1, round(frame[2] * base_ppu)) * spec.px_scale
+    ph = max(1, round(frame[3] * base_ppu)) * spec.px_scale
+    albedo_g = _downsample(c["albedo"], (pw, ph), "rgba")
+    height_g = _downsample(c["height"], (pw, ph), "f")
+    solid_g = _downsample(c["solid"].astype(np.float64), (pw, ph), "f") > 0.5
+    normals = height_to_normals(height_g, z_scale=z_scale / SS)
+    normals[~solid_g] = [0.0, 0.0, 1.0]
+    mask_g = np.dstack([_downsample(c["masks"][..., i], (pw, ph), "f")
+                        for i in (0, 1)] + [np.zeros((ph, pw))])
+    out = pathlib.Path(out_root) / spec.name
+    out.mkdir(parents=True, exist_ok=True)
+    Image.fromarray((np.clip(albedo_g, 0, 1) * 255).astype(np.uint8),
+                    "RGBA").save(out / "albedo.png")
+    n = normals.copy()
+    n[..., 1] *= -1.0
+    Image.fromarray(np.round((n + 1) / 2 * 255).astype(np.uint8), "RGB").save(
+        out / "normal.png")
+    Image.fromarray((np.clip(mask_g, 0, 1) * 255).astype(np.uint8),
+                    "RGB").save(out / "mask.png")
+    attach = [a for a in hull.anchors if a.kind == "attach"]
+    if len(attach) != 1:
+        raise ValueError(f"{spec.name}: expected exactly one attach anchor, "
+                         f"got {len(attach)}")
+    a = attach[0]
+    meta = {
+        "name": spec.name, "px_w": pw, "px_h": ph,
+        "px_per_unit": px_per_unit, "frame": list(frame),
+        "classic_px": spec.classic_px,
+        "c1_base": list(spec.c1_base), "c2_base": list(spec.c2_base),
+        "attach_px": [(a.x - frame[0]) * px_per_unit,
+                      (a.y - frame[1]) * px_per_unit],
+    }
     (out / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     return meta
 
@@ -453,6 +547,11 @@ def main():
         meta = export_ship(spec, out_root)
         print(f"exported {spec.name}: {meta['px_w']}x{meta['px_h']} px, "
               f"{len(meta['anchors'])} anchors")
+    part_root = root / "client" / "assets" / "parts"
+    for spec in PART_EXPORTS:
+        meta = export_part(spec, part_root)
+        print(f"exported part {spec.name}: {meta['px_w']}x{meta['px_h']} px, "
+              f"attach {meta['attach_px']}")
     build_debug_sheet(pathlib.Path(__file__).parent / "sheet_composer.png")
 
 

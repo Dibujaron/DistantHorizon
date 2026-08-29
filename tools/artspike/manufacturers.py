@@ -356,6 +356,31 @@ def mb_canopy(nose_y=-104):
     layers.append(Layer(line(-6.2, nose_y + 13, 6.2, nose_y + 13, INK, 1.3)))
     return layers
 
+def part_engine_rijay():
+    """The Rijay drum — Stork 240-C2. Authored at the ORIGIN with its attach
+    point at the drum's fore face, so the composer can place it against any
+    hull's mount anchor. The dorsal ridge comes with it: the MB_FL fin is a
+    drum fairing, not ship structure, which is why a Consol nacelle reads as
+    visibly aftermarket with no extra art."""
+    r, ln, fl = MB_R, MB_LN, MB_FL
+    layers = [
+        Layer(rrect(-r, 0, 2 * r, ln, r * .95, RIJ_BLUE, sw=2.2),
+              cyl_x(0.40, 0.78)),
+        Layer(rrect(-r * .72, ln - 2.5, r * 1.44, 5.5, 2.2, RIJ_BLUE_D,
+                    sw=1.6), cyl_x(0.38, 0.60)),
+        # dorsal ridge: thin from above, runs the drum and overhangs aft
+        Layer(poly([(0, 3), (1.9, 8), (1.9, ln - 2), (1.2, ln + 7 * fl),
+                    (0, ln + 9 * fl), (-1.2, ln + 7 * fl), (-1.9, ln - 2),
+                    (-1.9, 8)], RIJ_WHITE, stroke=INK, sw=1.0), flat(0.82)),
+        Layer(f'<ellipse cx="0" cy="{ln + 8:.1f}" rx="{r * .85:.1f}" '
+              f'ry="10" fill="url(#glow)"/>', role="glow"),
+        Layer(f'<ellipse cx="0" cy="{ln + 3.5:.1f}" rx="{r * .5:.1f}" '
+              f'ry="5.5" fill="{GLOW_CORE}" stroke="none"/>', role="glow"),
+    ]
+    # The attach point is the drum's fore face on its centreline — it lands
+    # on the hull's mount anchor.
+    return Hull(layers=layers, anchors=[Anchor("attach", 0.0, 0.0)])
+
 def ship_mockingbird(stock=False):
     """Rijay's flagship and the game's starter ship. See canon block above.
     Returns a Hull: ordered lit-pipeline layers with authored heights."""
