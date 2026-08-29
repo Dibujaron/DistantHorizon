@@ -371,7 +371,7 @@ fn stamp_all(
 /// CENTRE **is** overwritten by every stamp — a fitted tile's slot marker is
 /// gone from the resolved map regardless, which is why slot membership is
 /// always read off the authored hull document, never a resolved plan
-/// (`hull.gleam`, `check_bounds` below). The NE corner (the palette colour
+/// (`check_bounds` above). The NE corner (the palette colour
 /// digit), by contrast, is deliberately overwritten — a module owns its own
 /// look, so a galley stamped into a bay repaints that bay. Collapsing
 /// `block_offsets` to all nine positions, now that the SW corner has nothing
