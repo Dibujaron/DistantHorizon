@@ -20,7 +20,8 @@ pub fn she_is_a_double_decker_test() {
 }
 
 /// Twelve identical 1x2 cabins, and fifteen slots total — one below the
-/// sixteen a single hex slot digit can express.
+/// sixteen a single hex digit could once express, back when this hull was
+/// drawn (the ceiling is twenty-six now that a marker is a letter).
 pub fn she_carries_twelve_cabins_in_fifteen_slots_test() {
   let assert Ok(h) = hull.load("shipclasses/goldfinch.json")
   assert list.length(h.slots) == 15

@@ -36,9 +36,11 @@ def load_decks(path):
 
 def slot_key(grid, x, y):
     """Tile (x, y)'s slot-membership key: its centre marker letter, or None
-    if it is not in a slot at all."""
+    if it is not in a slot at all. ASCII A-Z only -- str.isalpha()/isupper()
+    are Unicode-aware and would also accept e.g. "É" (E-acute), which the
+    Gleam parser (codepoints 65-90 only) rejects."""
     centre = grid[3 * y + 1][3 * x + 1]
-    return centre if centre.isalpha() and centre.isupper() else None
+    return centre if "A" <= centre <= "Z" else None
 
 
 def paint(hull_grid, structure_grid):

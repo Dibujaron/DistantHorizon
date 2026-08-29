@@ -101,12 +101,13 @@ pub fn a_lowercase_slot_marker_is_rejected_test() {
   let assert Error(_) = hull.decode(bad)
 }
 
-/// A marker is one uppercase letter. Lowercase is the other namespace
-/// entirely, and a digit is no longer a slot at all.
-pub fn a_non_letter_marker_is_rejected_test() {
+/// A digit is not a marker: the `digit` field is gone, and a `marker` field
+/// holding a digit character doesn't get treated as one either — a marker
+/// must be a single uppercase A-Z letter, full stop.
+pub fn a_digit_is_not_a_marker_test() {
   let bad =
     "{ \"schema\": 3, \"id\": \"h\", \"name\": \"H\", \"mass\": 1.0,
-       \"slots\": [ { \"marker\": \"a\", \"id\": \"a\", \"name\": \"A\" } ],
+       \"slots\": [ { \"marker\": \"1\", \"id\": \"a\", \"name\": \"A\" } ],
        \"decks\": [ { \"name\": \"M\", \"grid\": [\"###\", \"# #\", \"###\"] } ],
        \"cargo\": { \"capacity\": 0, \"handling\": \"breakbulk\" } }"
   let assert Error(_) = hull.decode(bad)

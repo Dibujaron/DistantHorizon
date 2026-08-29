@@ -136,11 +136,7 @@ fn validate(h: Hull) -> Result(Hull, String) {
             True ->
               case h.mass >. 0.0 {
                 False -> Error("hull \"" <> h.id <> "\" must have mass > 0")
-                True ->
-                  case reject_void_slot_tiles(h) {
-                    Error(e) -> Error(e)
-                    Ok(Nil) -> Ok(h)
-                  }
+                True -> Ok(h)
               }
           }
       }
@@ -152,83 +148,6 @@ fn is_single_uppercase_letter(marker: String) -> Bool {
     Some(_) -> True
     None -> False
   }
-}
-
-/// A slot tile is interior a module redecorates, never hull a module
-/// conjures: a void patch cell is passthrough, so a module that drew floor
-/// over a void slot tile would grow the hull's outline one-way and
-/// unremovably. Parses every deck's rows (the same parser the resolved plan
-/// runs) and rejects the first tile whose CENTRE is void yet whose parsed
-/// `Cell.slot` carries a marker (`docs/deckplan-format.md`, "Slots").
-///
-/// Since a CENTRE slot marker always parses as `Floor` (`deckplan.parse_center`
-/// gives a marker precedence over the registry), this pair can no longer
-/// occur through the ordinary parser — this check is now a belt-and-suspenders
-/// invariant guard rather than a reachable rejection.
-///
-/// A deck whose rows don't even PARSE (bad width, ragged rows, ...) is left
-/// alone here — rows are kept as raw text precisely so `resolve` is the one
-/// place that turns "this hull's own map doesn't parse" into an error
-/// (`invalid_hull_plan:`, see `loadout_test`); this check only ever adds a
-/// NEW rejection for maps that already parse.
-fn reject_void_slot_tiles(h: Hull) -> Result(Nil, String) {
-  list.try_fold(h.decks, Nil, fn(_, deck) {
-    let #(name, rows) = deck
-    case deckplan.parse_deck(name, rows) {
-      Error(_) -> Ok(Nil)
-      Ok(g) -> reject_void_slot_tiles_in(h, name, g)
-    }
-  })
-}
-
-fn reject_void_slot_tiles_in(
-  h: Hull,
-  deck_name: String,
-  g: deckplan.DeckGrid,
-) -> Result(Nil, String) {
-  let tiles =
-    g.cells
-    |> list.index_map(fn(row, y) {
-      list.index_map(row, fn(cell, x) { #(x, y, cell) })
-    })
-    |> list.flatten
-  case
-    list.find(tiles, fn(t) {
-      let #(_, _, cell) = t
-      cell.tile == deckplan.Void && cell.slot != None
-    })
-  {
-    Error(Nil) -> Ok(Nil)
-    Ok(#(x, y, cell)) -> {
-      // `find`'s predicate already proved `cell.slot` is `Some`.
-      let assert Some(marker) = cell.slot
-      Error(void_slot_tile_error(h, deck_name, x, y, marker))
-    }
-  }
-}
-
-fn void_slot_tile_error(
-  h: Hull,
-  deck_name: String,
-  x: Int,
-  y: Int,
-  marker: String,
-) -> String {
-  let slot_id = case list.find(h.slots, fn(s) { s.marker == marker }) {
-    Ok(s) -> s.id
-    Error(Nil) -> marker
-  }
-  "hull \""
-  <> h.id
-  <> "\" slot \""
-  <> slot_id
-  <> "\" has a void tile on deck \""
-  <> deck_name
-  <> "\" at ("
-  <> int.to_string(x)
-  <> ", "
-  <> int.to_string(y)
-  <> ")"
 }
 
 fn hull_decoder() -> decode.Decoder(Hull) {

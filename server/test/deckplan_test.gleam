@@ -372,15 +372,15 @@ pub fn an_sw_digit_no_longer_marks_a_slot_test() {
   assert cell.slot == option.None
 }
 
-pub fn non_hex_sw_corner_is_no_slot_test() {
+pub fn a_blank_centre_carries_no_slot_test() {
   let assert Ok(g) = deckplan.parse_deck("t", ["###", "# #", "###"])
   let assert Ok(c) = deckplan.cell_at_xy(g, 0, 0)
   assert c.slot == option.None
 }
 
 pub fn slot_marker_round_trips_through_rows_test() {
-  // An already-converted (centre-marker) tile round-trips too, and its SW
-  // corner re-serialises as plain wall junction rather than a stale digit.
+  // A centre-marker tile round-trips, and its SW corner re-serialises as a
+  // plain wall junction, same as any other corner.
   let rows = ["###", "#B#", "###"]
   let assert Ok(g) = deckplan.parse_deck("t", rows)
   let assert Ok(g2) = deckplan.parse_deck("t", deckplan.deck_to_rows(g))

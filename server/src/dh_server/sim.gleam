@@ -1003,7 +1003,7 @@ fn handle_refit(
 /// `fit`? A refit CAN move a ship relative to her berth: the mooring tile is
 /// re-derived from the STAMPED map, and a module is free to draw a docking port
 /// or a spawn glyph inside its own slot region — `loadout.check_bounds` only
-/// asks that an overlay cell land on that slot's digit, never which glyph it
+/// asks that an overlay cell land on that slot's marker, never which glyph it
 /// is. A relocated mooring shifts the whole footprint, which can then collide
 /// with the concourse or block its own docking tube.
 ///

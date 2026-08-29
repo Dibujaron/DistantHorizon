@@ -635,7 +635,7 @@ pub fn a_multi_slot_patch_still_cannot_escape_its_slots_test() {
 }
 
 /// A mistyped id in a multi-slot target's `slots` must be loud, not silently
-/// dropped from the digit set it backs — but this is a CONTENT bug (the
+/// dropped from the marker set it backs — but this is a CONTENT bug (the
 /// module document is wrong), not a loadout refusal, so it gets its own
 /// reason naming the module rather than reusing `slot_not_on_hull` (which
 /// names a slot the player's loadout entry asked for).

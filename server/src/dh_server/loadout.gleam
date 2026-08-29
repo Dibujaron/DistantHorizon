@@ -12,7 +12,7 @@
 ////
 //// Validation is one rule — `sum(provides) >= sum(requires)` pooled per tag —
 //// plus three structural checks (one module per slot, every non-void overlay
-//// cell lands on that slot's digit, mount kind/size fits the part). There is
+//// cell lands on that slot's marker, mount kind/size fits the part). There is
 //// never any reachability or geometry analysis: walkability is the hull
 //// author's responsibility and the module guarantees its own insides.
 
@@ -163,7 +163,7 @@ fn lookup_modules(
     // Every slot the target claims must resolve on the hull, not just the
     // one it was named under — a mistyped id in a multi-slot `slots` list
     // is a content bug, and this is the only place with the hull in hand to
-    // catch it. Once this passes, `check_bounds`'s digit lookup for this
+    // catch it. Once this passes, `check_bounds`'s marker lookup for this
     // target can never silently drop an id. This is a CONTENT error, not a
     // loadout refusal: the player named a real slot in their loadout entry
     // (that is `slot_id` above, already resolved), but the module
@@ -361,16 +361,21 @@ fn stamp_all(
 
 /// Splice one patch into a deck's rows. A patch tile whose centre glyph is
 /// VOID leaves the hull's tile untouched (the passthrough rule); any other
-/// tile overwrites the hull's 3x3 block — **except its SW corner**, which stays
-/// the hull's because slot regions are hull-owned and a later refit has to
-/// find them again.
+/// tile overwrites the hull's 3x3 block — **except its SW corner**, which
+/// stays the hull's.
 ///
-/// The two corners that carry data are therefore asymmetric, and deliberately
-/// so: the NE corner (the palette colour digit) IS overwritten — a module owns
-/// its own look, so a galley stamped into a bay repaints that bay — while the
-/// SW corner (the slot digit) is not, because the hull owns where its slots
-/// are. Everything else about the tile, all four edges included, is the
-/// module's.
+/// That SW-corner exception is vestigial, not load-bearing: slot membership
+/// used to ride the SW corner as a hex digit, so preserving it here kept a
+/// refit from clobbering the hull's slot data. Slot membership now lives in
+/// the tile's CENTRE (`docs/deckplan-format.md`, "Slots") instead, and the
+/// CENTRE **is** overwritten by every stamp — a fitted tile's slot marker is
+/// gone from the resolved map regardless, which is why slot membership is
+/// always read off the authored hull document, never a resolved plan
+/// (`hull.gleam`, `check_bounds` below). The NE corner (the palette colour
+/// digit), by contrast, is deliberately overwritten — a module owns its own
+/// look, so a galley stamped into a bay repaints that bay. Collapsing
+/// `block_offsets` to all nine positions, now that the SW corner has nothing
+/// left to protect, is a pending cleanup, not done here.
 fn stamp(reg: glyphs.Registry, rows: List(String), p: Patch) -> List(String) {
   let base = list.map(rows, string.to_graphemes)
   let patch = list.map(p.rows, string.to_graphemes)
@@ -399,7 +404,9 @@ fn copy_tile(
 }
 
 /// The 3x3 block positions a stamp writes: everything but the SW corner
-/// `#(2, 0)`, the hull's slot digit.
+/// `#(2, 0)`. The SW corner carries no data of its own any more (it used to
+/// be the slot digit); leaving it out here is a vestige of that, kept for a
+/// pending cleanup rather than fixed in this change.
 fn block_offsets() -> List(#(Int, Int)) {
   [#(0, 0), #(0, 1), #(0, 2), #(1, 0), #(1, 1), #(1, 2), #(2, 1), #(2, 2)]
 }
