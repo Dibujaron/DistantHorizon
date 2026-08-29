@@ -277,9 +277,12 @@ MB_Y, MB_SP, MB_R, MB_LN, MB_FL = 40, 21, 7.5, 28, 0.8
 
 def mb_mount_plates():
     """-> (layers, mount anchors). Structure stays with the hull, equipment
-    goes on the part: each hardpoint is a faired-over plate on the transom
-    that a fitted engine covers, so an EMPTY mount still reads deliberate.
-    The Sparrow needs this immediately — she ships engine_center bare."""
+    goes on the part: each hardpoint is a faired-over plate on the flare's
+    shoulder (y=MB_Y, ~18 units fore of the y=62 stern edge — where the
+    drums' fore face used to sit, so a fitted part lands where the drums
+    were) that a fitted engine covers, so an EMPTY mount still reads
+    deliberate. The Sparrow needs this immediately — she ships
+    engine_center bare."""
     y, r = MB_Y, MB_R
     layers, anchors = [], []
     for i, mount_id in ((-1, "engine_port"), (0, "engine_center"),
@@ -375,10 +378,14 @@ def part_engine_consol():
     ship's livery.
 
     The nozzle-mouth trapezoid is deliberately left paint-only (no authored
-    height, unlike the Rijay ridge): it takes its relief from the drum's own
-    cyl_x profile at compose time (see compose_ship's paint-fringe handling),
-    so "has an authored flat layer" is an exclusive marker of the ridge —
-    which is exactly the signal test_consol_engine_has_no_dorsal_ridge reads."""
+    height): it renders better this way — compose_ship's paint-fringe
+    handling hands it the drum's own cyl_x cross-section, so it reads as a
+    rounded bell instead of the flat ledge an authored flat(...) height
+    would produce. This is unrelated to the dorsal-ridge distinction; a
+    future Consol part is free to author a flat panel of its own without
+    breaking any test's assumptions (see test_consol_engine_has_no_dorsal_ridge,
+    which looks for the RIJ_WHITE ridge layer specifically, not for flat
+    layers in general)."""
     w, ln = MB_R * 1.75, MB_LN * 0.92
     layers = [
         Layer(rrect(-w / 2, 0, w, ln, 2.5, PHE_POD, sw=2.2), cyl_x(0.36, 0.70)),

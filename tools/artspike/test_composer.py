@@ -308,18 +308,31 @@ def test_mockingbird_hull_no_longer_draws_her_drums():
 
 def test_consol_engine_has_no_dorsal_ridge():
     """The lore default renders as visibly aftermarket for free: the ridge is
-    a Rijay drum fairing, so the Consol nacelle simply lacks one."""
-    from manufacturers import part_engine_consol, part_engine_rijay
-    consol = len([l for l in part_engine_consol().layers
-                  if l.height and l.height.kind == "flat"])
-    rijay = len([l for l in part_engine_rijay().layers
-                 if l.height and l.height.kind == "flat"])
-    assert rijay > consol
+    a Rijay drum fairing (the atmo-landing package), so the Consol nacelle
+    simply lacks one. Asserted by looking for the ridge itself -- a white
+    flat-height layer -- not by counting flat layers, which would couple this
+    to unrelated decisions like whether a nozzle bell carries relief."""
+    from manufacturers import RIJ_WHITE, part_engine_consol, part_engine_rijay
+
+    def ridges(hull):
+        return [l for l in hull.layers
+                if l.height and l.height.kind == "flat" and RIJ_WHITE in l.svg]
+
+    assert len(ridges(part_engine_rijay())) == 1
+    assert ridges(part_engine_consol()) == []
 
 
 def test_rijay_engine_part_has_one_attach_anchor():
     from manufacturers import part_engine_rijay
     part = part_engine_rijay()
+    attach = [a for a in part.anchors if a.kind == "attach"]
+    assert len(attach) == 1, "a part attaches at exactly one point"
+    assert any(l.height is not None for l in part.layers), "authored relief"
+
+
+def test_consol_engine_part_has_one_attach_anchor():
+    from manufacturers import part_engine_consol
+    part = part_engine_consol()
     attach = [a for a in part.anchors if a.kind == "attach"]
     assert len(attach) == 1, "a part attaches at exactly one point"
     assert any(l.height is not None for l in part.layers), "authored relief"
