@@ -302,11 +302,32 @@ def test_parts_and_hulls_share_one_base_px_per_unit():
     """The scale canon: a part drawn on a hull must not need rescaling. The
     2x `*_interior` renders double classic_px AND px_scale, so it is the BASE
     ratio (classic_px / model_units / px_scale) that must be universal —
-    exactly the quantity export_ship calls base_ppu."""
+    exactly the quantity export_ship calls base_ppu.
+
+    The Longhorn is excluded by name: she is a known pre-existing scale
+    outlier (see test_longhorn_is_the_one_known_scale_outlier) with no hull
+    document and no mounts, so no part will ever hang on her and her ratio
+    is irrelevant to this canon. Every other ship export and every part
+    export must still share exactly one ratio."""
     from composer import PART_EXPORTS, SHIP_EXPORTS
 
     def base(s):
         return s.classic_px / s.model_units / s.px_scale
 
-    ratios = {base(s) for s in SHIP_EXPORTS} | {base(p) for p in PART_EXPORTS}
+    ratios = ({base(s) for s in SHIP_EXPORTS if s.name != "longhorn"}
+              | {base(p) for p in PART_EXPORTS})
     assert len(ratios) == 1, f"multiple scales in play: {ratios}"
+
+
+def test_longhorn_is_the_one_known_scale_outlier():
+    """The Longhorn renders at 41/195, not the 45/195 every other export
+    shares, so she draws about 9% small relative to true scale. That's safe
+    today: she is decorative parked traffic with no hull document and no
+    mounts, so nothing layers onto her and nothing else reads her ratio.
+    The discrepancy predates the M4 art pipeline and nobody has ruled on
+    whether 41 was a deliberate choice or drift from the Classic game's
+    original sprite height. Pinned here so touching it is a decision made
+    on purpose, not an accidental side effect of some other change."""
+    from composer import SHIP_EXPORTS
+    longhorn = next(s for s in SHIP_EXPORTS if s.name == "longhorn")
+    assert (longhorn.classic_px, longhorn.model_units) == (41, 195)

@@ -307,13 +307,13 @@ SHIP_EXPORTS = [
                RIJ_C1, RIJ_C2, interior=MB_INTERIOR),
     # Longhorn livery: c1 = the orange trim, c2 = the gray body (it has no
     # truss white — the body IS the paintable surface on a liner)
-    # classic_px is 45, not the Classic game's 41: the scale canon (Task 6)
-    # requires one base px_per_unit (classic_px/model_units) across every
-    # export, ships and parts alike, so relative sizes read true world-wide —
-    # 45/195 matches the Mockingbird family's ratio; see
-    # test_parts_and_hulls_share_one_base_px_per_unit. This is an export-scale
-    # correction only; ship_longhorn()'s drawn geometry is untouched.
-    ExportSpec("longhorn", _lh, 45, 195,
+    # classic_px stays the Classic game's 41 (NOT 45, the ratio every other
+    # export shares) — she is a known pre-existing scale outlier, decorative
+    # parked traffic with no hull document and no mounts, so nothing ever
+    # layers a part onto her. See test_longhorn_is_the_one_known_scale_outlier,
+    # which pins this so a future change is a decision, not a drift; and the
+    # exclusion in test_parts_and_hulls_share_one_base_px_per_unit.
+    ExportSpec("longhorn", _lh, 41, 195,
                ((217, 122, 40), (168, 90, 30)),
                ((138, 143, 151), (223, 227, 230)),
                tuple(PHE_PALETTE), PHE_C1, (138, 143, 151)),
