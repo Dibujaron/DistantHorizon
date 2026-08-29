@@ -14,6 +14,10 @@
     "schema": { "type": "integer" },
     "id": { "type": "string" },
     "name": { "type": "string" },
+    "sprite": {
+      "type": "string",
+      "description": "Art directory under client/assets/ships/. Defaults to the hull id. Mount GEOMETRY lives in that directory's meta.json as a named mount anchor, never here."
+    },
     "decks": {
       "type": "array",
       "items": { "$ref": "#/$defs/deck" }

@@ -200,3 +200,34 @@ pub fn dock_standoff_defaults_when_omitted_test() {
 pub fn garbage_input_is_rejected_test() {
   let assert Error(_) = hull.decode("not json")
 }
+
+// -------------------------------------------------------- sprite (M4 2c) --
+
+pub fn hull_sprite_defaults_to_id_test() {
+  let json =
+    "{\"schema\":3,\"id\":\"testbed\",\"name\":\"Testbed\","
+    <> "\"decks\":[{\"name\":\"Main\",\"grid\":[\"...\"]}],"
+    <> "\"cargo\":{\"capacity\":1,\"handling\":\"breakbulk\"}}"
+  let assert Ok(h) = hull.decode(json)
+  assert h.sprite == "testbed"
+}
+
+pub fn hull_sprite_is_authored_when_present_test() {
+  let json =
+    "{\"schema\":3,\"id\":\"testbed\",\"name\":\"Testbed\","
+    <> "\"sprite\":\"other_art\","
+    <> "\"decks\":[{\"name\":\"Main\",\"grid\":[\"...\"]}],"
+    <> "\"cargo\":{\"capacity\":1,\"handling\":\"breakbulk\"}}"
+  let assert Ok(h) = hull.decode(json)
+  assert h.sprite == "other_art"
+}
+
+pub fn shipped_hulls_author_their_sprite_test() {
+  let assert Ok(hulls) = hull.load_all("shipclasses")
+  let assert Ok(mb) = dict.get(hulls, "mockingbird")
+  let assert Ok(sp) = dict.get(hulls, "sparrow")
+  let assert Ok(gf) = dict.get(hulls, "goldfinch")
+  assert mb.sprite == "mockingbird"
+  assert sp.sprite == "sparrow"
+  assert gf.sprite == "goldfinch"
+}
