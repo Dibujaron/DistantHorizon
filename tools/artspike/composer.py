@@ -265,9 +265,19 @@ def _rijay_part(name, fn_name, px_scale=1):
                     tuple(RIJAY_PALETTE), RIJ_C1, RIJ_C2, px_scale=px_scale)
 
 
+def _consol_part(name, fn_name, px_scale=1):
+    return PartSpec(name, lambda: _part(fn_name), 45 * px_scale, 195,
+                    ((217, 122, 40), (168, 90, 30)),
+                    ((138, 143, 151), (223, 227, 230)),
+                    tuple(PHE_PALETTE), PHE_C1, (138, 143, 151),
+                    px_scale=px_scale)
+
+
 PART_EXPORTS = [
     _rijay_part("engine_rijay", "part_engine_rijay"),
     _rijay_part("engine_rijay_interior", "part_engine_rijay", px_scale=2),
+    _consol_part("engine_consol", "part_engine_consol"),
+    _consol_part("engine_consol_interior", "part_engine_consol", px_scale=2),
 ]
 
 
@@ -276,9 +286,9 @@ def _part(fn_name):
     return getattr(manufacturers, fn_name)()
 
 
-def _mb(stock):
+def _mb():
     from manufacturers import ship_mockingbird
-    return ship_mockingbird(stock=stock)
+    return ship_mockingbird()
 
 
 def _lh():
@@ -291,20 +301,19 @@ def _lh():
 # SPACE export stays Classic 21x45 px (1.5 px/tile — every hull renders at
 # 1.5 px/tile in space so relative sizes read true); the *_interior export
 # renders the same hull at 2x (42x90 px, 3 px/tile) for the walk-mode
-# backdrop. The deckplan grid (14x20) covers sprite rows 0-19 of 30; the
-# drums/engines behind the docking corridor are exterior-only sprite.
+# backdrop. The deckplan grid is 14x23 walkable in a 30-tile-long sprite;
+# the drums/engines behind the docking corridor are exterior-only sprite —
+# and, as of M4 iteration 2c, a part layered on by the client rather than
+# baked hull art.
 MB_INTERIOR = {"units_per_tile": 6.5, "origin_units": None}
 
 SHIP_EXPORTS = [
-    ExportSpec("mockingbird", lambda: _mb(False), 45, 195,
+    ExportSpec("mockingbird", _mb, 45, 195,
                ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
                RIJ_C1, RIJ_C2, interior=MB_INTERIOR),
-    ExportSpec("mockingbird_interior", lambda: _mb(False), 90, 195,
+    ExportSpec("mockingbird_interior", _mb, 90, 195,
                ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
                RIJ_C1, RIJ_C2, interior=MB_INTERIOR, px_scale=2),
-    ExportSpec("mockingbird_stock", lambda: _mb(True), 45, 195,
-               ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
-               RIJ_C1, RIJ_C2, interior=MB_INTERIOR),
     # Longhorn livery: c1 = the orange trim, c2 = the gray body (it has no
     # truss white — the body IS the paintable surface on a liner)
     # classic_px stays the Classic game's 41 (NOT 45, the ratio every other
@@ -552,7 +561,10 @@ def main():
         meta = export_part(spec, part_root)
         print(f"exported part {spec.name}: {meta['px_w']}x{meta['px_h']} px, "
               f"attach {meta['attach_px']}")
-    build_debug_sheet(pathlib.Path(__file__).parent / "sheet_composer.png")
+    # PART_EXPORTS alongside SHIP_EXPORTS — a part you cannot see on the
+    # debug sheet is a part nobody will review.
+    build_debug_sheet(pathlib.Path(__file__).parent / "sheet_composer.png",
+                      exports=SHIP_EXPORTS + PART_EXPORTS)
 
 
 if __name__ == "__main__":

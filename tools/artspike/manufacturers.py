@@ -266,61 +266,47 @@ def rijay_cockpit(cy, w):
 # ref; individually swappable — the repossessed starter has a Consol drum in the
 # middle), waist docking-port dormers (hull-colored, seamless inboard, door
 # outboard; same top/bottom unseen), white stripes: dorsal (meets center drum) +
-# flank centerlines (break at ports, brief reconnect on the flare). Fins are the
-# ATMO-LANDING PACKAGE (fl=0.8): dorsal+ventral ridge per drum + outboard pair,
-# 8 total, leading edges share one fore point, ends at drum aft (exhaust-safe).
-# stock=True renders the workaday finless bird. Two colors; dark blue only on
-# small practical bits. Blue/white become the c1/c2 livery channels at composer
-# time.
+# flank centerlines (break at ports, brief reconnect on the flare). The drums
+# are a PART now (M4 iteration 2c): the hull carries a faired-over blanking
+# plate per mount and the outboard wing pair only; the dorsal ridge (the
+# ATMO-LANDING PACKAGE) travels with the Rijay drum part as its fairing. Two
+# colors; dark blue only on small practical bits. Blue/white become the c1/c2
+# livery channels at composer time.
 
 MB_Y, MB_SP, MB_R, MB_LN, MB_FL = 40, 21, 7.5, 28, 0.8
 
-def mb_drums(stock=False):
-    """-> (layers, mount anchors). Each drum is its own cyl_x layer so the
-    per-row cylinder profile follows that drum's silhouette alone."""
-    y, r, ln = MB_Y, MB_R, MB_LN
+def mb_mount_plates():
+    """-> (layers, mount anchors). Structure stays with the hull, equipment
+    goes on the part: each hardpoint is a faired-over plate on the transom
+    that a fitted engine covers, so an EMPTY mount still reads deliberate.
+    The Sparrow needs this immediately — she ships engine_center bare."""
+    y, r = MB_Y, MB_R
     layers, anchors = [], []
     for i, mount_id in ((-1, "engine_port"), (0, "engine_center"),
                         (1, "engine_stbd")):
         cx = i * MB_SP
-        layers.append(Layer(rrect(cx - r, y, 2 * r, ln, r * .95, RIJ_BLUE,
-                                  sw=2.2), cyl_x(0.40, 0.78)))
-        if stock:  # painted center stripe; on the atmo bird the fin ridge is it
-            layers.append(Layer(line(cx, y + 2.5, cx, y + ln - 2.5, RIJ_WHITE,
-                                     2.6, .95)))
-        layers.append(Layer(rrect(cx - r * .72, y + ln - 2.5, r * 1.44, 5.5,
-                                  2.2, RIJ_BLUE_D, sw=1.6), cyl_x(0.38, 0.60)))
-        layers.append(Layer(
-            f'<ellipse cx="{cx:.1f}" cy="{y + ln + 8:.1f}" rx="{r * .85:.1f}" '
-            f'ry="10" fill="url(#glow)"/>', role="glow"))
-        layers.append(Layer(
-            f'<ellipse cx="{cx:.1f}" cy="{y + ln + 3.5:.1f}" rx="{r * .5:.1f}" '
-            f'ry="5.5" fill="{GLOW_CORE}" stroke="none"/>', role="glow"))
-        anchors.append(Anchor("mount", cx, y + ln + 3.5, id=mount_id))
+        layers.append(Layer(rrect(cx - r * .82, y - 1.5, r * 1.64, 6.0, 2.0,
+                                  RIJ_BLUE_D, sw=1.6), flat(0.30)))
+        for by in (y + 0.6, y + 3.4):   # bolt ring
+            layers.append(Layer(circle(cx - r * .5, by, .7, INK,
+                                       stroke="none")))
+            layers.append(Layer(circle(cx + r * .5, by, .7, INK,
+                                       stroke="none")))
+        anchors.append(Anchor("mount", cx, y, id=mount_id))
     return layers, anchors
 
-def mb_dorsal_fins():
-    y, ln, fl = MB_Y, MB_LN, MB_FL
-    layers = []
-    for i in (-1, 0, 1):  # thin ridges from above; ventral trio hidden beneath
-        cx = i * MB_SP
-        layers.append(Layer(
-            poly([(cx, y + 3), (cx + 1.9, y + 8), (cx + 1.9, y + ln - 2),
-                  (cx + 1.2, y + ln + 7 * fl), (cx, y + ln + 9 * fl),
-                  (cx - 1.2, y + ln + 7 * fl), (cx - 1.9, y + ln - 2),
-                  (cx - 1.9, y + 8)], RIJ_WHITE, stroke=INK, sw=1.0),
-            flat(0.82)))
-    return layers
-
 def mb_outboard_fins():
-    y, r, ln, fl = MB_Y, MB_R, MB_LN, MB_FL
+    """It is a wing, not a drive fairing: only the outer two drums ever
+    carried one, and it is re-rooted onto the hull's stern flare (inside the
+    transom at y=62) now that there is no drum transom for it to overhang."""
+    y, r, fl = MB_Y, MB_R, MB_FL
     layers = []
-    for sx in (-1, 1):  # under the drums; leading edge shares the fore point
+    for sx in (-1, 1):  # rooted on the stern flare, inside the transom
         root = sx * MB_SP
-        tips = [(root + sx * (r + 8.5 * fl), y + 16),
-                (root + sx * (r + 9.5 * fl), y + ln - 6),
-                (root + sx * (r + 5.5 * fl), y + ln)]
-        layers.append(Layer(poly([(root, y + 3)] + tips + [(root, y + ln)],
+        tips = [(root + sx * (r + 8.5 * fl), y + 7),
+                (root + sx * (r + 9.5 * fl), y + 17),
+                (root + sx * (r + 5.5 * fl), y + 19)]
+        layers.append(Layer(poly([(root, y - 6)] + tips + [(root, y + 19)],
                                  RIJ_BLUE, sw=1.8), flat(0.33)))
         edge = " L ".join(f"{x - sx * 2.2:.1f},{yy + .8:.1f}" for x, yy in tips)
         layers.append(Layer(
@@ -381,10 +367,39 @@ def part_engine_rijay():
     # on the hull's mount anchor.
     return Hull(layers=layers, anchors=[Anchor("attach", 0.0, 0.0)])
 
-def ship_mockingbird(stock=False):
+def part_engine_consol():
+    """Consolidated CO-17F Block 2 — the aftermarket nacelle in the starter
+    Mockingbird's centre mount. Consol grey-orange, squarer than a Rijay drum,
+    and NO dorsal ridge: that ridge is a Rijay fairing, so a mixed fit reads
+    as mixed on sight. Keeps its maker's colours rather than taking the
+    ship's livery.
+
+    The nozzle-mouth trapezoid is deliberately left paint-only (no authored
+    height, unlike the Rijay ridge): it takes its relief from the drum's own
+    cyl_x profile at compose time (see compose_ship's paint-fringe handling),
+    so "has an authored flat layer" is an exclusive marker of the ridge —
+    which is exactly the signal test_consol_engine_has_no_dorsal_ridge reads."""
+    w, ln = MB_R * 1.75, MB_LN * 0.92
+    layers = [
+        Layer(rrect(-w / 2, 0, w, ln, 2.5, PHE_POD, sw=2.2), cyl_x(0.36, 0.70)),
+        Layer(rrect(-w / 2 + 3, 3, w - 6, ln * .26, 1.5, PHE_POD_D,
+                    stroke="none")),
+        Layer(poly([(-w * .3, ln), (w * .3, ln), (w * .38, ln + 7),
+                    (-w * .38, ln + 7)], PHE_GRAY_D, sw=1.8)),
+        Layer(f'<ellipse cx="0" cy="{ln + 9:.1f}" rx="{w * .42:.1f}" '
+              f'ry="9" fill="url(#glow)"/>', role="glow"),
+        Layer(f'<ellipse cx="0" cy="{ln + 5:.1f}" rx="{w * .26:.1f}" '
+              f'ry="5" fill="{GLOW_CORE}" stroke="none"/>', role="glow"),
+    ]
+    return Hull(layers=layers, anchors=[Anchor("attach", 0.0, 0.0)])
+
+def ship_mockingbird():
     """Rijay's flagship and the game's starter ship. See canon block above.
-    Returns a Hull: ordered lit-pipeline layers with authored heights."""
-    layers = [] if stock else mb_outboard_fins()
+    Returns a Hull: ordered lit-pipeline layers with authored heights. Her
+    ENGINES are not here — they are parts, layered at her mount anchors by
+    the client (M4 iteration 2c). `stock` is gone with them: finned vs
+    finless is a part distinction now."""
+    layers = mb_outboard_fins()
     segs = [("L", 8, -95),                    # hybrid head
             ("Q", 10, -90, 9, -84),
             ("L", 8.5, -78),
@@ -414,10 +429,8 @@ def ship_mockingbird(stock=False):
                 f'<path d="{d}" fill="none" stroke="{RIJ_WHITE}" '
                 f'stroke-width="2.2" stroke-linecap="round" '
                 f'stroke-linejoin="round" opacity=".9"/>'))
-    drum_layers, anchors = mb_drums(stock=stock)
-    layers += drum_layers
-    if not stock:
-        layers += mb_dorsal_fins()
+    plate_layers, anchors = mb_mount_plates()
+    layers += plate_layers
     layers += mb_ports()
     layers += mb_canopy()
     return Hull(layers=layers, anchors=anchors)

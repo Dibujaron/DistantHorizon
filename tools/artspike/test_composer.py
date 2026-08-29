@@ -16,13 +16,14 @@ def test_sheet_mfr_render_identical():
 
 
 def test_mockingbird_is_hull_with_heights():
+    """The drums (cyl_x, glow) moved to part_engine_rijay(); the hull itself
+    now authors only flat/dome relief (body, canopy, fins, mount plates)."""
     from manufacturers import ship_mockingbird
     hull = ship_mockingbird()
     kinds = {l.height.kind for l in hull.layers if l.height is not None}
-    assert {"cyl_x", "dome", "flat"} <= kinds          # authored variety, not doming
+    assert {"dome", "flat"} <= kinds                   # authored variety, not doming
     mounts = {a.id for a in hull.anchors if a.kind == "mount"}
     assert mounts == {"engine_port", "engine_center", "engine_stbd"}
-    assert any(l.role == "glow" for l in hull.layers)  # glow separated for exclusion
     assert any(l.role == "sheet_only" for l in hull.layers)  # painted highlight split
 
 
@@ -143,22 +144,24 @@ def test_export_mockingbird(tmp_path):
     assert len(meta["anchors"]) == 3
     for a in meta["anchors"]:
         assert 0 <= a["x_px"] < meta["px_w"] and 0 <= a["y_px"] < meta["px_h"]
-        assert a["y_px"] > meta["px_h"] * 0.7              # nozzles aft
-    # interior fit contract (scale canon: 1 tile ~ 1 m): the 14x20 deckplan
+        assert a["y_px"] > meta["px_h"] * 0.7              # mounts sit aft
+    # interior fit contract (scale canon: 1 tile ~ 1 m): the 14x23 deckplan
     # sits at 1.5 px/tile on the SPACE sprite — if the sprite ever drifts
-    # off 21x45 the deckplan no longer fits the hull, so pin EXACT
-    # dimensions here.
-    assert (meta["px_w"], meta["px_h"]) == (21, 45)
+    # off 21x43 the deckplan no longer fits the hull, so pin EXACT
+    # dimensions here. (M4 iteration 2c: the drums moved off the hull to a
+    # part, shrinking the hull's own bounding box aft from 45 to 43 px —
+    # the engine part's own bulk restores the full profile once layered on.)
+    assert (meta["px_w"], meta["px_h"]) == (21, 43)
     assert abs(meta["interior"]["px_per_tile"] - 1.5) < 1e-9
     assert meta["interior"]["origin_px"] == [0.0, 0.0]
 
 
 def test_export_mockingbird_interior_backdrop(tmp_path):
-    """the 2x walk-mode render: same hull, 42x90 px, 3 px/tile"""
+    """the 2x walk-mode render: same hull, 42x86 px, 3 px/tile"""
     from composer import SHIP_EXPORTS, export_ship
     spec = next(s for s in SHIP_EXPORTS if s.name == "mockingbird_interior")
     meta = export_ship(spec, tmp_path)
-    assert (meta["px_w"], meta["px_h"]) == (42, 90)
+    assert (meta["px_w"], meta["px_h"]) == (42, 86)
     assert abs(meta["interior"]["px_per_tile"] - 3.0) < 1e-9
     assert meta["interior"]["origin_px"] == [0.0, 0.0]
     from PIL import Image
@@ -288,6 +291,30 @@ def test_export_longhorn_foil_shades_flat(tmp_path):
         fx = int((mx - meta["frame"][0]) * meta["px_per_unit"])
         fy = int((-95 - meta["frame"][1]) * meta["px_per_unit"])
         assert n[fy, fx, 2] > 0.9, "hammer foil must shade as a thin flat plate"
+
+
+def test_mockingbird_hull_no_longer_draws_her_drums():
+    """The drums are a PART now. What stays on the hull is a blanking plate
+    per mount, which a fitted part covers."""
+    from manufacturers import ship_mockingbird
+    hull = ship_mockingbird()
+    # The drums were the only cyl_x layers on the hull.
+    assert not [l for l in hull.layers if l.height and l.height.kind == "cyl_x"]
+    assert not [l for l in hull.layers if l.role == "glow"], \
+        "engine glow belongs to the engine part"
+    mounts = {a.id for a in hull.anchors if a.kind == "mount"}
+    assert mounts == {"engine_port", "engine_center", "engine_stbd"}
+
+
+def test_consol_engine_has_no_dorsal_ridge():
+    """The lore default renders as visibly aftermarket for free: the ridge is
+    a Rijay drum fairing, so the Consol nacelle simply lacks one."""
+    from manufacturers import part_engine_consol, part_engine_rijay
+    consol = len([l for l in part_engine_consol().layers
+                  if l.height and l.height.kind == "flat"])
+    rijay = len([l for l in part_engine_rijay().layers
+                 if l.height and l.height.kind == "flat"])
+    assert rijay > consol
 
 
 def test_rijay_engine_part_has_one_attach_anchor():
