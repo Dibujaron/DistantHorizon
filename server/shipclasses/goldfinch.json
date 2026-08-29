@@ -163,12 +163,12 @@
     { "marker": "H",  "id": "cabin_u_s_c", "name": "Upper cabin C, starboard" },
     { "marker": "I",  "id": "cabin_l_p_a", "name": "Lower cabin A, port" },
     { "marker": "J",  "id": "cabin_l_s_a", "name": "Lower cabin A, starboard" },
-    { "marker": "K", "id": "cabin_l_p_b", "name": "Lower cabin B, port" },
-    { "marker": "L", "id": "cabin_l_s_b", "name": "Lower cabin B, starboard" },
-    { "marker": "M", "id": "cabin_l_p_c", "name": "Lower cabin C, port" },
-    { "marker": "N", "id": "cabin_l_s_c", "name": "Lower cabin C, starboard" },
-    { "marker": "O", "id": "galley",      "name": "Galley" },
-    { "marker": "P", "id": "hold",        "name": "Main hold" }
+    { "marker": "K",  "id": "cabin_l_p_b", "name": "Lower cabin B, port" },
+    { "marker": "L",  "id": "cabin_l_s_b", "name": "Lower cabin B, starboard" },
+    { "marker": "M",  "id": "cabin_l_p_c", "name": "Lower cabin C, port" },
+    { "marker": "N",  "id": "cabin_l_s_c", "name": "Lower cabin C, starboard" },
+    { "marker": "O",  "id": "galley",      "name": "Galley" },
+    { "marker": "P",  "id": "hold",        "name": "Main hold" }
   ],
   "default_loadout": {
     "modules": {

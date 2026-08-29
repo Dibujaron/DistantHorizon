@@ -244,7 +244,7 @@
     { "marker": "H",  "id": "cabin_engineer", "name": "Engineer's cabin" },
     { "marker": "I",  "id": "engineering",    "name": "Engineering" },
     { "marker": "J",  "id": "cabin_aft_stbd", "name": "Aft cabin, starboard" },
-    { "marker": "K", "id": "hold",           "name": "Main hold" }
+    { "marker": "K",  "id": "hold",           "name": "Main hold" }
   ],
   "default_loadout": {
     "modules": {

@@ -150,11 +150,11 @@ unremovably: nothing could ever un-fit that floor back to void. So a slot
 tile is always floor, fitted or not — an unfitted hull is already her full,
 fixed size. Exterior silhouette (mounts, sprites) is a separate concern for a
 later iteration's exterior layering; slot membership never grows or shrinks a
-hull's interior outline. In practice this is now true **by construction** —
-a centre marker always parses as floor, never void, so the two facts can't
-even be written on the same tile — but `hull.decode`'s `validate` still
-rejects the combination too (naming the offending slot and tile), as a
-belt-and-suspenders invariant guard.
+hull's interior outline. This is true **by construction**, not by validation:
+a centre marker always parses as `Floor` (`deckplan.parse_center` gives a
+marker precedence over the registry), so a tile that is both void and
+slot-marked simply cannot be written down — there is no character that means
+both at once, and no check has to catch what the format can't express.
 
 This makes tile exclusion the way to reserve structure that runs *through* a slot. Leave the
 centre of a corridor tile blank (plain floor, no marker) and no module fitted to the
