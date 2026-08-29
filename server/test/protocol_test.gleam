@@ -254,8 +254,22 @@ pub fn encode_snapshot_round_trip_test() {
       transfers: [],
     )
 
-  let text = protocol.encode_snapshot(42, [flying, docked])
+  let flying_look =
+    loadout.Appearance(hull_sprite: "mockingbird", mounts: [
+      #("engine_port", "engine_rijay"),
+      #("engine_center", "engine_consol"),
+    ])
+  let docked_look = loadout.Appearance(hull_sprite: "sparrow", mounts: [])
+
+  let text =
+    protocol.encode_snapshot(42, [
+      #(flying, flying_look),
+      #(docked, docked_look),
+    ])
   assert string.contains(text, "\"tick\":42")
+  assert string.contains(text, "\"hull\":\"mockingbird\"")
+  assert string.contains(text, "\"engine_center\":\"engine_consol\"")
+  assert string.contains(text, "\"hull\":\"sparrow\"")
 
   let assert Ok(ships) = json.parse(text, snapshot_decoder())
   let assert Ok(decoded_flying) = list.find(ships, fn(s) { s.id == 1 })
@@ -269,6 +283,28 @@ pub fn encode_snapshot_round_trip_test() {
 
   assert decoded_docked.vy == 13.9
   assert decoded_docked.docked == Some("meridian_highport")
+}
+
+pub fn encode_snapshot_empty_appearance_is_an_empty_object_test() {
+  let s =
+    ship.Ship(
+      id: 9,
+      x: 0.0,
+      y: 0.0,
+      vx: 0.0,
+      vy: 0.0,
+      heading: 0.0,
+      controls: ship.Controls(rotate: 0.0, thrust: 0.0),
+      dock: ship.Flying,
+      wallet: ship.starting_wallet,
+      hold: dict.new(),
+      transfers: [],
+    )
+  let text =
+    protocol.encode_snapshot(1, [
+      #(s, loadout.Appearance(hull_sprite: "", mounts: [])),
+    ])
+  assert string.contains(text, "\"mounts\":{}")
 }
 
 pub fn encode_seat_result_ok_test() {

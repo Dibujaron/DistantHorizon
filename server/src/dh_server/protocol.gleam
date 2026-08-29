@@ -36,9 +36,15 @@
 ////    "transfers":[{"commodity","direction","remaining"}...]}
 ////   {"v":1,"type":"snapshot","tick":N,
 ////    "ships":[{"id","x","y","vx","vy","heading","thrust","docked",
-////              "berth"}...]} — "berth" is the claimed berth index while
-////   docked (null while flying), so the client parks each moored hull at its
-////   own berth anchor (the same berth the server releases it at on undock).
+////              "berth","hull","mounts"}...]} — "berth" is the claimed berth
+////   index while docked (null while flying), so the client parks each moored
+////   hull at its own berth anchor (the same berth the server releases it at on
+////   undock). "hull" is the ship's ART DIRECTORY key and "mounts" maps each
+////   FITTED mount id to that part's SPRITE key — sprite keys, never part ids,
+////   because the client has no parts catalog. Both change only on refit; they
+////   ride the snapshot anyway so a client can draw any ship it can see without
+////   a separate appearance message to miss. An unfitted mount is absent, and
+////   the hull's blanking plate shows through.
 ////   {"v":1,"type":"space","space":"station:<id>"|"ship:N","epoch":N,
 ////    "plan":{"decks":[{"name","grid":[rows]}...],"rooms":[...],
 ////            "consoles":[...],"spawn":{"deck":N,"tile":[x,y]}},
@@ -512,8 +518,14 @@ fn encode_character(c: Character) -> Json {
   ])
 }
 
-/// Serialize a world snapshot.
-pub fn encode_snapshot(tick: Int, ships: List(Ship)) -> String {
+/// Serialize a world snapshot. Each ship is paired with its APPEARANCE — the
+/// hull art key and the part sprite key on each fitted mount — so a client can
+/// always draw any ship it can see, with no separate appearance message to
+/// miss and no parts catalog of its own.
+pub fn encode_snapshot(
+  tick: Int,
+  ships: List(#(Ship, loadout.Appearance)),
+) -> String {
   json.object([
     #("v", json.int(version)),
     #("type", json.string("snapshot")),
@@ -523,7 +535,8 @@ pub fn encode_snapshot(tick: Int, ships: List(Ship)) -> String {
   |> json.to_string
 }
 
-fn encode_ship(s: Ship) -> Json {
+fn encode_ship(entry: #(Ship, loadout.Appearance)) -> Json {
+  let #(s, look) = entry
   json.object([
     #("id", json.int(s.id)),
     #("x", json.float(s.x)),
@@ -534,6 +547,11 @@ fn encode_ship(s: Ship) -> Json {
     #("thrust", json.float(s.controls.thrust)),
     #("docked", encode_docked(s.dock)),
     #("berth", encode_berth_index(s.dock)),
+    #("hull", json.string(look.hull_sprite)),
+    #(
+      "mounts",
+      json.object(list.map(look.mounts, fn(m) { #(m.0, json.string(m.1)) })),
+    ),
   ])
 }
 
