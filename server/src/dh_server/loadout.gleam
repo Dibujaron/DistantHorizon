@@ -41,7 +41,15 @@ pub type Loadout {
 /// A resolved loadout: the fit itself, the baked class it produced, and the
 /// total mass the flight stats were divided by.
 pub type Fit {
-  Fit(loadout: Loadout, class: ShipClass, mass: Float)
+  Fit(loadout: Loadout, class: ShipClass, mass: Float, appearance: Appearance)
+}
+
+/// What a fit LOOKS LIKE: the hull's art directory and the sprite key of the
+/// part on each fitted mount. Sprite keys, never part ids — the client has no
+/// parts catalog, so ids would mean shipping it one. Computed once here rather
+/// than per tick, so it cannot disagree with the fit that produced it.
+pub type Appearance {
+  Appearance(hull_sprite: String, mounts: List(#(String, String)))
 }
 
 /// The loadout a hull ships with — the Mockingbird's default loadout is how
@@ -130,7 +138,26 @@ pub fn resolve(
     )
     |> result.map_error(fn(e) { "invalid_resolved_plan:" <> e }),
   )
-  Ok(Fit(loadout: lo, class: class, mass: mass))
+  Ok(Fit(
+    loadout: lo,
+    class: class,
+    mass: mass,
+    appearance: appearance_of(h, mounted),
+  ))
+}
+
+/// A mount with nothing on it, or a part with no `sprite`, simply does not
+/// appear — the client draws the hull's blanking plate there.
+fn appearance_of(h: Hull, mounted: List(#(Mount, Part))) -> Appearance {
+  let mounts =
+    list.filter_map(mounted, fn(entry) {
+      let #(mount, p) = entry
+      case p.sprite {
+        Some(key) -> Ok(#(mount.id, key))
+        option.None -> Error(Nil)
+      }
+    })
+  Appearance(hull_sprite: h.sprite, mounts: mounts)
 }
 
 // ------------------------------------------------------------- lookups --
