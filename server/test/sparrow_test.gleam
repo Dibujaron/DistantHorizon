@@ -162,7 +162,7 @@ pub fn the_fore_bunk_fits_beside_two_engines_but_not_three_test() {
 }
 
 /// Her spine is hull, not slot. The fore row's centre tile carries no slot
-/// digit, so `check_bounds` refuses any fore module whose overlay puts a
+/// marker, so `check_bounds` refuses any fore module whose overlay puts a
 /// non-void centre glyph there — the corridor between cockpit and hold cannot
 /// be paved by a refit, and the refusal is a CONTENT error naming the file at
 /// fault. This is the single-deck equivalent of the stairs invariants: nothing

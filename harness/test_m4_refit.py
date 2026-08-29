@@ -5,10 +5,14 @@ deck the server serves, not a cosmetic label -- so these assertions read the
 deck plan on the wire before and after, not a module list.
 
 The fixture hull (harness/fixtures/test_fixture.json) carries one slot,
-"bay" (SW-corner digit 1), on an otherwise-plain floor tile at Main deck
-(x=4, y=2). `server/modules/test_fixture/bunkroom.json` overlays that single
-tile with a bed ("d") when fitted; the hull's own default loadout leaves the
-bay empty, so a fresh login shows a bare floor tile there.
+"bay" (centre marker "B", M4 "slot markers in the tile centre"), on an
+otherwise-plain floor tile at Main deck (x=4, y=2).
+`server/modules/test_fixture/bunkroom.json` overlays that single tile with a
+bed ("d") when fitted; the hull's own default loadout leaves the bay empty,
+so a fresh login shows that tile's slot marker ("B") sitting in its centre.
+The tile is still plain, walkable floor -- an uppercase centre glyph is slot
+membership, not a different tile kind -- it just isn't rendered as a bare
+space anymore.
 
 Refit replaces the WHOLE loadout, so every request below re-states the
 fixture's one engine part (`consol.engine.co17f_2` on `engine_center`)
@@ -83,16 +87,20 @@ async def test_refit_installs_a_module(server):
     """Fit the bunkroom into the bay: `refit_result.ok` alone never proves
     the bake ran -- the resolved `ship_class` in the following `ship_fit`
     has to actually carry the module's patch. This reads the patched tile's
-    centre glyph before and after (floor -> bed), and additionally checks no
-    OTHER tile's grid text moved, so the assertion can't pass on some
-    unrelated deck-wide change."""
+    centre glyph before and after (its slot marker "B" -> the bed glyph
+    "d"), and additionally checks no OTHER tile's grid text moved, so the
+    assertion can't pass on some unrelated deck-wide change."""
     async with DHClient(name="m4_install") as client:
         welcome = await client.login("m4_install_bay", "pw")
         ship_id = welcome["ship_id"]
         original_class = welcome["ship_class"]
 
-        # Sanity on the fixture itself: bare bay is empty floor pre-refit.
-        assert _center_char(original_class, 0, *PATCHED_TILE) == " "
+        # Sanity on the fixture itself: pre-refit, the bay is unfurnished --
+        # still plain walkable floor, but its centre carries the bay slot's
+        # marker letter ("B") rather than a blank space, because an
+        # uppercase centre glyph is slot membership, independent of what
+        # (if anything) is drawn there.
+        assert _center_char(original_class, 0, *PATCHED_TILE) == "B"
 
         result = await _refit(client, BUNKROOM_MODULES, DEFAULT_PARTS)
         assert result["ok"] is True, result
@@ -103,12 +111,13 @@ async def test_refit_installs_a_module(server):
         new_class = fit["ship_class"]
 
         # The bunkroom's patch is `[" d ", ...]` centred on the bay tile --
-        # its bed glyph ("d") must now sit where plain floor (" ") did.
+        # its bed glyph ("d") must now sit where the bare slot marker ("B")
+        # did.
         assert _center_char(new_class, 0, *PATCHED_TILE) == "d"
 
         # And nothing outside that one tile's 3x3 block (minus its SW
-        # corner, which loadout.gleam's stamp never overwrites -- it's the
-        # hull's own slot digit) changed at all.
+        # corner, a plain wall-junction corner untouched by slot data or by
+        # the module's patch) changed at all.
         old_rows = original_class["decks"][0]["grid"]
         new_rows = new_class["decks"][0]["grid"]
         diffs = {
@@ -122,7 +131,7 @@ async def test_refit_installs_a_module(server):
             (3 * ty + dr, 3 * tx + dc)
             for dr in range(3)
             for dc in range(3)
-            if (dr, dc) != (2, 0)  # SW corner: hull-owned slot digit
+            if (dr, dc) != (2, 0)  # SW corner: plain wall-junction corner
         }
         assert diffs, "refit changed nothing at all"
         assert diffs <= allowed, diffs - allowed

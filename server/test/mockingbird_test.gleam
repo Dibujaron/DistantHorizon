@@ -38,7 +38,7 @@ fn authored_plan() -> deckplan.DeckPlan {
   plan
 }
 
-/// Slot digits are new structure the frozen map does not have, so compare with
+/// Slot markers are new structure the frozen map does not have, so compare with
 /// them stripped — everything else (tile kind, all four edges, decor, colour,
 /// consoles, spawn) must match exactly.
 fn strip_slots(plan: deckplan.DeckPlan) -> deckplan.DeckPlan {

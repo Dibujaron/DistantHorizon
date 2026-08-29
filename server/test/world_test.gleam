@@ -319,7 +319,7 @@ pub fn decode_accepts_market_with_broker_console_test() {
 }
 
 pub fn station_berths_derive_from_q_glyphs_test() {
-  // Berths are the concourse's `Q` docking ports (issue #31): the glyph tile is
+  // Berths are the concourse's `q` docking ports (issue #31): the glyph tile is
   // the berth, its north-facing void door gives the side-on orientation. No
   // authored anchor.
   let assert Ok(w) = world.load("worlds/m1_system.json")

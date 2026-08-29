@@ -34,7 +34,7 @@
     },
     "slot": {
       "type": "string",
-      "description": "The hull slot id it occupies — matched against the hull's slots table, and every non-void patch cell must land on that slot's SW digit."
+      "description": "The hull slot id it occupies — matched against the hull's slots table, and every non-void patch cell must land on that slot's centre marker."
     },
     "name": { "type": "string" },
     "mass": {
@@ -105,7 +105,7 @@
         },
         "grid": {
           "type": "array",
-          "description": "3*height rows of 3*width chars in the same per-cell format hulls use (docs/deckplan-format.md) — the field is named grid on the wire but is a Patch's rows in Gleam. Row count and each row's length must be positive, equal-length multiples of 3 (enforced by the Gleam decoder's validate step, not by this schema). A tile whose centre glyph is void passes the hull's tile through untouched; any other tile overwrites all of the hull's 3x3 block EXCEPT its SW corner, which stays the hull's slot digit.",
+          "description": "3*height rows of 3*width chars in the same per-cell format hulls use (docs/deckplan-format.md) — the field is named grid on the wire but is a Patch's rows in Gleam. Row count and each row's length must be positive, equal-length multiples of 3 (enforced by the Gleam decoder's validate step, not by this schema). A tile whose centre glyph is void passes the hull's tile through untouched; any other tile overwrites all of the hull's 3x3 block EXCEPT its SW corner, which is preserved from the hull unchanged — a vestige of the legacy SW-digit slot encoding; the SW corner carries no data of its own any more (docs/deckplan-format.md, \"Slots\").",
           "items": { "type": "string" }
         }
       }

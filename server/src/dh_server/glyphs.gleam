@@ -289,7 +289,7 @@ pub fn default() -> Registry {
         ),
       ),
       #(
-        "Q",
+        "q",
         CenterSpec(
           "docking_port",
           Floor,

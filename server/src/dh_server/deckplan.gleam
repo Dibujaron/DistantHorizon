@@ -49,18 +49,18 @@ pub type Dir {
 
 /// One tile: what it IS at centre plus its four edges `#(n, e, s, w)`, an
 /// optional decor glyph, an optional palette colour index, and (M4) the hull
-/// SLOT this tile belongs to. Colour rides the NE corner, slot the SW corner
-/// — see `docs/deckplan-format.md`.
+/// SLOT this tile belongs to. Colour rides the NE corner; slot is an
+/// uppercase letter in the CENTRE — see `docs/deckplan-format.md`.
 pub type Cell {
   Cell(
     tile: Tile,
     edges: #(Edge, Edge, Edge, Edge),
     decor: option.Option(String),
     color: option.Option(Int),
-    /// Slot membership: the SW-corner hex digit selecting one of the hull's
-    /// slots (`docs/modules.md`), or `None` for fixed hull structure that no
-    /// module may overwrite.
-    slot: option.Option(Int),
+    /// Slot membership: an uppercase letter selecting one of the hull's slots
+    /// (`docs/modules.md`), authored as the tile-CENTRE marker. `None` for
+    /// fixed hull structure that no module may overwrite.
+    slot: option.Option(String),
   )
 }
 
@@ -151,7 +151,7 @@ pub fn parse_deck_with(
           ),
           decor: parse_decor(reg, cell_at(cells_g, 3 * y + 1, 3 * x + 1)),
           color: parse_hex_digit(cell_at(cells_g, 3 * y, 3 * x + 2)),
-          slot: parse_hex_digit(cell_at(cells_g, 3 * y + 2, 3 * x)),
+          slot: parse_slot_marker(cell_at(cells_g, 3 * y + 1, 3 * x + 1)),
         )
       })
     })
@@ -159,10 +159,17 @@ pub fn parse_deck_with(
 }
 
 fn parse_center(reg: glyphs.Registry, ch: String) -> Tile {
-  case glyphs.center(reg, ch).tile {
-    glyphs.Void -> Void
-    glyphs.Stairs -> Stairs
-    glyphs.Floor -> Floor
+  case parse_slot_marker(ch) {
+    // An uppercase slot marker always reads as floor — a slot tile is
+    // always floor the module will draw on — regardless of what the
+    // registry says (it should never register A-Z; task 1 freed the range).
+    Some(_) -> Floor
+    None ->
+      case glyphs.center(reg, ch).tile {
+        glyphs.Void -> Void
+        glyphs.Stairs -> Stairs
+        glyphs.Floor -> Floor
+      }
   }
 }
 
@@ -177,17 +184,38 @@ fn parse_edge(reg: glyphs.Registry, ch: String) -> Edge {
 }
 
 fn parse_decor(reg: glyphs.Registry, ch: String) -> option.Option(String) {
-  case glyphs.is_decor(reg, ch) {
-    True -> Some(ch)
-    False -> None
+  case parse_slot_marker(ch) {
+    // A slot marker is never decor — see parse_center.
+    Some(_) -> None
+    None ->
+      case glyphs.is_decor(reg, ch) {
+        True -> Some(ch)
+        False -> None
+      }
   }
 }
 
 /// A corner hex digit 0-f -> 0-15; anything else (blank, "#", junk) is None.
-/// Both the NE corner (colour) and the SW corner (slot) use this encoding.
+/// The NE corner (colour) is the only caller — the SW corner carries no data
+/// any more, an ordinary derived wall-junction character.
 fn parse_hex_digit(ch: String) -> option.Option(Int) {
   case int.base_parse(ch, 16) {
     Ok(n) if n >= 0 && n <= 15 -> Some(n)
+    _ -> None
+  }
+}
+
+/// A slot marker: a single uppercase `A`-`Z` grapheme, `None` for anything
+/// else (a multi-grapheme string, lowercase, digits, punctuation).
+pub fn parse_slot_marker(ch: String) -> option.Option(String) {
+  case string.to_utf_codepoints(ch) {
+    [cp] -> {
+      let n = string.utf_codepoint_to_int(cp)
+      case n >= 65 && n <= 90 {
+        True -> Some(ch)
+        False -> None
+      }
+    }
     _ -> None
   }
 }
@@ -380,11 +408,11 @@ pub fn find_console_of_kind(
   list.find(plan.consoles, fn(c) { c.kind == kind })
 }
 
-/// Every docking port (`Q`) on the plan and its outward normal — the edge
+/// Every docking port (`q`) on the plan and its outward normal — the edge
 /// whose door (`=`) faces `Void`. `#(deck, x, y, outward_dir)`, in the
 /// consoles' row-major order. Ships derive their mooring tile from the
 /// west-facing port; stations derive each berth from a north-facing port —
-/// one shared rule so a `Q` in the grid is the single source of docking
+/// one shared rule so a `q` in the grid is the single source of docking
 /// geometry (issue #31).
 ///
 /// A docking port MUST carry at least one door on an edge that faces void
@@ -561,7 +589,7 @@ fn plan_from_entries(
 /// carry them at their top level, station concourses as a nested object.
 ///
 /// Consoles and the spawn/mooring tile are AUTHORED as center glyphs in the
-/// deck grids (`h`/`c`/`b` consoles, `Q` docking ports; `s` a bare spawn tile)
+/// deck grids (`h`/`c`/`b` consoles, `q` docking ports; `s` a bare spawn tile)
 /// and derived at parse time. The wire form (encode) instead carries the
 /// derived, namespaced `consoles` + `spawn` explicitly — the composite needs
 /// namespaced ids that glyphs can't express — so when those fields are present
@@ -597,7 +625,7 @@ pub fn decoder(reg: glyphs.Registry) -> decode.Decoder(DeckPlan) {
 
 /// Derive the console list (auto-generated ids) and the spawn/mooring tile
 /// from the authored center glyphs across every deck. The mooring tile is the
-/// docking port (`Q`) whose outer door faces void on the port (west) side;
+/// docking port (`q`) whose outer door faces void on the port (west) side;
 /// failing that, any `s` spawn tile, or the first docking port.
 fn derive_markers(
   reg: glyphs.Registry,
@@ -814,18 +842,25 @@ pub fn deck_to_rows(g: DeckGrid) -> List(String) {
 fn tile_block(g: DeckGrid, x: Int, y: Int) -> #(String, String, String) {
   let assert Ok(cell) = cell_at_xy(g, x, y)
   let #(n, e, s, w) = cell.edges
+  // The centre is one character: decor wins it over a slot marker, so a
+  // decorated slot tile re-parses with slot: None — deliberate, not a bug,
+  // because slot membership is authoritative on the hull document, not a
+  // resolved plan (loadout.check_bounds reads the hull, never this output).
   let c = case cell.decor {
     Some(glyph) -> glyph
-    None -> center_glyph(cell.tile)
+    None ->
+      case cell.slot {
+        Some(marker) -> marker
+        None -> center_glyph(cell.tile)
+      }
   }
   let ne = case cell.color {
     Some(v) -> to_hex_digit(v)
     None -> corner(n, e)
   }
-  let sw = case cell.slot {
-    Some(v) -> to_hex_digit(v)
-    None -> corner(s, w)
-  }
+  // The slot marker now lives in the centre (above); the SW corner is
+  // always a plain wall-junction corner, same as any other corner.
+  let sw = corner(s, w)
   let top = corner(n, w) <> edge_glyph(n) <> ne
   let mid = edge_glyph(w) <> c <> edge_glyph(e)
   let bot = sw <> edge_glyph(s) <> corner(s, e)

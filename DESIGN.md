@@ -503,9 +503,9 @@ The hull is the fixed part; what's inside is the loadout.
   them lining up, so connectivity is guaranteed at authoring time and loadout validation never
   does reachability or geometry analysis. A module rewrites its slot and nothing else — it may
   add walls and doors *within* the slot, which is how staterooms get carved out of an open bay,
-  but the hull owns every corridor and all structure outside the slots. Slot membership is
-  marked per tile, by a digit in the tile's SW corner, so slot regions are exactly as fluid as
-  the hull author draws them and there is no rectangle list anywhere.
+  but the hull owns every corridor and all structure outside the slots. Slot membership
+  is marked per tile, by an uppercase letter in the tile's CENTRE, so slot regions are
+  exactly as fluid as the hull author draws them and there is no rectangle list anywhere.
 - **What survives as cross-hull matching is a tag budget, not a shape.** Legality is one rule
   — for every tag, pooled `provides` across hull, modules and parts must cover pooled
   `requires` — plus cheap structural checks (one module per slot, the overlay lands inside its

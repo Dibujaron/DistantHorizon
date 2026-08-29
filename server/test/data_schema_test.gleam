@@ -129,7 +129,7 @@ pub fn hull_rejects_an_unknown_handling_value_test() {
   let schema = read_json(hull_schema_path)
   let hull_doc = fn(handling: String) {
     parse_json(
-      "{\"schema\": 3, \"id\": \"x\", \"name\": \"X\", \"decks\": [{\"name\": \"M\", \"grid\": [\"   \", \" Q \", \"   \"]}], \"cargo\": {\"capacity\": 1, \"handling\": \""
+      "{\"schema\": 3, \"id\": \"x\", \"name\": \"X\", \"decks\": [{\"name\": \"M\", \"grid\": [\"   \", \" q \", \"   \"]}], \"cargo\": {\"capacity\": 1, \"handling\": \""
       <> handling
       <> "\"}}",
     )

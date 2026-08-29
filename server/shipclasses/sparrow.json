@@ -10,19 +10,19 @@
         " .  .  .  .  . ",
         "               ",
         "   #########   ",
-        " . #       # . ",
-        "   1  1  1     ",
+        " . #B  B  B# . ",
+        "   #           ",
         "               ",
-        " . #       # . ",
-        "   3     3     ",
+        " . #D     D# . ",
+        "   #           ",
         "               ",
-        " . #       # . ",
-        "   2  2  2     ",
+        " . #C  C  C# . ",
+        "   #           ",
         "               ",
-        " . #       # . ",
-        "   2  2  2     ",
+        " . #C  C  C# . ",
+        "   #           ",
         "               ",
-        " . =Q     Q= . ",
+        " . =q     q= . ",
         "   #########   ",
         "               ",
         " .  .  .  .  . ",
@@ -39,9 +39,9 @@
     { "id": "engine_stbd",   "kind": "engine", "size": "s" }
   ],
   "slots": [
-    { "digit": 1, "id": "cockpit", "name": "Cockpit" },
-    { "digit": 2, "id": "bay",     "name": "Pod bay" },
-    { "digit": 3, "id": "fore",    "name": "Fore bay" }
+    { "marker": "B", "id": "cockpit", "name": "Cockpit" },
+    { "marker": "C", "id": "bay",     "name": "Pod bay" },
+    { "marker": "D", "id": "fore",    "name": "Fore bay" }
   ],
   "default_loadout": {
     "modules": {

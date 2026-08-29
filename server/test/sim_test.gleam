@@ -1252,9 +1252,12 @@ pub fn refit_that_would_strand_cargo_is_refused_test() {
 // No bundled Mockingbird module draws such a glyph — that is content practice,
 // not an engine rule, and content practice is exactly what a guard must not
 // depend on — so this drives a fixture hull instead of shipping a spawn-glyph
-// module in `server/modules`. Her `muster` bay draws an `s` spawn tile in the
-// bay and floors the tile that the resulting docking tube would have to run
-// through.
+// module in `server/modules`. Her `muster` bay draws an `s` spawn tile INSIDE
+// the bay (M4.2.5: a slot tile can no longer be void, so growing floor over a
+// void bay tile to plant the obstacle is no longer available — the bay's own
+// tiles are already, always, floor). Once the mooring sits inside the bay, the
+// bay's own permanently-floored tiles are what the resulting docking tube would
+// have to run through.
 
 const testbed_hull = "refit_testbed"
 
@@ -1330,15 +1333,27 @@ pub fn refit_that_would_break_the_composite_is_refused_test() {
 // player — down with it.
 //
 // Like the refit fixture above, this drives a fixture rather than shipped
-// content: the fixture station packs two berths ONE tile apart, far tighter
-// than any station in `worlds/`, and the fixture hull's `shell` slot plates
-// over her fore and aft rows. Which of the two berths each ship draws is
-// seed-random (`free_berth`), so the collision is symmetric by construction —
-// the plated hull overlaps her neighbour's mooring from either side.
+// content: the fixture station packs two berths three tiles apart, far
+// tighter than any station in `worlds/`, but still one tile more than the
+// hull is wide — enough room for two unfitted hulls to moor without touching.
+// (M4.2.5: a slot tile can no longer be void, so the fixture hull's `shell`
+// slot can no longer grow her outline to reach the neighbour — every hull on
+// this fixture is her full, fixed 3-wide footprint even unfitted.) Instead,
+// her `shell` slot's fore tile can carry its own dock port: a west-facing
+// door there satisfies the same "mooring" rule as the hull's own port, and is
+// scanned first (row-major, and the fore row comes before the port's own
+// row), so fitting it RELOCATES the mooring rather than adding a second one —
+// sliding the whole hull one tile over, onto her neighbour's line. Which
+// berth each ship draws is seed-random (`free_berth`); this relocates in one
+// fixed direction, so unlike the growth this replaces it is not
+// symmetric-by-construction — it depends on Ada drawing the berth her shift
+// walks her INTO her neighbour from, which she does for this fixed seed
+// (pinned by this test passing; see the task report for the reachability
+// finding).
 
 const packed_hull = "dock_testbed"
 
-const packed_wide = [#("shell", "dock_testbed.shell.wide")]
+const packed_offset = [#("shell", "dock_testbed.shell.wide")]
 
 /// A sim on the packed-berth fixture station, spawning ships on the fixture
 /// hull. She carries no mounts, so no part registry is needed.
@@ -1360,16 +1375,18 @@ pub fn a_dock_that_would_break_the_composite_is_refused_test() {
   let bo = process.new_subject()
   let assert Ok(#(ship_a, char_a)) = sim.add_player(s, "ada", ada, 1000)
   let assert Ok(#(ship_b, char_b)) = sim.add_player(s, "bo", bo, 1000)
-  // Two lean hulls moor side by side without touching, so the fixture station
-  // is one that works: what is refused below is the FIT, not the geometry.
-  let assert Ok(lean) = sim.ship_class(s, ship_b, 1000)
+  // Two unfitted hulls moor side by side without touching, so the fixture
+  // station is one that works: what is refused below is the FIT, not the
+  // geometry.
+  let assert Ok(unfitted) = sim.ship_class(s, ship_b, 1000)
 
-  // Bo leaves. With the line to herself, Ada plates her shell — legal, and the
-  // pre-flight passes, because right now there is nobody to collide with.
+  // Bo leaves. With the line to herself, Ada's shell relocates her mooring —
+  // legal, and the pre-flight passes, because right now there is nobody to
+  // collide with.
   let assert Ok(Nil) = sim.request_undock(s, char_b, 1000)
-  let assert Ok(Nil) = sim.request_refit(s, char_a, packed_wide, [], 1000)
-  let assert Ok(plated) = sim.ship_class(s, ship_a, 1000)
-  assert plated.plan != lean.plan
+  let assert Ok(Nil) = sim.request_refit(s, char_a, packed_offset, [], 1000)
+  let assert Ok(offset) = sim.ship_class(s, ship_a, 1000)
+  assert offset.plan != unfitted.plan
 
   // Bo comes back to a berth line that no longer has room for her. Refused
   // with the composite's own reason — a reason `dock_result` already
@@ -1379,10 +1396,10 @@ pub fn a_dock_that_would_break_the_composite_is_refused_test() {
   // Refused means refused: she is still flying (a refit would be answered if
   // she were docked), still wearing what she left in, and the sim is still
   // answering at all — which a panicked actor could not do.
-  assert sim.request_refit(s, char_b, packed_wide, [], 1000)
+  assert sim.request_refit(s, char_b, packed_offset, [], 1000)
     == Error("not_docked")
   let assert Ok(after) = sim.ship_class(s, ship_b, 1000)
-  assert after == lean
+  assert after == unfitted
 }
 
 pub fn a_login_onto_an_unknown_hull_is_refused_test() {

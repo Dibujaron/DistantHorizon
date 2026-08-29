@@ -351,34 +351,56 @@ pub fn derive_edge_console_test() {
   assert deckplan.find_console(plan, "helm") == Ok(c)
 }
 
-// ------------------------------------------------------ slot digits (M4) --
+// ----------------------------------------------------- slot markers (M4) --
 
-pub fn sw_corner_marks_slot_test() {
-  // Two tiles: the left one in slot 1 (SW = "1"), the right one unmarked.
-  let assert Ok(g) = deckplan.parse_deck("t", ["######", "#    #", "1##  #"])
-  let assert Ok(a) = deckplan.cell_at_xy(g, 0, 0)
-  let assert Ok(b) = deckplan.cell_at_xy(g, 1, 0)
-  assert a.slot == option.Some(1)
-  assert b.slot == option.None
+/// A slot marker is an uppercase letter in the tile CENTRE. It reads as
+/// plain floor, because a slot tile is always floor the module will draw on.
+pub fn an_uppercase_centre_is_floor_and_records_its_slot_test() {
+  let reg = glyphs.default()
+  let assert Ok(g) = deckplan.parse_deck_with(reg, "t", ["###", "#B#", "###"])
+  let assert Ok(cell) = deckplan.cell_at_xy(g, 0, 0)
+  assert cell.tile == deckplan.Floor
+  assert cell.slot == option.Some("B")
+  assert cell.decor == option.None
 }
 
-pub fn sw_corner_accepts_high_hex_digits_test() {
-  let assert Ok(g) = deckplan.parse_deck("t", ["###", "# #", "f##"])
-  let assert Ok(c) = deckplan.cell_at_xy(g, 0, 0)
-  assert c.slot == option.Some(15)
+/// One encoding. A hex digit in the SW corner is just a corner character now.
+pub fn an_sw_digit_no_longer_marks_a_slot_test() {
+  let reg = glyphs.default()
+  let assert Ok(g) = deckplan.parse_deck_with(reg, "t", ["###", "# #", "2##"])
+  let assert Ok(cell) = deckplan.cell_at_xy(g, 0, 0)
+  assert cell.slot == option.None
 }
 
-pub fn non_hex_sw_corner_is_no_slot_test() {
+pub fn a_blank_centre_carries_no_slot_test() {
   let assert Ok(g) = deckplan.parse_deck("t", ["###", "# #", "###"])
   let assert Ok(c) = deckplan.cell_at_xy(g, 0, 0)
   assert c.slot == option.None
 }
 
-pub fn slot_digit_round_trips_through_rows_test() {
-  let rows = ["###", "# #", "3##"]
+pub fn slot_marker_round_trips_through_rows_test() {
+  // A centre-marker tile round-trips, and its SW corner re-serialises as a
+  // plain wall junction, same as any other corner.
+  let rows = ["###", "#B#", "###"]
   let assert Ok(g) = deckplan.parse_deck("t", rows)
   let assert Ok(g2) = deckplan.parse_deck("t", deckplan.deck_to_rows(g))
   assert deckplan.cell_at_xy(g, 0, 0) == deckplan.cell_at_xy(g2, 0, 0)
+}
+
+/// The centre is a single character, so decor and a slot marker cannot both
+/// occupy it: a decor glyph is never a slot marker (lowercase isn't in
+/// A-Z), so a decorated tile simply never carries a slot in the first place.
+/// Deliberate, not a data-loss bug — slot membership is authoritative on the
+/// AUTHORED hull document (`loadout.check_bounds` reads the hull, never a
+/// resolved plan), so a resolved plan is never where a consumer should ask
+/// which slot a tile belongs to.
+pub fn a_decor_glyph_never_carries_a_slot_test() {
+  let reg = glyphs.default()
+  let rows = ["###", "#d#", "###"]
+  let assert Ok(g) = deckplan.parse_deck_with(reg, "t", rows)
+  let assert Ok(cell) = deckplan.cell_at_xy(g, 0, 0)
+  assert cell.decor == option.Some("d")
+  assert cell.slot == option.None
 }
 
 // --------------------------------------------------------- from_rows (#M4) --
@@ -387,11 +409,11 @@ pub fn from_rows_derives_markers_like_the_decoder_test() {
   // A one-deck plan: tile(0,0) is void, tile(0,1) is a docking port.
   // Grid: 1 tile wide (3 chars), 2 tiles tall (6 rows).
   // Tile (0,0) center at row 1, col 1; Tile (0,1) center at row 4, col 1.
-  let rows = ["   ", " . ", "   ", "   ", " Q ", "   "]
+  let rows = ["   ", " . ", "   ", "   ", " q ", "   "]
   let assert Ok(plan) = deckplan.from_rows(glyphs.default(), [#("Main", rows)])
   // Should derive one deck from parsing.
   assert list.length(plan.decks) == 1
-  // Should derive one dock console from the "Q" glyph at (0,1).
+  // Should derive one dock console from the "q" glyph at (0,1).
   assert list.length(plan.consoles) == 1
   let assert Ok(Console(_, kind, _, x, y)) = list.first(plan.consoles)
   assert kind == "dock"

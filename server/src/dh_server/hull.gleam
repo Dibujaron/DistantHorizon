@@ -10,21 +10,23 @@
 //// wire all speak. Rows are kept as text precisely so a refit can re-stamp
 //// from the authored map rather than trying to un-stamp the previous fit.
 
+import dh_server/deckplan
 import dh_server/shipclass.{type Handling}
 import gleam/dict.{type Dict}
 import gleam/dynamic/decode
 import gleam/int
 import gleam/json
 import gleam/list
+import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
 import simplifile
 
-/// One modulable interior region. `digit` is the hex digit hull tiles carry in
-/// their SW corner (`docs/deckplan-format.md`, "Slots"); `id` is what a module
-/// names in its `slot` field.
+/// One modulable interior region. `marker` is the uppercase letter hull
+/// tiles carry in their CENTRE (`docs/deckplan-format.md`, "Slots"); `id` is
+/// what a module names in its `slot` field.
 pub type Slot {
-  Slot(digit: Int, id: String, name: String)
+  Slot(marker: String, id: String, name: String)
 }
 
 /// One exterior attach point. `kind` gates what can hang there ("engine"),
@@ -116,17 +118,21 @@ pub fn mount_by_id(h: Hull, id: String) -> Result(Mount, Nil) {
 }
 
 fn validate(h: Hull) -> Result(Hull, String) {
-  let digits = list.map(h.slots, fn(s) { s.digit })
+  let markers = list.map(h.slots, fn(s) { s.marker })
   let ids = list.map(h.slots, fn(s) { s.id })
-  case list.length(list.unique(digits)) == list.length(digits) {
-    False -> Error("hull \"" <> h.id <> "\" has duplicate slot digits")
+  case list.length(list.unique(markers)) == list.length(markers) {
+    False -> Error("hull \"" <> h.id <> "\" has duplicate slot markers")
     True ->
       case list.length(list.unique(ids)) == list.length(ids) {
         False -> Error("hull \"" <> h.id <> "\" has duplicate slot ids")
         True ->
-          case list.all(digits, fn(d) { d >= 0 && d <= 15 }) {
+          case list.all(markers, is_single_uppercase_letter) {
             False ->
-              Error("hull \"" <> h.id <> "\" has a slot digit outside 0-15")
+              Error(
+                "hull \""
+                <> h.id
+                <> "\" has a slot marker that isn't a single A-Z letter",
+              )
             True ->
               case h.mass >. 0.0 {
                 False -> Error("hull \"" <> h.id <> "\" must have mass > 0")
@@ -134,6 +140,13 @@ fn validate(h: Hull) -> Result(Hull, String) {
               }
           }
       }
+  }
+}
+
+fn is_single_uppercase_letter(marker: String) -> Bool {
+  case deckplan.parse_slot_marker(marker) {
+    Some(_) -> True
+    None -> False
   }
 }
 
@@ -195,10 +208,10 @@ fn deck_decoder() -> decode.Decoder(#(String, List(String))) {
 }
 
 fn slot_decoder() -> decode.Decoder(Slot) {
-  use digit <- decode.field("digit", decode.int)
+  use marker <- decode.field("marker", decode.string)
   use id <- decode.field("id", decode.string)
   use name <- decode.field("name", decode.string)
-  decode.success(Slot(digit: digit, id: id, name: name))
+  decode.success(Slot(marker: marker, id: id, name: name))
 }
 
 fn mount_decoder() -> decode.Decoder(Mount) {
