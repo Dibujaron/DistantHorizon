@@ -1,15 +1,15 @@
 class_name AssetLibrary
 extends RefCounted
 ## Runtime loader for client/assets (the tree is .gdignore'd — no import pass;
-## same Image.load_from_file recipe the artspike toy scene proved). One
+## same Image.load_from_file recipe the artspike toy scene proved). The ship
+## set is discovered from the directory tree under assets/ships/ rather than
+## listed, so a new hull's art lands just by adding its directory. One
 ## instance is built by WorldView._ready; a SpriteSet bundles the lit
 ## CanvasTexture, the per-type ShaderMaterial (livery masks + base colors from
 ## meta.json), and the meta itself (anchors, px size).
 
 const SHADER_PATH := "res://shaders/lit_sprite.gdshader"
 
-const SHIP_KINDS := ["mockingbird", "mockingbird_interior",
-	"mockingbird_stock", "longhorn"]
 const STATION_ARCHETYPES := ["ring_3berth_crane", "ring_3berth_crane_interior",
 	"ring_1berth", "ring_1berth_interior"]
 const STAR_LAYER_NAMES := ["small", "medium", "large"]
@@ -63,7 +63,7 @@ static func load_all() -> AssetLibrary:
 	lib._shader = Shader.new()
 	lib._shader.code = FileAccess.get_file_as_string(SHADER_PATH)
 	var root := ProjectSettings.globalize_path("res://assets")
-	for kind: String in SHIP_KINDS:
+	for kind: String in DirAccess.get_directories_at(root + "/ships"):
 		lib._ships[kind] = lib._load_set(root + "/ships/" + kind)
 	for archetype: String in STATION_ARCHETYPES:
 		lib._stations[archetype] = lib._load_set(root + "/stations/" + archetype)

@@ -291,9 +291,10 @@ func matched_zoom_station(station_id: String, fallback: float) -> float:
 	return fallback
 
 
-## Ship-scale matched zoom (aboard a flying hull).
-func matched_zoom_ship(fallback: float) -> float:
-	var sset := _lib.ship("mockingbird")
+## Ship-scale matched zoom (aboard a flying hull). `hull_sprite` is the hull
+## we are aboard; `fallback` when its art is unknown.
+func matched_zoom_ship(hull_sprite: String, fallback: float) -> float:
+	var sset := _lib.ship(hull_sprite)
 	if sset == null or not sset.has_interior_fit():
 		return fallback
 	# SHIP_RENDER_SCALE (#15) shrinks the flying hull sprite, so the matched
@@ -371,7 +372,7 @@ func _update_parked_ships(station_sprite: Sprite2D, station: WorldData.Station,
 		# (_update_ship_sprites). No longer hardcoded side-on — and because it
 		# matches the flying formula, the hull's rotation is continuous through
 		# undock (#13). The side-on default heading (west) still yields -PI/2.
-		_park_sprite(station_sprite, "parked_%d" % ship.id, "mockingbird",
+		_park_sprite(station_sprite, "parked_%d" % ship.id, ship.hull_sprite,
 			berth_anchors[idx] - half, units_per_px, -ship.heading + PI / 2)
 	# Flavor: on the crane station, a workaday Longhorn holds the last berth
 	# when no real ship does (DESIGN.md M3.5: Longhorn as parked traffic). It
@@ -411,15 +412,15 @@ func _park_sprite(parent: Sprite2D, key: String, kind: String,
 
 func _update_ship_sprites(screen_center: Vector2, view_scale: float,
 		delta: float, touched: Dictionary) -> void:
-	var sset := _lib.ship("mockingbird")  # every hull is a Mockingbird until M4
-	if sset == null:
-		return
-	var is_pip := _ship_is_pip(sset, view_scale)
 	for ship in ships:
 		if ship.is_docked():
 			continue  # parked at a berth by the station pass
 		if interior_mode and ship.id == suppress_ship_id:
 			continue  # InteriorView draws this hull as the tile backdrop
+		var sset := _lib.ship(ship.hull_sprite)
+		if sset == null:
+			continue  # no art for this hull yet
+		var is_pip := _ship_is_pip(sset, view_scale)
 		# #10: ease the rendered heading toward the snapshot's target — the
 		# wire carries no angular velocity, so a raw assign steps at ~15 Hz.
 		var target: float = ship.heading
@@ -676,12 +677,12 @@ func _draw_stations(screen_center: Vector2, view_scale: float) -> void:
 
 
 func _draw_ships(screen_center: Vector2, view_scale: float) -> void:
-	var sset := _lib.ship("mockingbird")
-	var have_sprites := sset != null
-	# #17: past a zoom-out threshold the hull sprite went sub-pixel and the
-	# sprite pass hid it; render every flying ship as a fixed pip instead.
-	var pip := have_sprites and _ship_is_pip(sset, view_scale)
 	for ship in ships:
+		var sset := _lib.ship(ship.hull_sprite)
+		var have_sprites := sset != null
+		# #17: past a zoom-out threshold the hull sprite went sub-pixel and the
+		# sprite pass hid it; render every flying ship as a fixed pip instead.
+		var pip := have_sprites and _ship_is_pip(sset, view_scale)
 		if ship.is_docked() and have_sprites:
 			continue  # parked at a berth by the station sprite pass
 		var screen_pos := _world_to_screen(ship.position(), screen_center, view_scale)
