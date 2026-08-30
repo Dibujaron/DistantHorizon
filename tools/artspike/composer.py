@@ -278,6 +278,8 @@ PART_EXPORTS = [
     _rijay_part("engine_rijay_interior", "part_engine_rijay", px_scale=2),
     _consol_part("engine_consol", "part_engine_consol"),
     _consol_part("engine_consol_interior", "part_engine_consol", px_scale=2),
+    _rijay_part("engine_rijay_small", "part_engine_wren"),
+    _rijay_part("engine_rijay_small_interior", "part_engine_wren", px_scale=2),
 ]
 
 

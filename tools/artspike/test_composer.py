@@ -338,6 +338,17 @@ def test_consol_engine_part_has_one_attach_anchor():
     assert any(l.height is not None for l in part.layers), "authored relief"
 
 
+def test_wren_is_a_smaller_rijay_drum():
+    """Same design language, size `s`: a Wren must read as the family's
+    little sister, not as a different manufacturer."""
+    from composer import hull_frame
+    from manufacturers import part_engine_rijay, part_engine_wren
+    big = hull_frame(part_engine_rijay())
+    small = hull_frame(part_engine_wren())
+    assert small[3] < big[3], "the Wren is shorter than the Stork"
+    assert small[2] < big[2], "and narrower"
+
+
 def test_parts_and_hulls_share_one_base_px_per_unit():
     """The scale canon: a part drawn on a hull must not need rescaling. The
     2x `*_interior` renders double classic_px AND px_scale, so it is the BASE

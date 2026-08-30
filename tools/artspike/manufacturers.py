@@ -400,6 +400,26 @@ def part_engine_consol():
     ]
     return Hull(layers=layers, anchors=[Anchor("attach", 0.0, 0.0)])
 
+def part_engine_wren():
+    """Rijay Wren 90-B — size `s`, the Sparrow's engine. The Stork's drum at
+    two-thirds scale with a shorter ridge: same family, smaller sister."""
+    r, ln, fl = MB_R * 0.68, MB_LN * 0.62, MB_FL * 0.7
+    layers = [
+        Layer(rrect(-r, 0, 2 * r, ln, r * .95, RIJ_BLUE, sw=2.0),
+              cyl_x(0.34, 0.66)),
+        Layer(rrect(-r * .72, ln - 2.0, r * 1.44, 4.0, 1.8, RIJ_BLUE_D,
+                    sw=1.4), cyl_x(0.32, 0.52)),
+        Layer(poly([(0, 2), (1.5, 6), (1.5, ln - 2), (1.0, ln + 5 * fl),
+                    (0, ln + 6 * fl), (-1.0, ln + 5 * fl), (-1.5, ln - 2),
+                    (-1.5, 6)], RIJ_WHITE, stroke=INK, sw=0.9), flat(0.72)),
+        Layer(f'<ellipse cx="0" cy="{ln + 6:.1f}" rx="{r * .85:.1f}" '
+              f'ry="7" fill="url(#glow)"/>', role="glow"),
+        Layer(f'<ellipse cx="0" cy="{ln + 2.5:.1f}" rx="{r * .5:.1f}" '
+              f'ry="4" fill="{GLOW_CORE}" stroke="none"/>', role="glow"),
+    ]
+    return Hull(layers=layers, anchors=[Anchor("attach", 0.0, 0.0)])
+
+
 def ship_mockingbird():
     """Rijay's flagship and the game's starter ship. See canon block above.
     Returns a Hull: ordered lit-pipeline layers with authored heights. Her

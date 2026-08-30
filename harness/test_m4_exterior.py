@@ -15,10 +15,14 @@ What's enforced right now vs. excused, and why:
   lifts itself the moment that hull's art lands — no further edits needed.
 - `test_every_shipped_hull_has_art` is xfail for the same reason (Sparrow
   and Goldfinch aren't shipped yet); remove that guard once both land.
-- `test_every_part_sprite_key_has_art` is xfail, keyed on the ONE part
-  sprite directory that lands last (`engine_rijay_small`, Task 11) even
-  though `engine_consol` (Task 7) is also still missing right now — once
-  Task 11 lands, both are guaranteed present and the guard self-lifts.
+- `test_every_part_sprite_key_has_art` is enforced STRICTLY as of Task 11:
+  it was xfail, keyed on the ONE part sprite directory that landed last
+  (`engine_rijay_small`), even though `engine_consol` (Task 7) was also
+  still missing before that. The guard self-lifted the moment
+  `engine_rijay_small` art was exported (confirmed as a plain PASS, not an
+  active XPASS, since a conditional xfail marker deactivates once its
+  condition goes false rather than firing and being caught unexpectedly
+  passing); the now-dead decorator has been removed.
 There is deliberately NO module-level guard: a blanket xfail keyed on
 Sparrow's art would also swallow the Mockingbird check, which is the one
 hull this file can actually verify today.
@@ -72,10 +76,6 @@ def test_mount_ids_match_anchor_ids(hull_id):
         f"sprite meta draws {sorted(drawn)}")
 
 
-@pytest.mark.xfail(
-    not (PART_ART / "engine_rijay_small").exists(),
-    reason="engine_consol lands in task 7, engine_rijay_small in task 11",
-    strict=False)
 def test_every_part_sprite_key_has_art():
     """A part document's `sprite` is what rides the wire; if the directory is
     missing the client draws nothing and the mount looks unfitted."""
