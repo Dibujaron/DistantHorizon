@@ -638,7 +638,7 @@ def ship_sparrow():
     layers += plates
     return Hull(layers=layers, anchors=anchors)
 
-# --- Goldfinch, iteration 2c Task 13. Rijay's small passenger liner. Per
+# --- Goldfinch, M4 silhouette pass. Rijay's small passenger liner. Per
 # lore.md: "Similar to the mockingbird, especially in cockpit and neck. Body
 # is much slimmer than the mockingbird, with two rows of windows on the
 # sides (something like an A380 but not as long). Single medium engine
@@ -646,78 +646,86 @@ def ship_sparrow():
 # the back, on struts." Her shipclass document authors a 5 x 14 tile
 # walkable deck grid (32.5 x 91 model units at the 6.5-units-per-tile
 # canon) over three decks -- Upper and Lower passenger decks of six cabins
-# each, plus a Mezzanine at the waist carrying her dock ports.
+# each, plus a Mezzanine at the waist carrying her dock ports. Not touched
+# this pass.
 #
-# Fix round 1 (review Critical finding): the first draft authored GF_W=16.25
-# -- the GRID's own half-width (5 tiles / 2) -- because it misapplied PF-39's
-# containment formula with `walkable_width` set to the full 32.5-unit grid
-# instead of the true walkable band. The real walkable interior never
-# exceeds 3 tile columns (tx=1..3 -- the outer column each side is an
-# exterior void/mooring marker, same convention as the Sparrow), so her
-# walkable band is 19.5 units, IDENTICAL to the Sparrow's own. The correct
-# formula input is that band, not the grid:
-#   half-width >= (walkable_width=19.5 + units_per_tile=6.5 - 8) / 2 = 9.0.
-# Compounding the error, `mb_ports(edge=GF_W - 2.0)` projects a FIXED 5.2
-# units outboard of `edge` regardless of scale -- harmless on the
-# Mockingbird (edge=16 sits well inboard of her 27-unit body) but, stacked
-# on the already-too-wide GF_W=16.25, pushed the Goldfinch's true drawn
-# half-width to 20.25: 8.67 sprite-tiles against her 5-tile grid, the
-# entire excess hanging to starboard (client/scripts/interior_view.gd pins
-# the backdrop's top-left to deck tile (0,0); it never centres, so any
-# width beyond containment is pure one-sided offset, not margin).
+# Before this pass she shipped at GF_W=8.3 -- the Sparrow's own half-width
+# regime -- with her three mount anchors bunched close enough on the
+# transom that her starboard engine rendered entirely INSIDE her centre one
+# (100% overlap; see preview_fitted.py). Two things were wrong at once: the
+# hull was drawn no wider than her interior grid strictly needed (the same
+# "exterior can't exceed the walkable footprint" trap the Sparrow carried,
+# see SP_INTERIOR's docstring in composer.py), and her mount anchors sat on
+# the narrow hull itself rather than on outboard structure.
 #
-# This redraw drops GF_W to 8.3 -- matching the Sparrow's own regime, since
-# their walkable bands and containment floors are numerically identical --
-# and replaces the reused `mb_ports` with `gf_ports`, a same-idiom dormer
-# sized for a hull this narrow (see its docstring). Her drawn half-width
-# (measured via `hull_frame`, not trusted from the authored constants) now
-# lands at ~9.6, clearing the 9.0 floor while keeping
-# `px_w / px_per_tile - 5 <= 0.5` (see test_composer.py). The mezzanine
-# collar also moves forward (band_y0/y1) to actually sit over the deck
-# document's dock-port tile rows (9-11, y=58.5-78) instead of aft of them.
+# `GF_INTERIOR["origin_units"]` is now authored explicitly (composer.py),
+# same mechanism as the Sparrow's: it centres her 5-tile-wide (32.5 unit)
+# grid on the hull's own x=0 axis (origin_x = -16.25, numerically identical
+# to the Sparrow's own -- their grids are the same width) and pins the
+# grid's leading void row one tile (6.5 units) ahead of where the cockpit
+# region is actually drawn (origin_y = -5.5). That decouples the exterior's
+# width from the interior's -- the hull can be, and now is, drawn broad.
 #
-# The "two banks of cabin ports" is still a stylized flank motif, not a
-# literal per-tile trace: Upper and Lower decks occupy the SAME length
-# range (they are stacked floors, not fore/aft sections), so gf_ports() is
-# called twice at two different y positions purely to read as "two decks of
-# windows" in this top-down design-sheet convention. A third, smaller
-# dormer pair at the waist would visually collide with that read (a third
-# near-identical row undoes "two banks"), so the Mezzanine's actual dock
-# ports are drawn as a plain door-hatch outline instead (Sparrow's
-# cargo-door idiom): distinct from a window on sight, not just in name.
-GF_W, GF_LEN, GF_STERN = 8.3, 91.0, 91.0
+# The redraw: GF_W (the cabin plateau's half-width) grows 8.3 -> 13.0, a
+# visibly thicker cross-section down the whole cabin run, not just a wider
+# stern -- "long and broad", the specific miss called out on the previous
+# draft, which read as a stretched Sparrow rather than a liner. GF_SPACING
+# (new) carries the port/stbd mount anchors out to +-25 units on short
+# pylons rooted at the waist/flare, the same idiom as the Sparrow's engine
+# pylons. 25 is wider than the Mockingbird's own MB_SP (21) -- her three
+# mounts are not all the same size, unlike the Mockingbird's, and 21
+# actually measured worse in practice than the simple width-vs-spacing
+# formula suggested: `preview_fitted.py`'s real box overlap (which accounts
+# for each part's own attach offset, not just its width) put the
+# center/stbd pair at 50%, over the bar, even though the naive formula read
+# ~39%. The centre plate (an `m` mount) is drawn at size=1.05 against the
+# flanks' (`s` mounts) 0.65 so the size difference reads on the bare hull,
+# not just once a part is fitted. At GF_SPACING=25, `preview_fitted.py`
+# reports port/center and center/stbd at 17% and 33% respectively --
+# comfortably under the Mockingbird's own 43% bar, with real margin instead
+# of sitting exactly on the line the way the Mockingbird does (see
+# test_mount_anchors_clear_her_engines, parametrized over both hulls now).
+#
+# "Two banks of cabin ports" is still a stylized flank motif, not a literal
+# per-tile trace: Upper and Lower decks occupy the SAME length range (they
+# are stacked floors, not fore/aft sections), so gf_ports() is called twice
+# at two different y positions purely to read as "two decks of windows" in
+# this top-down design-sheet convention. The Mezzanine's actual dock ports
+# stay a plain door-hatch outline (Sparrow's cargo-door idiom), not a third
+# bank of windows -- a third near-identical row would undo the "two banks"
+# read.
+GF_W, GF_LEN, GF_STERN, GF_SPACING = 13.0, 91.0, 91.0, 25.0
 
 def ship_goldfinch():
-    """Rijay's small liner. Long and narrow: an MB-style cockpit/neck up
-    front, a slim constant-width cabin plateau (nowhere near the
-    Mockingbird's fat-breast bulge), a waist narrows at the mezzanine where
-    her dock hatches sit, then a short flare into the transom. Centre mount
+    """Rijay's small liner. Long AND broad: an MB-style cockpit/neck up
+    front widening fast into a thick constant-width cabin plateau (still
+    nowhere near the Mockingbird's fat-breast bulge, but a real
+    cross-section, not a needle), a waist that narrows at the mezzanine
+    where her dock hatches sit, then a flare into short outboard pylons
+    that carry her flanking engines clear of the centre one. Centre mount
     takes an `m`, flanks take `s`, and the plates differ in size so you can
-    see which is which.
-
-    Fix round 1: every x-coordinate below is the original draft's value
-    scaled by k = GF_W / 16.25 (the old, over-wide plateau constant) so the
-    silhouette's proportions are unchanged -- only the overall scale drops,
-    to land her measured half-width (via `hull_frame`, see the module
-    comment above) in the Sparrow's own regime instead of the Mockingbird's."""
-    segs = [("Q", 3.1, 3.0, 4.3, 8.0),        # blunt bow cap -- her cockpit
-                                               # slot is a full-width duo_3x1
-                                               # row, not a needle nose
-            ("L", 4.6, 16.0),                 # short neck, MB-echoing
-            ("L", 7.2, 24.0),                 # shoulder kink, widening fast
-            ("L", GF_W, 32.0),                # reach full body width...
+    see which is which even before anything is fitted."""
+    segs = [("Q", 4.5, 3.0, 6.5, 9.0),        # blunt bow cap, reached fast --
+                                               # her cockpit slot is a
+                                               # full-width duo_3x1 row, not
+                                               # a needle nose
+            ("L", 7.3, 17.0),                 # short neck, MB-echoing
+            ("L", 10.0, 25.0),                # shoulder, widening hard into
+                                               # the plateau
+            ("L", GF_W, 33.0),                # reach full body width...
             ("L", GF_W, 74.0),                # ...and hold it through both
                                                # cabin decks and the galley/
                                                # hold run -- "much slimmer
                                                # than the Mockingbird" means
-                                               # this plateau never bulges
-            ("Q", 7.7, 80.0, 6.6, 85.0),      # the waist -- narrows for the
+                                               # this plateau never bulges,
+                                               # just runs thicker overall
+            ("Q", 12.3, 80.0, 10.8, 85.0),    # the waist -- narrows for the
                                                # mezzanine, echoing the MB's
                                                # own "narrowest point between
                                                # engine block and main body"
-            ("Q", 7.2, 88.0, 7.9, GF_STERN),  # flare into the engine
-                                               # support at the transom
-            ("L", 7.9, 97.0),                 # solid stern cap past the
+            ("Q", 11.3, 88.0, 12.0, GF_STERN),# flare into the pylon roots
+                                               # at the transom
+            ("L", 12.0, 97.0),                # solid stern cap past the
                                                # mount plates
             ("L", 0.0, 97.0)]
     layers = [Layer(mirrored_path((0, 0), segs, RIJ_BLUE, sw=2.2),
@@ -727,12 +735,11 @@ def ship_goldfinch():
     # dorsal stripe, nose to the waist -- paint only, same idiom as the MB
     layers.append(Layer(poly([(-0.7, 6), (0.7, 6), (0.9, 85), (-0.9, 85)],
                              RIJ_WHITE, stroke="none")))
-    # flank cheatline: breaks at both window banks, same MB/Sparrow idiom.
-    # Inset (1.1) and stroke-width (1.4) match the Sparrow's own cheatline,
-    # not the Mockingbird's -- she is drawn at the Sparrow's scale now.
-    for pts in ([(4.7, 16), (7.3, 26)],
-                [(GF_W, 39), (GF_W, 51)],
-                [(8.0, 65), (7.2, 78)]):
+    # flank cheatline: breaks at both window banks and the mezzanine collar,
+    # same MB/Sparrow idiom.
+    for pts in ([(7.3, 17), (10.0, 25)],
+                [(GF_W, 34), (GF_W, 50)],
+                [(11.5, 74), (10.8, 84)]):
         for sx in (-1, 1):
             d = "M " + " L ".join(f"{sx * (x - 1.1):.1f},{y:.1f}" for x, y in pts)
             layers.append(Layer(
@@ -740,46 +747,53 @@ def ship_goldfinch():
                 f'stroke-width="1.4" stroke-linecap="round" '
                 f'stroke-linejoin="round" opacity=".9"/>'))
     # two banks of cabin ports down her flank -- the A380 read. `gf_ports`,
-    # not `mb_ports`: see its docstring and the module comment above for why
-    # the reused mb_ports call was the Critical review finding.
+    # not `mb_ports`: see its docstring for why the reused mb_ports call was
+    # a Critical review finding on the previous, narrower draft.
     for bank_y in (GF_LEN * .30, GF_LEN * .58):   # upper and lower decks
-        layers += gf_ports(y=bank_y, near=6.3)
+        layers += gf_ports(y=bank_y, near=9.6, width=3.4, ht=5.0)
     # mezzanine band at the waist: a darker collar plus plain door-hatch
     # outlines (Sparrow's cargo-door idiom, NOT gf_ports) -- her dock ports
     # read as doors, not as a third bank of windows. y0/y1 sit at 63-73,
-    # inside the deck document's actual dock-port tile rows (9-11,
-    # y=58.5-78) -- the first draft placed this band at 76.4-86.5, mostly
-    # AFT of those rows, which read as an engine-block collar instead of a
-    # mezzanine one (review Finding 4).
+    # inside the deck document's actual dock-port tile rows.
     band_y0, band_y1 = 63.0, 73.0
-    layers.append(Layer(poly([(-7.4, band_y0), (7.4, band_y0),
-                              (6.6, band_y1), (-6.6, band_y1)],
+    layers.append(Layer(poly([(-11.6, band_y0), (11.6, band_y0),
+                              (10.3, band_y1), (-10.3, band_y1)],
                              RIJ_BLUE_D, sw=1.6), flat(0.34)))
     for sx in (-1, 1):
-        hx = sx * 5.6
+        hx = sx * 8.8
         layers.append(Layer(
-            f'<rect x="{hx - 1.65:.2f}" y="{band_y0 + 1.0:.1f}" width="3.3" '
-            f'height="3.6" rx="0.6" fill="none" stroke="{INK}" '
+            f'<rect x="{hx - 2.6:.2f}" y="{band_y0 + 1.0:.1f}" width="5.2" '
+            f'height="5.6" rx="0.9" fill="none" stroke="{INK}" '
             f'stroke-width="0.8" opacity="0.6"/>'))
     # compact nose canopy -- mb_canopy's absolute size reads oversize on a
-    # hull this narrow, so scaled down Sparrow-style (and re-scaled again
-    # here, in step with the rest of the redraw, to clear her narrower neck)
-    layers.append(Layer(mirrored_path((0, 2.0), [
-        ("L", 2.4, 5.5),
-        ("Q", 3.1, 8.5, 2.6, 11.5),
-        ("L", 0, 13.0)], GLASS, stroke=INK, sw=1.1),
+    # hull this size, so scaled down Sparrow-style, and up in step with the
+    # rest of this redraw's wider bow
+    layers.append(Layer(mirrored_path((0, 2.5), [
+        ("L", 3.6, 7.0),
+        ("Q", 4.6, 10.5, 3.9, 13.5),
+        ("L", 0, 15.5)], GLASS, stroke=INK, sw=1.1),
         dome(0.58, 0.74, blur=2.0)))
-    layers.append(Layer(line(0, 2.5, 0, 12.5, INK, 1.0)))
-    layers.append(Layer(line(-2.5, 7.5, 2.5, 7.5, INK, 0.9)))
-    # transom: a medium centre mount flanked by two small ones on struts --
-    # the plate sizes differ so you can see which hardpoint takes the big
-    # engine, a free readability win rij_mount_plates already supports
+    layers.append(Layer(line(0, 3.0, 0, 15.0, INK, 1.0)))
+    layers.append(Layer(line(-3.2, 9.0, 3.2, 9.0, INK, 0.9)))
+    # engine pylons: short struts bridging the waist/flare to the outboard
+    # port/stbd mount plates, same idiom as the Sparrow's -- so the flank
+    # plates read as carried outboard on structure rather than floating
+    # clear of the hull.
+    for sx in (-1, 1):
+        pts = [(11.0 * sx, 82.0), (GF_SPACING * sx, 87.0),
+               (GF_SPACING * sx, 93.0), (12.0 * sx, 91.0)]
+        layers.append(Layer(poly(pts, RIJ_BLUE, sw=1.6), flat(0.35)))
+    # transom: a medium centre mount flanked by two small ones on outboard
+    # pylons -- the plate sizes differ (size=1.05 vs 0.65, more contrast
+    # than the previous draft's 1.0/0.7) so you can see which hardpoint
+    # takes the big engine even on the bare hull, a free readability win
+    # rij_mount_plates already supports.
     plates, anchors = rij_mount_plates(
-        [(-GF_W * .58, "engine_port")], GF_STERN, MB_R, size=0.7)
+        [(-GF_SPACING, "engine_port")], GF_STERN, MB_R, size=0.65)
     centre, centre_anchors = rij_mount_plates(
-        [(0, "engine_center")], GF_STERN, MB_R, size=1.0)
+        [(0, "engine_center")], GF_STERN, MB_R, size=1.05)
     stbd, stbd_anchors = rij_mount_plates(
-        [(GF_W * .58, "engine_stbd")], GF_STERN, MB_R, size=0.7)
+        [(GF_SPACING, "engine_stbd")], GF_STERN, MB_R, size=0.65)
     layers += plates + centre + stbd
     return Hull(layers=layers,
                anchors=anchors + centre_anchors + stbd_anchors)

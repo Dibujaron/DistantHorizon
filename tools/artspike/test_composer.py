@@ -378,25 +378,30 @@ def test_sparrow_is_a_rijay_hull_with_three_small_mounts():
     assert any(l.height is not None for l in hull.layers), "authored relief"
 
 
-def test_sparrow_interior_fit_covers_her_deck_grid():
+@pytest.mark.parametrize("hull_name,tiles_w,tiles_h", [
+    ("sparrow", 5, 7),
+    ("goldfinch", 5, 14),
+])
+def test_interior_fit_covers_her_deck_grid(hull_name, tiles_w, tiles_h):
     """The walk backdrop must fully CONTAIN the walkable grid, on both axes,
     with real margin -- not just be close to it in width. That "close in
     width" upper bound was the old contract, and the M4 silhouette pass
-    deliberately breaks it: `SP_INTERIOR["origin_units"]` is now authored
-    explicitly (see its derivation in ship_sparrow's docstring in
+    deliberately breaks it for both the Sparrow and the Goldfinch:
+    `SP_INTERIOR`/`GF_INTERIOR`'s `origin_units` is now authored explicitly
+    (see the derivation in each hull's `ship_*` docstring in
     manufacturers.py) precisely so the exterior art CAN be wider than the
-    5x7 interior grid -- hull plating, tankage and engine pylons all live
+    interior grid -- hull plating, tankage and engine pylons all live
     outboard of the walkable footprint. What must still hold, on both axes,
     is containment: the grid (positioned at origin_units, sized
     units_per_tile per tile) must sit entirely inside the rendered frame,
     with margin to spare, or the walk-mode backdrop would clip the floor."""
     from composer import SHIP_EXPORTS, hull_frame
-    spec = next(s for s in SHIP_EXPORTS if s.name == "sparrow")
+    spec = next(s for s in SHIP_EXPORTS if s.name == hull_name)
     frame = hull_frame(spec.build())
     fx, fy, fw, fh = frame
     units_per_tile = spec.interior["units_per_tile"]
     ox, oy = spec.interior["origin_units"]
-    grid_w, grid_h = 5 * units_per_tile, 7 * units_per_tile
+    grid_w, grid_h = tiles_w * units_per_tile, tiles_h * units_per_tile
     margin = 2.0  # model units of real slack, not just non-negative
     assert ox - fx >= margin, "grid pokes past the frame's fore/port edge"
     assert (fx + fw) - (ox + grid_w) >= margin, \
@@ -428,13 +433,17 @@ def _parts_by_size(root):
     return out
 
 
-def test_sparrow_mount_anchors_clear_her_engines(tmp_path):
+@pytest.mark.parametrize("hull_name", ["sparrow", "goldfinch"])
+def test_mount_anchors_clear_her_engines(hull_name, tmp_path):
     """Adjacent mount anchors on a hull must be far enough apart that the
     WIDEST part its mount `size` accepts does not swamp its neighbour --
     exactly the failure preview_fitted.py exists to catch (the Sparrow's two
-    Wrens overlapped 67% before the M4 silhouette pass spread her mounts).
-    Part widths come from real exported part metas, not hardcoded numbers,
-    so the same check naturally covers any other hull's mounts too."""
+    Wrens overlapped 67%, and the Goldfinch's engine_center/engine_stbd
+    overlapped 100%, before the M4 silhouette pass spread each hull's
+    mounts). Part widths come from real exported part metas, not hardcoded
+    numbers, so the same check naturally covers any other hull's mounts
+    too -- this test is parametrized over both hulls the M4 pass touched
+    rather than duplicated per hull."""
     import json
     from composer import SHIP_EXPORTS, PART_EXPORTS, export_ship, export_part
     root = HERE.parents[1]
@@ -447,9 +456,10 @@ def test_sparrow_mount_anchors_clear_her_engines(tmp_path):
     by_size = _parts_by_size(root)
 
     ship_doc = json.loads(
-        (root / "server" / "shipclasses" / "sparrow.json").read_text(encoding="utf-8"))
+        (root / "server" / "shipclasses" / f"{hull_name}.json").read_text(
+            encoding="utf-8"))
     mount_size = {m["id"]: m["size"] for m in ship_doc["mounts"]}
-    spec = next(s for s in SHIP_EXPORTS if s.name == "sparrow")
+    spec = next(s for s in SHIP_EXPORTS if s.name == hull_name)
     meta = export_ship(spec, tmp_path / "ships")
     anchors = sorted((a for a in meta["anchors"] if a["kind"] == "mount"),
                      key=lambda a: a["x_px"])
@@ -460,7 +470,7 @@ def test_sparrow_mount_anchors_clear_her_engines(tmp_path):
         sep = b["x_px"] - a["x_px"]
         overlap_ratio = max(0.0, (widest - sep) / widest)
         assert overlap_ratio <= MAX_MOUNT_OVERLAP, (
-            f"sparrow {a['id']}/{b['id']}: {overlap_ratio:.0%} overlap "
+            f"{hull_name} {a['id']}/{b['id']}: {overlap_ratio:.0%} overlap "
             f"(bar is {MAX_MOUNT_OVERLAP:.0%})")
 
 
@@ -492,20 +502,8 @@ def test_goldfinch_mounts_match_her_hull_document():
     assert mounts == {"engine_port", "engine_center", "engine_stbd"}
 
 
-def test_goldfinch_interior_fit_covers_her_deck_grid():
-    """The walk backdrop must reach every walkable tile: 5 wide x 14 long.
-
-    Width also has an UPPER bound -- see the twin note on
-    test_sparrow_interior_fit_covers_her_deck_grid. This is the exact test
-    that shipped green on a backdrop 8.67 tiles wide (Task 13 Fix round 1,
-    Finding 3): the lower bound alone can't catch a hull drawn too WIDE, and
-    a hull drawn too wide is worse than one drawn tight, because
-    `interior_view.gd` pins the sprite's top-left to deck tile (0,0) and
-    never centres -- all the excess hangs to starboard, not evenly."""
-    from composer import SHIP_EXPORTS, hull_frame
-    spec = next(s for s in SHIP_EXPORTS if s.name == "goldfinch")
-    frame = hull_frame(spec.build())
-    units_per_tile = spec.interior["units_per_tile"]
-    assert frame[2] >= 5 * units_per_tile - 1e-6
-    assert frame[3] >= 14 * units_per_tile - 1e-6
-    assert frame[2] / units_per_tile - 5 <= 0.5
+# Her interior-fit containment is covered by the parametrized
+# test_interior_fit_covers_her_deck_grid above (M4 silhouette pass): the old
+# upper-bound-on-width contract here is exactly what authoring
+# GF_INTERIOR["origin_units"] deliberately breaks, the same way it broke for
+# the Sparrow -- see that test's docstring.

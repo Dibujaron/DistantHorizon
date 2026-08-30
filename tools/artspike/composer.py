@@ -350,8 +350,9 @@ def _sp():
 # centres the 32.5-unit-wide (5-tile) grid on the hull's own x=0 axis, and
 # -5.5 is one void tile row (6.5 units) fore of where her cockpit row is
 # actually drawn (y=1.0). See hull_frame's docstring for the general
-# mechanism this is an instance of -- the Mockingbird and Goldfinch still
-# rely on None and still carry the residual described there.
+# mechanism this is an instance of -- the Goldfinch now authors the same
+# fix (GF_INTERIOR below); the Mockingbird still relies on None and still
+# carries the residual described there.
 SP_INTERIOR = {"units_per_tile": 6.5, "origin_units": (-16.25, -5.5)}
 
 
@@ -363,7 +364,17 @@ def _gf():
 # Goldfinch interior fit: same 1 m tile canon as every other hull. Her deck
 # grid is 5 x 14 walkable (Upper, Mezzanine, Lower); the sprite runs a little
 # longer, the extra being the short engine transom aft.
-GF_INTERIOR = {"units_per_tile": 6.5, "origin_units": None}
+#
+# origin_units is authored explicitly (M4 silhouette pass), same mechanism
+# and same x value as the Sparrow's own (see SP_INTERIOR above and
+# ship_goldfinch's docstring in manufacturers.py for the derivation): -16.25
+# centres her identically-5-tile-wide (32.5 unit) grid on the hull's own
+# x=0 axis, and -5.5 is one void tile row (6.5 units) fore of where her
+# cockpit region is actually drawn. Before this pass this was None, which
+# pinned the grid to the frame's own top-left and forced her exterior to be
+# no wider than the walkable floor -- exactly the trap that left her three
+# engine mounts bunched close enough to overlap 100%.
+GF_INTERIOR = {"units_per_tile": 6.5, "origin_units": (-16.25, -5.5)}
 
 SHIP_EXPORTS = [
     ExportSpec("mockingbird", _mb, 45, 195,
