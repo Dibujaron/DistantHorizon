@@ -5,10 +5,10 @@ matched to a hull by cheap declarative rules, authored as data. This is the desi
 M4 ("Modules for real", DESIGN.md Milestones) and the reference for the module content
 that lands after it.
 
-**Status:** M4 iteration 1, iteration 2a, iteration 2b, and iteration 2c's machinery
-(client-side exterior part layering) have shipped, so the shapes and rules below describe
-code that exists rather than code we intend. Where something is still ahead of us —
-Sparrow and Goldfinch exterior art, the refit *loop* — this document says so at that point
+**Status:** M4 iteration 1, iteration 2a, iteration 2b, and iteration 2c (client-side
+exterior part layering, plus exterior art for all three shipped hulls) have shipped, so
+the shapes and rules below describe code that exists rather than code we intend. Where
+something is still ahead of us — the refit *loop* — this document says so at that point
 and "The M4 slice" at the end draws the line.
 
 See also: `docs/deckplan-format.md` (the per-cell ASCII format modules reuse), DESIGN.md
@@ -122,8 +122,8 @@ A hull declares two kinds of attach point:
   error: `harness/test_m4_exterior.py` cross-checks every hull's declared mount ids
   against its sprite's drawn anchor ids, and the client itself `push_error`s if a fitted
   mount has no matching anchor at runtime. A mount without geometry — a hull with no art
-  yet, like the Sparrow and the Goldfinch as of this writing — is still a capability point
-  only, same as before.
+  directory — is still a capability point only, same as before; every shipped hull
+  (Mockingbird, Sparrow, Goldfinch) now has one.
 
 The flexibility of slots is what keeps tradeoffs honest rather than artificial: you can
 always fit *a* medbay somewhere by giving something else up, instead of being hard-locked
@@ -697,11 +697,16 @@ foreign to the hull" (see "Exterior parts" above) made visible for the first tim
 `mockingbird_stock`, the old baked hull sprite with plain (finless) engines built in, is
 gone — finned versus finless is a part distinction now, not a separate hull sprite.
 
-Sparrow and Goldfinch exterior art has **not** landed yet; both hulls still fly with
-mounts that are pure capability points, same as before this iteration, because neither has
-a sprite directory yet. `harness/test_m4_exterior.py`'s per-hull checks are `xfail` for
-exactly those two, keyed on their art directories not existing, and self-lift the moment
-each hull's art does — the remaining iteration 2c work.
+Sparrow and Goldfinch exterior art has landed alongside the Mockingbird's — all three
+shipped hulls now carry a sprite directory and drawn mount anchors (`SHIP_EXPORTS` in
+`tools/artspike/composer.py`). That was always going to trail the machinery rather than
+land with it: the machinery had to prove itself against one hull first, and the
+Mockingbird was the obvious one to retrofit because she already had an art directory.
+`harness/test_m4_exterior.py` no longer carries any xfail guard for the other two — its
+per-hull checks (`test_mount_ids_match_anchor_ids`, `test_every_shipped_hull_has_art`) run
+for all three hull ids unconditionally, and a missing or mismatched anchor now fails the
+suite outright for any of them, the same live safety net the Mockingbird's checks have
+always been.
 
 Worth recording here since it surfaced while re-cutting the Mockingbird's parts: every
 exterior sprite in the pipeline shares one scale, `px_per_unit = classic_px / model_units`

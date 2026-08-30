@@ -234,12 +234,17 @@ func _dress_backdrop(hull_sprite: Sprite2D, hset: AssetLibrary.SpriteSet,
 		mounts: Dictionary) -> void:
 	var used := {}
 	for mount_id: String in mounts:
-		# The backdrop is the 2x `*_interior` render, so prefer the doubled
-		# part twin; fall back to the 1x set if a part has no twin yet.
-		var pset := _lib.part(str(mounts[mount_id]) + "_interior")
+		var part_key := str(mounts[mount_id])
+		# The backdrop is the 2x `*_interior` render, so a fitted part must
+		# supply its doubled twin — silently falling back to the 1x sprite
+		# would draw it at half scale on a 2x backdrop, a worse failure than
+		# naming the gap (mirrors _dress_hull's push_error for a missing
+		# anchor, below).
+		var pset := _lib.part(part_key + "_interior")
 		if pset == null:
-			pset = _lib.part(str(mounts[mount_id]))
-		if pset == null:
+			if _lib.part(part_key) == null:
+				continue  # no art for this part yet
+			push_error("[art] %s has no _interior twin for backdrop" % part_key)
 			continue
 		var anchor := hset.mount_anchor(mount_id)
 		if anchor == Vector2.INF:
@@ -251,8 +256,13 @@ func _dress_backdrop(hull_sprite: Sprite2D, hset: AssetLibrary.SpriteSet,
 			s = Sprite2D.new()
 			s.name = key
 			s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-			s.light_mask = 2
-			s.show_behind_parent = true
+			s.light_mask = 2  # backdrop art must never be sun-lit through the window
+			# NOT show_behind_parent: the parent hull sprite already carries
+			# that (see _update_backdrops), which is what sinks the whole
+			# backdrop subtree under the walk tiles. Setting it here too
+			# would draw this part BEHIND its own parent hull sprite instead
+			# of over it, so a hull's blanking plate would occlude the part
+			# meant to cover it.
 			hull_sprite.add_child(s)
 		s.texture = pset.texture
 		s.material = pset.material

@@ -47,7 +47,8 @@ its keep against that test.
       from two directions at once.
     - *Pipeline landed (M3.5 PR 1):* `tools/artspike/composer.py` — parts author height
       profiles (flat/cylinder/dome per part), normals derive from composed heights, c1/c2
-      livery masks + nozzle anchors export to `client/assets/ships/`; verified in the Godot
+      livery masks + nozzle anchors (renamed to named `mount` anchors in M4 iteration 2c)
+      export to `client/assets/ships/`; verified in the Godot
       toy scene under one sun and two (`tools/artspike/godot/`).
 - Palette carries over from Classic: heavy on blues, yellows, and purples for ambient
   space. This already encodes the classic warm-key/cool-ambient trick — yellows are
