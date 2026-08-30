@@ -344,6 +344,17 @@ def _sp():
 # is 5 x 7; the sprite runs longer, the extra being the engine bay aft.
 SP_INTERIOR = {"units_per_tile": 6.5, "origin_units": None}
 
+
+def _gf():
+    from manufacturers import ship_goldfinch
+    return ship_goldfinch()
+
+
+# Goldfinch interior fit: same 1 m tile canon as every other hull. Her deck
+# grid is 5 x 14 walkable (Upper, Mezzanine, Lower); the sprite runs a little
+# longer, the extra being the short engine transom aft.
+GF_INTERIOR = {"units_per_tile": 6.5, "origin_units": None}
+
 SHIP_EXPORTS = [
     ExportSpec("mockingbird", _mb, 45, 195,
                ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
@@ -360,6 +371,16 @@ SHIP_EXPORTS = [
     ExportSpec("sparrow_interior", _sp, 90, 195,
                ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
                RIJ_C1, RIJ_C2, interior=SP_INTERIOR, px_scale=2),
+    # Goldfinch: same base px_per_unit as every other export (PF-38 --
+    # classic_px/model_units stays identical to the Mockingbird and Sparrow;
+    # she renders bigger or smaller than them only because her authored
+    # FRAME is a different size, never because of a scale fudge here).
+    ExportSpec("goldfinch", _gf, 45, 195,
+               ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
+               RIJ_C1, RIJ_C2, interior=GF_INTERIOR),
+    ExportSpec("goldfinch_interior", _gf, 90, 195,
+               ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
+               RIJ_C1, RIJ_C2, interior=GF_INTERIOR, px_scale=2),
     # Longhorn livery: c1 = the orange trim, c2 = the gray body (it has no
     # truss white — the body IS the paintable surface on a liner)
     # classic_px stays the Classic game's 41 (NOT 45, the ratio every other

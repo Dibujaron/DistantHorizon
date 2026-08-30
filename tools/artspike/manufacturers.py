@@ -598,6 +598,118 @@ def ship_sparrow():
     layers += plates
     return Hull(layers=layers, anchors=anchors)
 
+# --- Goldfinch, iteration 2c Task 13. Rijay's small passenger liner. Per
+# lore.md: "Similar to the mockingbird, especially in cockpit and neck. Body
+# is much slimmer than the mockingbird, with two rows of windows on the
+# sides (something like an A380 but not as long). Single medium engine
+# centrally mounted on the stern... Small engines mounted to the sides of
+# the back, on struts." Her shipclass document authors a 5 x 14 tile
+# walkable deck grid (32.5 x 91 model units at the 6.5-units-per-tile
+# canon) over three decks -- Upper and Lower passenger decks of six cabins
+# each, plus a Mezzanine at the waist carrying her dock ports. Real interior
+# width never exceeds 3 tiles (the outer tile column each side is an
+# exterior void/mooring marker, same convention as the Sparrow), so the
+# hull is free to echo the Mockingbird's narrow cockpit+neck near the bow
+# without conceding any containment margin -- only the ship's WIDEST point
+# (the cabin-deck plateau) sets the frame, per PF-39's containment formula:
+# half-width >= (walkable_width=32.5 + units_per_tile=6.5 - 8) / 2 = 15.5.
+# GF_W=16.25 (the grid's own half-width) clears that with room to spare,
+# same margin pattern the Mockingbird and Sparrow both already carry.
+#
+# The "two banks of cabin ports" is a stylized flank motif, not a literal
+# per-tile trace: Upper and Lower decks occupy the SAME length range (they
+# are stacked floors, not fore/aft sections), so mb_ports() is called
+# twice at two different y positions purely to read as "two decks of
+# windows" in this top-down design-sheet convention -- exactly the reading
+# Task 13's brief asks for. A third, smaller mb_ports-style dormer pair at
+# the waist would visually collide with that read (a third near-identical
+# row undoes "two banks"), so the Mezzanine's actual dock ports are drawn
+# as a plain door-hatch outline instead (Sparrow's cargo-door idiom):
+# distinct from a window on sight, not just in name.
+GF_W, GF_LEN, GF_STERN = 16.25, 91.0, 91.0
+
+def ship_goldfinch():
+    """Rijay's small liner. Long and narrow: an MB-style cockpit/neck up
+    front, a slim constant-width cabin plateau (nowhere near the
+    Mockingbird's fat-breast bulge), a waist narrows at the mezzanine where
+    her dock hatches sit, then a short flare into the transom. Centre mount
+    takes an `m`, flanks take `s`, and the plates differ in size so you can
+    see which is which."""
+    segs = [("Q", 6.0, 3.0, 8.5, 8.0),        # blunt bow cap -- her cockpit
+                                               # slot is a full-width duo_3x1
+                                               # row, not a needle nose
+            ("L", 9.0, 16.0),                 # short neck, MB-echoing
+            ("L", 14.0, 24.0),                # shoulder kink, widening fast
+            ("L", GF_W, 32.0),                # reach full body width...
+            ("L", GF_W, 74.0),                # ...and hold it through both
+                                               # cabin decks and the galley/
+                                               # hold run -- "much slimmer
+                                               # than the Mockingbird" means
+                                               # this plateau never bulges
+            ("Q", 15.0, 80.0, 13.0, 85.0),    # the waist -- narrows for the
+                                               # mezzanine, echoing the MB's
+                                               # own "narrowest point between
+                                               # engine block and main body"
+            ("Q", 14.0, 88.0, 15.5, GF_STERN),  # flare into the engine
+                                                 # support at the transom
+            ("L", 15.5, 97.0),                # solid stern cap past the
+                                               # mount plates
+            ("L", 0.0, 97.0)]
+    layers = [Layer(mirrored_path((0, 0), segs, RIJ_BLUE, sw=2.2),
+                    dome(0.30, 0.55, blur=8.0))]
+    hi = mirrored_path((0, 0), segs, "#5aa3ea", stroke="none", opacity=.5)
+    layers.append(Layer(group(hi, ty=-3, scale=.88), role="sheet_only"))
+    # dorsal stripe, nose to the waist -- paint only, same idiom as the MB
+    layers.append(Layer(poly([(-1.3, 6), (1.3, 6), (1.8, 85), (-1.8, 85)],
+                             RIJ_WHITE, stroke="none")))
+    # flank cheatline: breaks at both window banks, same MB/Sparrow idiom
+    for pts in ([(9.3, 16), (14.3, 26)],
+                [(GF_W, 39), (GF_W, 51)],
+                [(15.6, 65), (14.0, 78)]):
+        for sx in (-1, 1):
+            d = "M " + " L ".join(f"{sx * (x - 1.6):.1f},{y:.1f}" for x, y in pts)
+            layers.append(Layer(
+                f'<path d="{d}" fill="none" stroke="{RIJ_WHITE}" '
+                f'stroke-width="1.8" stroke-linecap="round" '
+                f'stroke-linejoin="round" opacity=".9"/>'))
+    # two banks of cabin ports down her flank -- the A380 read
+    for bank_y in (GF_LEN * .30, GF_LEN * .58):   # upper and lower decks
+        layers += mb_ports(y=bank_y, edge=GF_W - 2.0)
+    # mezzanine band at the waist: a darker collar plus plain door-hatch
+    # outlines (Sparrow's cargo-door idiom, NOT mb_ports) -- her dock ports
+    # read as doors, not as a third bank of windows
+    band_y0, band_y1 = GF_LEN * .84, GF_LEN * .95
+    layers.append(Layer(poly([(-14.5, band_y0), (14.5, band_y0),
+                              (13.0, band_y1), (-13.0, band_y1)],
+                             RIJ_BLUE_D, sw=1.6), flat(0.34)))
+    for sx in (-1, 1):
+        hx = sx * 11.0
+        layers.append(Layer(
+            f'<rect x="{hx - 3.2:.1f}" y="{band_y0 + 2:.1f}" width="6.4" '
+            f'height="7.0" rx="1.2" fill="none" stroke="{INK}" '
+            f'stroke-width="1.0" opacity="0.6"/>'))
+    # compact nose canopy -- mb_canopy's absolute size reads oversize on a
+    # hull this narrow, so scaled down Sparrow-style
+    layers.append(Layer(mirrored_path((0, 2.0), [
+        ("L", 4.0, 5.5),
+        ("Q", 5.2, 8.5, 4.4, 11.5),
+        ("L", 0, 13.0)], GLASS, stroke=INK, sw=1.3),
+        dome(0.58, 0.74, blur=2.0)))
+    layers.append(Layer(line(0, 2.5, 0, 12.5, INK, 1.0)))
+    layers.append(Layer(line(-4.1, 7.5, 4.1, 7.5, INK, 0.9)))
+    # transom: a medium centre mount flanked by two small ones on struts --
+    # the plate sizes differ so you can see which hardpoint takes the big
+    # engine, a free readability win rij_mount_plates already supports
+    plates, anchors = rij_mount_plates(
+        [(-GF_W * .58, "engine_port")], GF_STERN, MB_R, size=0.7)
+    centre, centre_anchors = rij_mount_plates(
+        [(0, "engine_center")], GF_STERN, MB_R, size=1.0)
+    stbd, stbd_anchors = rij_mount_plates(
+        [(GF_W * .58, "engine_stbd")], GF_STERN, MB_R, size=0.7)
+    layers += plates + centre + stbd
+    return Hull(layers=layers,
+               anchors=anchors + centre_anchors + stbd_anchors)
+
 def ship_swallow():
     """stocky little fighter: wings straight out on the leading edge,
     trailing edge widening back toward the hull"""
@@ -679,6 +791,7 @@ SHIPS = [  # (mfr, name, sub, fn, display_scale, classic_px_height, model_units)
     ("RIJAY", "MOCKINGBIRD", "medium fast freighter", ship_mockingbird, .85, 45, 195),
     ("RIJAY", "SPARROW", "packet courier · smallest hull in the game", ship_sparrow, .85, 45, 195),
     ("RIJAY", "SWALLOW", "interceptor", ship_swallow, .85, 20, 115),
+    ("RIJAY", "GOLDFINCH", "small passenger liner", ship_goldfinch, .85, 45, 195),
     ("RADI", "KX6 XR", "long-haul yacht", ship_kx6, .85, 52, 175),
     ("RADI", "Y-SERIES", "interceptor, ask no questions", ship_y_interceptor, .85, 30, 125),
 ]
@@ -712,7 +825,7 @@ def build_sheet():
                  f'font-size="11" fill="{LABEL}">{cue}</text>')
         for i, sw in enumerate(swatches):
             body += rrect(26 + i * 22, y + 62, 16, 10, 2, sw, stroke=INK, sw=1.2)
-    slot_x = {"PHE": [330, 610, 880], "RIJAY": [330, 610, 880], "RADI": [330, 610]}
+    slot_x = {"PHE": [330, 610, 880], "RIJAY": [330, 610, 880, 1050], "RADI": [330, 610]}
     counters = {"PHE": 0, "RIJAY": 0, "RADI": 0}
     for mfr, nm, sub, fn, sc, px, mu in SHIPS:
         x = slot_x[mfr][counters[mfr]]; counters[mfr] += 1
@@ -726,11 +839,11 @@ def build_sheet():
     body += (f'<text x="40" y="{sy - 10}" font-family="Consolas,monospace" '
              f'font-size="12" fill="{LABEL}">AT CLASSIC IN-GAME SCALE '
              f'(sprite heights 20–64 px) — the readability test that matters</text>')
-    sx = 120
+    sx = 110
     for mfr, nm, sub, fn, sc, px, mu in SHIPS:
         scale = px / mu
         body += group(flatten(fn()), sx, sy + 42, scale=scale)
-        sx += 150
+        sx += 125
     svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" '
            f'viewBox="0 0 {W} {H}">{defs}{body}</svg>')
     return svg

@@ -5,27 +5,16 @@ its GEOMETRY (a named anchor). Nothing compiles across that boundary, so
 these tests are the whole defence against a mount id typo'd in one tree —
 which renders as a part that silently does not draw.
 
-What's enforced right now vs. excused, and why:
-- `test_mount_ids_match_anchor_ids[mockingbird]` is enforced STRICTLY. The
-  Mockingbird has both a hull document and shipped art today, so this is a
-  live safety net, not a placeholder — a mismatch here must fail the suite.
-- `test_mount_ids_match_anchor_ids[sparrow]` and `[goldfinch]` are xfail
-  (`strict=False`) ONLY because those hulls have no art directory yet
-  (Tasks 12-13). Each mark is keyed on that hull's own art directory, so it
-  lifts itself the moment that hull's art lands — no further edits needed.
-- `test_every_shipped_hull_has_art` is xfail for the same reason (Sparrow
-  and Goldfinch aren't shipped yet); remove that guard once both land.
-- `test_every_part_sprite_key_has_art` is enforced STRICTLY as of Task 11:
-  it was xfail, keyed on the ONE part sprite directory that landed last
-  (`engine_rijay_small`), even though `engine_consol` (Task 7) was also
-  still missing before that. The guard self-lifted the moment
-  `engine_rijay_small` art was exported (confirmed as a plain PASS, not an
-  active XPASS, since a conditional xfail marker deactivates once its
-  condition goes false rather than firing and being caught unexpectedly
-  passing); the now-dead decorator has been removed.
-There is deliberately NO module-level guard: a blanket xfail keyed on
-Sparrow's art would also swallow the Mockingbird check, which is the one
-hull this file can actually verify today.
+All three hulls (Mockingbird, Sparrow, Goldfinch) now have shipped exterior
+art, so every check in this file is enforced STRICTLY — no xfail guards
+remain. `test_mount_ids_match_anchor_ids` runs for all three hull ids and
+`test_every_shipped_hull_has_art` requires all three; a mismatch or a
+missing art directory fails the suite outright, the same live safety net
+`test_mount_ids_match_anchor_ids[mockingbird]` and
+`test_every_part_sprite_key_has_art` have always been.
+
+There is deliberately NO module-level guard: a blanket skip/xfail keyed on
+one hull's art would swallow every other hull's check along with it.
 """
 import json
 import pathlib
@@ -48,24 +37,12 @@ def _hulls_with_art():
             yield doc["id"], doc, json.loads(meta.read_text(encoding="utf-8"))
 
 
-@pytest.mark.xfail(
-    not (SHIP_ART / "sparrow").exists() or not (SHIP_ART / "goldfinch").exists(),
-    reason="Sparrow and Goldfinch exterior art land in tasks 12-13",
-    strict=False)
 def test_every_shipped_hull_has_art():
     ids = {h for h, _, _ in _hulls_with_art()}
     assert ids == {"mockingbird", "sparrow", "goldfinch"}
 
 
-@pytest.mark.parametrize("hull_id", [
-    "mockingbird",
-    pytest.param("sparrow", marks=pytest.mark.xfail(
-        not (SHIP_ART / "sparrow").exists(),
-        reason="Sparrow exterior art lands in task 12", strict=False)),
-    pytest.param("goldfinch", marks=pytest.mark.xfail(
-        not (SHIP_ART / "goldfinch").exists(),
-        reason="Goldfinch exterior art lands in task 13", strict=False)),
-])
+@pytest.mark.parametrize("hull_id", ["mockingbird", "sparrow", "goldfinch"])
 def test_mount_ids_match_anchor_ids(hull_id):
     hulls = {h: (doc, meta) for h, doc, meta in _hulls_with_art()}
     doc, meta = hulls[hull_id]
