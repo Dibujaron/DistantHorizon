@@ -505,6 +505,13 @@ func _advance_plume_trails(delta: float) -> void:
 			_plume_trails[id] = kept
 
 
+## Sentinel key into a ship's per-origin plume-carry map for the single
+## centreline tail used when there are no per-mount origins (PF-20 fallback).
+## Not a valid mount id (mount ids come from hull.schema.json's `mounts[].id`
+## and are never empty), so it can't collide with a real mount's carry entry.
+const PLUME_FALLBACK_ORIGIN_KEY := ""
+
+
 ## #12 — spit new exhaust motes from `ship`'s fitted engine mounts into world
 ## space, scaled by the ramped throttle level. `heading` is the smoothed
 ## world heading so the plume points where the hull visually points. `hset`
@@ -521,13 +528,6 @@ func _emit_plume_trail(ship: ShipState, heading: float, delta: float,
 	_plume_level[ship.id] = level
 	if level <= 0.02:
 		return
-	# Fractional accumulator so low throttle still trickles whole motes.
-	var carry: float = float(_plume_emit_carry.get(ship.id, 0.0)) \
-		+ level * PLUME_EMIT_PER_SEC * delta
-	var n := int(carry)
-	_plume_emit_carry[ship.id] = carry - n
-	if n <= 0:
-		return
 	# Aft is opposite the nose; nose points along `heading` (world y-up).
 	# `lateral` is a 90-degree CW turn from `aft`, which — for a nose-up hull
 	# whose sprite rotation is -heading + PI/2, matching _world_to_screen's
@@ -537,14 +537,21 @@ func _emit_plume_trail(ship: ShipState, heading: float, delta: float,
 	var aft := -Vector2(cos(heading), sin(heading))
 	var lateral := Vector2(-aft.y, aft.x)
 	# #12 / M4 it. 2c — one plume per FITTED engine mount, so a hull with an
-	# empty mount visibly burns on fewer engines.
+	# empty mount visibly burns on fewer engines. Keyed by mount id (not
+	# array index) so each mount's own emit-carry accumulator (below) stays
+	# attached to that mount even if `ship.mounts`' iteration order ever
+	# shifts across frames (e.g. a refit).
 	var origins: Array[Vector2] = []
+	var origin_keys: Array[String] = []
 	if hset != null and not ship.mounts.is_empty():
 		var half := Vector2(hset.px_size()) * 0.5
 		var units_per_px := SHIP_WORLD_UNITS_PER_PX * SHIP_RENDER_SCALE
 		for mount_id: String in ship.mounts:
 			var a := hset.mount_anchor(mount_id)
 			if a == Vector2.INF:
+				# Same "mount id disagrees across two trees" data bug
+				# _dress_hull push_errors on for the identical condition.
+				push_error("[art] %s has no anchor for mount %s" % [ship.hull_sprite, mount_id])
 				continue
 			# sprite px (nose-up, +y down) -> ship-local world offset. A
 			# mount right of hull-centre (local.x > 0, starboard side of the
@@ -552,15 +559,34 @@ func _emit_plume_trail(ship: ShipState, heading: float, delta: float,
 			# of centre in the texture) shifts toward +aft.
 			var local := (a - half) * units_per_px
 			origins.append(ship.position() + aft * local.y + lateral * local.x)
+			origin_keys.append(mount_id)
 	if origins.is_empty():
 		origins.append(ship.position() + aft * (PLUME_MOTE_WORLD * 1.5))
+		origin_keys.append(PLUME_FALLBACK_ORIGIN_KEY)
+	# Each origin gets its OWN fractional accumulator, ticking at an even
+	# share of the total emission rate -- not a round-robin over a single
+	# shared `n` (fix round 1, Finding 1): at full throttle n = int(carry)
+	# is 0 or 1 almost every frame (PLUME_EMIT_PER_SEC=44 at ~60fps is
+	# ~0.73 motes/frame), so a shared index-based rotation like
+	# `origins[i % origins.size()]` never advances past origins[0] in
+	# practice -- one drum absorbs effectively every mote and the other two
+	# starve. Splitting the rate per-origin instead means a three-engine
+	# ship's TOTAL output still matches a one-engine ship's (each of the
+	# three drums fires at a third of the rate), and every drum accumulates
+	# its own whole motes independently of how the others are doing.
+	var carry_by_origin: Dictionary = _plume_emit_carry.get_or_add(ship.id, {})
+	var rate_per_origin := level * PLUME_EMIT_PER_SEC * delta / origins.size()
 	var motes: Array = _plume_trails.get_or_add(ship.id, [])
-	for i in n:
-		var origin: Vector2 = origins[i % origins.size()]
-		var kick := aft * PLUME_EXHAUST_SPEED \
-			+ lateral * randf_range(-PLUME_SPREAD, PLUME_SPREAD)
-		motes.append({"p": origin, "v": ship.velocity() + kick,
-			"age": 0.0, "level": level})
+	for i in origins.size():
+		var key := origin_keys[i]
+		var carry: float = float(carry_by_origin.get(key, 0.0)) + rate_per_origin
+		var n := int(carry)
+		carry_by_origin[key] = carry - n
+		for _j in n:
+			var kick := aft * PLUME_EXHAUST_SPEED \
+				+ lateral * randf_range(-PLUME_SPREAD, PLUME_SPREAD)
+			motes.append({"p": origins[i], "v": ship.velocity() + kick,
+				"age": 0.0, "level": level})
 
 
 ## Burn detection for ships we don't control: a snapshot-to-snapshot velocity
