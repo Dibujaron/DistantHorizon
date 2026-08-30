@@ -379,13 +379,22 @@ def test_sparrow_is_a_rijay_hull_with_three_small_mounts():
 
 
 def test_sparrow_interior_fit_covers_her_deck_grid():
-    """The walk backdrop must reach every walkable tile: 5 wide x 7 long."""
+    """The walk backdrop must reach every walkable tile: 5 wide x 7 long.
+
+    The width also has an UPPER bound (Task 13 Fix round 1, Finding 3): the
+    lower bound alone let the Goldfinch ship with a backdrop 8.67 tiles wide
+    against a 5-tile grid, the whole excess hanging to starboard because
+    `interior_view.gd` pins the sprite's top-left to deck tile (0,0) and
+    never centres it. `frame[2]` is the WIDTH only -- length legitimately
+    runs longer than the grid (the engine bay/mount plates sit past the
+    walkable footprint), so no upper bound applies to `frame[3]`."""
     from composer import SHIP_EXPORTS, hull_frame
     spec = next(s for s in SHIP_EXPORTS if s.name == "sparrow")
     frame = hull_frame(spec.build())
     units_per_tile = spec.interior["units_per_tile"]
     assert frame[2] >= 5 * units_per_tile - 1e-6
     assert frame[3] >= 7 * units_per_tile - 1e-6
+    assert frame[2] / units_per_tile - 5 <= 0.5
 
 
 def test_longhorn_is_the_one_known_scale_outlier():
@@ -417,10 +426,19 @@ def test_goldfinch_mounts_match_her_hull_document():
 
 
 def test_goldfinch_interior_fit_covers_her_deck_grid():
-    """The walk backdrop must reach every walkable tile: 5 wide x 14 long."""
+    """The walk backdrop must reach every walkable tile: 5 wide x 14 long.
+
+    Width also has an UPPER bound -- see the twin note on
+    test_sparrow_interior_fit_covers_her_deck_grid. This is the exact test
+    that shipped green on a backdrop 8.67 tiles wide (Task 13 Fix round 1,
+    Finding 3): the lower bound alone can't catch a hull drawn too WIDE, and
+    a hull drawn too wide is worse than one drawn tight, because
+    `interior_view.gd` pins the sprite's top-left to deck tile (0,0) and
+    never centres -- all the excess hangs to starboard, not evenly."""
     from composer import SHIP_EXPORTS, hull_frame
     spec = next(s for s in SHIP_EXPORTS if s.name == "goldfinch")
     frame = hull_frame(spec.build())
     units_per_tile = spec.interior["units_per_tile"]
     assert frame[2] >= 5 * units_per_tile - 1e-6
     assert frame[3] >= 14 * units_per_tile - 1e-6
+    assert frame[2] / units_per_tile - 5 <= 0.5
