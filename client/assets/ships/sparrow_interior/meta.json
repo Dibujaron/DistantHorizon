@@ -1,0 +1,50 @@
+{
+  "name": "sparrow_interior",
+  "px_w": 16,
+  "px_h": 24,
+  "px_per_unit": 0.46153846153846156,
+  "frame": [
+    -18.0,
+    -9.0,
+    35.0,
+    51.0
+  ],
+  "classic_px": 90,
+  "c1_base": [
+    59,
+    141,
+    224
+  ],
+  "c2_base": [
+    238,
+    242,
+    246
+  ],
+  "anchors": [
+    {
+      "kind": "mount",
+      "id": "engine_port",
+      "x_px": 5.861538461538461,
+      "y_px": 17.53846153846154
+    },
+    {
+      "kind": "mount",
+      "id": "engine_center",
+      "x_px": 8.307692307692308,
+      "y_px": 17.53846153846154
+    },
+    {
+      "kind": "mount",
+      "id": "engine_stbd",
+      "x_px": 10.753846153846155,
+      "y_px": 17.53846153846154
+    }
+  ],
+  "interior": {
+    "px_per_tile": 3.0,
+    "origin_px": [
+      0.0,
+      0.0
+    ]
+  }
+}

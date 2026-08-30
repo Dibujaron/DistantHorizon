@@ -309,6 +309,16 @@ def _lh():
 # baked hull art.
 MB_INTERIOR = {"units_per_tile": 6.5, "origin_units": None}
 
+
+def _sp():
+    from manufacturers import ship_sparrow
+    return ship_sparrow()
+
+
+# Sparrow interior fit: same 1 m tile canon as the Mockingbird. Her deck grid
+# is 5 x 7; the sprite runs longer, the extra being the engine bay aft.
+SP_INTERIOR = {"units_per_tile": 6.5, "origin_units": None}
+
 SHIP_EXPORTS = [
     ExportSpec("mockingbird", _mb, 45, 195,
                ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
@@ -316,6 +326,15 @@ SHIP_EXPORTS = [
     ExportSpec("mockingbird_interior", _mb, 90, 195,
                ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
                RIJ_C1, RIJ_C2, interior=MB_INTERIOR, px_scale=2),
+    # Sparrow: same base px_per_unit as every other export (PF-31 -- classic_px
+    # scales with model_units, NOT with her tile count; her sprite comes out
+    # smaller than the Mockingbird's because her authored frame IS smaller).
+    ExportSpec("sparrow", _sp, 45, 195,
+               ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
+               RIJ_C1, RIJ_C2, interior=SP_INTERIOR),
+    ExportSpec("sparrow_interior", _sp, 90, 195,
+               ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
+               RIJ_C1, RIJ_C2, interior=SP_INTERIOR, px_scale=2),
     # Longhorn livery: c1 = the orange trim, c2 = the gray body (it has no
     # truss white — the body IS the paintable surface on a liner)
     # classic_px stays the Classic game's 41 (NOT 45, the ratio every other

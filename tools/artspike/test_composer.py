@@ -370,6 +370,24 @@ def test_parts_and_hulls_share_one_base_px_per_unit():
     assert len(ratios) == 1, f"multiple scales in play: {ratios}"
 
 
+def test_sparrow_is_a_rijay_hull_with_three_small_mounts():
+    from manufacturers import ship_sparrow
+    hull = ship_sparrow()
+    mounts = {a.id for a in hull.anchors if a.kind == "mount"}
+    assert mounts == {"engine_port", "engine_center", "engine_stbd"}
+    assert any(l.height is not None for l in hull.layers), "authored relief"
+
+
+def test_sparrow_interior_fit_covers_her_deck_grid():
+    """The walk backdrop must reach every walkable tile: 5 wide x 7 long."""
+    from composer import SHIP_EXPORTS, hull_frame
+    spec = next(s for s in SHIP_EXPORTS if s.name == "sparrow")
+    frame = hull_frame(spec.build())
+    units_per_tile = spec.interior["units_per_tile"]
+    assert frame[2] >= 5 * units_per_tile - 1e-6
+    assert frame[3] >= 7 * units_per_tile - 1e-6
+
+
 def test_longhorn_is_the_one_known_scale_outlier():
     """The Longhorn renders at 41/195, not the 45/195 every other export
     shares, so she draws about 9% small relative to true scale. That's safe
