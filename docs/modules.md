@@ -688,7 +688,7 @@ unfitted. Mount **rotation** deliberately does not exist: every shipped part is 
 and every engine points aft; a rotation field arrives with turrets, not before.
 
 The Mockingbird's engine drums moved off the hull sprite and onto a shared part
-(the sprite `rijay.engine.stork_240c2` mounts), and the dorsal ridge went with them — it
+(`rijay.engine.stork_240c2`, sprite key `engine_rijay`), and the dorsal ridge went with them — it
 was always a drum fairing, not hull structure, so a Consol nacelle in the same mount reads
 visibly finless with no extra art. Her `default_loadout` — a Consol centre engine between
 two Rijay originals — now actually renders that way: a ridgeless aftermarket nacelle at
