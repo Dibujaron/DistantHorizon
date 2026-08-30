@@ -275,6 +275,25 @@ def rijay_cockpit(cy, w):
 
 MB_Y, MB_SP, MB_R, MB_LN, MB_FL = 40, 21, 7.5, 28, 0.8
 
+def rij_mount_plates(centres, y, r, size=1.0):
+    """-> (layers, mount anchors). A faired-over hardpoint per mount: plate
+    plus bolt ring, drawn by the HULL so an empty mount still reads
+    deliberate. `centres` is [(x, mount_id), ...] on the transom at `y`;
+    `size` scales the plate for an `s` vs `m` mount, which is a free
+    readability win — you can see which hardpoint takes the big engine."""
+    layers, anchors = [], []
+    for cx, mount_id in centres:
+        pr = r * size
+        layers.append(Layer(rrect(cx - pr * .82, y - 1.5, pr * 1.64, 6.0, 2.0,
+                                  RIJ_BLUE_D, sw=1.6), flat(0.30)))
+        for by in (y + 0.6, y + 3.4):   # bolt ring
+            layers.append(Layer(circle(cx - pr * .5, by, .7, INK,
+                                       stroke="none")))
+            layers.append(Layer(circle(cx + pr * .5, by, .7, INK,
+                                       stroke="none")))
+        anchors.append(Anchor("mount", cx, y, id=mount_id))
+    return layers, anchors
+
 def mb_mount_plates():
     """-> (layers, mount anchors). Structure stays with the hull, equipment
     goes on the part: each hardpoint is a faired-over plate on the flare's
@@ -283,20 +302,9 @@ def mb_mount_plates():
     were) that a fitted engine covers, so an EMPTY mount still reads
     deliberate. The Sparrow needs this immediately — she ships
     engine_center bare."""
-    y, r = MB_Y, MB_R
-    layers, anchors = [], []
-    for i, mount_id in ((-1, "engine_port"), (0, "engine_center"),
-                        (1, "engine_stbd")):
-        cx = i * MB_SP
-        layers.append(Layer(rrect(cx - r * .82, y - 1.5, r * 1.64, 6.0, 2.0,
-                                  RIJ_BLUE_D, sw=1.6), flat(0.30)))
-        for by in (y + 0.6, y + 3.4):   # bolt ring
-            layers.append(Layer(circle(cx - r * .5, by, .7, INK,
-                                       stroke="none")))
-            layers.append(Layer(circle(cx + r * .5, by, .7, INK,
-                                       stroke="none")))
-        anchors.append(Anchor("mount", cx, y, id=mount_id))
-    return layers, anchors
+    return rij_mount_plates(
+        [(-MB_SP, "engine_port"), (0, "engine_center"), (MB_SP, "engine_stbd")],
+        MB_Y, MB_R)
 
 def mb_outboard_fins():
     """It is a wing, not a drive fairing: only the outer two drums ever
