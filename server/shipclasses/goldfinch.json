@@ -2,6 +2,7 @@
   "schema": 3,
   "id": "goldfinch",
   "name": "Goldfinch",
+  "sprite": "goldfinch",
   "decks": [
     {
       "name": "Upper",

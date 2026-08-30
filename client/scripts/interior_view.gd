@@ -94,14 +94,16 @@ class Backdrop:
 	var asset: String
 	var tile_origin: Vector2
 	var rotated: bool
+	var mounts: Dictionary = {}   ## mount id -> part sprite key
 
 	static func make(p_kind: String, p_asset: String, p_tile_origin: Vector2,
-			p_rotated: bool = false) -> Backdrop:
+			p_rotated: bool = false, p_mounts: Dictionary = {}) -> Backdrop:
 		var b := Backdrop.new()
 		b.kind = p_kind
 		b.asset = p_asset
 		b.tile_origin = p_tile_origin
 		b.rotated = p_rotated
+		b.mounts = p_mounts
 		return b
 
 
@@ -218,9 +220,57 @@ func _update_backdrops(origin: Vector2) -> void:
 			s.rotation = 0.0
 			s.position = top_left + Vector2(sset.px_size()) * px_scale * 0.5
 		s.scale = Vector2.ONE * px_scale
+		_dress_backdrop(s, sset, spec.mounts)
 	for child in get_children():
 		if String(child.name).begins_with("bd_") \
 				and not touched.has(String(child.name)):
+			child.visible = false
+
+
+## Layer fitted parts onto a backdrop hull. Same geometry as WorldView's
+## _dress_hull, but backdrop children take light_mask 2 and draw behind the
+## parent — a backdrop is scenery under the tiles, not sun-lit space art.
+func _dress_backdrop(hull_sprite: Sprite2D, hset: AssetLibrary.SpriteSet,
+		mounts: Dictionary) -> void:
+	var used := {}
+	for mount_id: String in mounts:
+		var part_key := str(mounts[mount_id])
+		# The backdrop is the 2x `*_interior` render, so a fitted part must
+		# supply its doubled twin — silently falling back to the 1x sprite
+		# would draw it at half scale on a 2x backdrop, a worse failure than
+		# naming the gap (mirrors _dress_hull's push_error for a missing
+		# anchor, below).
+		var pset := _lib.part(part_key + "_interior")
+		if pset == null:
+			if _lib.part(part_key) == null:
+				continue  # no art for this part yet
+			push_error("[art] %s has no _interior twin for backdrop" % part_key)
+			continue
+		var anchor := hset.mount_anchor(mount_id)
+		if anchor == Vector2.INF:
+			continue  # WorldView already push_errors this pair
+		var key := "part_" + mount_id
+		used[key] = true
+		var s: Sprite2D = hull_sprite.get_node_or_null(NodePath(key))
+		if s == null:
+			s = Sprite2D.new()
+			s.name = key
+			s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			s.light_mask = 2  # backdrop art must never be sun-lit through the window
+			# NOT show_behind_parent: the parent hull sprite already carries
+			# that (see _update_backdrops), which is what sinks the whole
+			# backdrop subtree under the walk tiles. Setting it here too
+			# would draw this part BEHIND its own parent hull sprite instead
+			# of over it, so a hull's blanking plate would occlude the part
+			# meant to cover it.
+			hull_sprite.add_child(s)
+		s.texture = pset.texture
+		s.material = pset.material
+		s.visible = true
+		s.position = AssetLibrary.part_local_position(hset, pset, anchor)
+	for child in hull_sprite.get_children():
+		var name := String(child.name)
+		if name.begins_with("part_") and not used.has(name):
 			child.visible = false
 
 

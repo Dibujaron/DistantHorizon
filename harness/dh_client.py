@@ -379,3 +379,12 @@ def validate_snapshot(message: dict, expected_ships: int) -> None:
             value = ship.get(key)
             if not isinstance(value, (int, float)):
                 raise ProtocolError(f"ship {ship.get('id')} field {key!r} bad: {value!r}")
+        if not isinstance(ship.get("hull"), str):
+            raise ProtocolError(f"ship {ship.get('id')} 'hull' missing/bad: {ship!r}")
+        mounts = ship.get("mounts")
+        if not isinstance(mounts, dict):
+            raise ProtocolError(f"ship {ship.get('id')} 'mounts' is not an object: {ship!r}")
+        for mount_id, sprite in mounts.items():
+            if not isinstance(sprite, str):
+                raise ProtocolError(
+                    f"ship {ship.get('id')} mount {mount_id!r} sprite bad: {sprite!r}")

@@ -11,7 +11,7 @@ on non-blob hulls like the Thumper).
 Roles: "albedo" is real geometry/paint; "sheet_only" is painted pseudo-light
 kept for the legacy sheets but dropped from lit-pipeline albedo (which is
 authored FLAT); "glow" is engine glow, excluded from exports entirely —
-plumes become throttle-driven dynamic art, and the composer emits nozzle
+plumes become throttle-driven dynamic art, and the composer emits mount
 anchors instead.
 """
 import io
@@ -57,9 +57,12 @@ def dome(lo, hi, blur=6.0):
 
 @dataclass(frozen=True)
 class Anchor:
-    kind: str            # "nozzle"
+    kind: str            # "mount" (a hull hardpoint) | "berth" (a station slot)
     x: float             # model units
     y: float
+    id: str = ""         # mount anchors only: the hull document's mount id.
+                         # NAMED, not indexed — reordering a build loop must
+                         # never silently swap two engines.
 
 
 @dataclass
@@ -100,7 +103,32 @@ def rasterize(svg_fragment, frame, ss=SS):
 def hull_frame(hull, pad=8.0):
     """tight frame around the flat albedo, padded, in model units. The
     probe box must exceed any hull's extent — station bars run ~530 units
-    wide (a clipped probe silently truncates the frame AND every anchor)."""
+    wide (a clipped probe silently truncates the frame AND every anchor).
+
+    KNOWN GAP (M4 iteration 2c, Task 12, deferred on purpose — do not fix
+    without re-exporting and re-reviewing every hull): a hull with an
+    interior fit (ExportSpec.interior, origin_units=None) has its deckplan
+    tile (0,0) pinned to THIS frame's own top-left corner by export_ship,
+    void rows/columns included. That pin assumes the frame's pad
+    approximates one void row/column's real width (units_per_tile) — but
+    `pad` here is a fixed 8.0 model units regardless of the hull's own
+    tile pitch, so for the Sparrow (units_per_tile=6.5) the two are off by
+    a fixed 1.5 units, which shows up as a small but unavoidable void-side
+    overhang between her tile floor and her hull backdrop in the walk-mode
+    view (see `ship_sparrow`'s docstring in manufacturers.py for the full
+    derivation and the exact residual).
+
+    The one-line pipeline fix: give a hull carrying an interior fit
+    `pad = spec.interior["units_per_tile"]` instead of the default 8.0 (or,
+    equivalently, have `export_ship` pass an explicit `origin_units` rather
+    than relying on `None`, so the pin no longer depends on pad matching
+    the tile pitch at all). Either change alters the FRAME of every hull
+    that carries an interior fit — including the Mockingbird's shipped
+    `mockingbird`/`mockingbird_interior` — so it requires re-exporting and
+    re-reviewing (by eye, in-engine) every such hull, not just the one that
+    prompted this note. Deferred at Task 12 of 14 rather than taken
+    mid-iteration, before anyone had eyeballed the results of touching
+    every hull's frame at once."""
     probe = rasterize(flatten(hull, sheet=False), (-400, -400, 800, 800), ss=1)
     ys, xs = np.where(probe[..., 3] > 0.1)
     minx, maxx = xs.min() - 400 - pad, xs.max() - 400 + pad
@@ -235,9 +263,59 @@ RIJ_C1, RIJ_C2 = (59, 141, 224), (238, 242, 246)
 PHE_C1, PHE_C2 = (217, 122, 40), (223, 227, 230)
 
 
-def _mb(stock):
+@dataclass(frozen=True)
+class PartSpec:
+    """An exterior part exported on its own, to be layered onto a hull at a
+    named mount anchor. Shares the hulls' px_per_unit so the client needs no
+    per-part scale correction — see the scale canon on ExportSpec.
+
+    px_scale mirrors ExportSpec's: a hull's `*_interior` render is 2x, and a
+    part layered onto it must be too, so every part ships a 1x twin for space
+    and a 2x `<name>_interior` twin for the walk-mode backdrop."""
+    name: str                     # the part document's `sprite` key
+    build: object                 # () -> Hull, carrying one "attach" Anchor
+    classic_px: int
+    model_units: int
+    c1: tuple
+    c2: tuple
+    palette: tuple
+    c1_base: tuple
+    c2_base: tuple
+    px_scale: int = 1
+
+
+def _rijay_part(name, fn_name, px_scale=1):
+    return PartSpec(name, lambda: _part(fn_name), 45 * px_scale, 195,
+                    ((59, 141, 224),), ((238, 242, 246),),
+                    tuple(RIJAY_PALETTE), RIJ_C1, RIJ_C2, px_scale=px_scale)
+
+
+def _consol_part(name, fn_name, px_scale=1):
+    return PartSpec(name, lambda: _part(fn_name), 45 * px_scale, 195,
+                    ((217, 122, 40), (168, 90, 30)),
+                    ((138, 143, 151), (223, 227, 230)),
+                    tuple(PHE_PALETTE), PHE_C1, (138, 143, 151),
+                    px_scale=px_scale)
+
+
+PART_EXPORTS = [
+    _rijay_part("engine_rijay", "part_engine_rijay"),
+    _rijay_part("engine_rijay_interior", "part_engine_rijay", px_scale=2),
+    _consol_part("engine_consol", "part_engine_consol"),
+    _consol_part("engine_consol_interior", "part_engine_consol", px_scale=2),
+    _rijay_part("engine_rijay_small", "part_engine_wren"),
+    _rijay_part("engine_rijay_small_interior", "part_engine_wren", px_scale=2),
+]
+
+
+def _part(fn_name):
+    import manufacturers
+    return getattr(manufacturers, fn_name)()
+
+
+def _mb():
     from manufacturers import ship_mockingbird
-    return ship_mockingbird(stock=stock)
+    return ship_mockingbird()
 
 
 def _lh():
@@ -250,22 +328,88 @@ def _lh():
 # SPACE export stays Classic 21x45 px (1.5 px/tile — every hull renders at
 # 1.5 px/tile in space so relative sizes read true); the *_interior export
 # renders the same hull at 2x (42x90 px, 3 px/tile) for the walk-mode
-# backdrop. The deckplan grid (14x20) covers sprite rows 0-19 of 30; the
-# drums/engines behind the docking corridor are exterior-only sprite.
+# backdrop. The deckplan grid is 14x23 walkable in a 30-tile-long sprite;
+# the drums/engines behind the docking corridor are exterior-only sprite —
+# and, as of M4 iteration 2c, a part layered on by the client rather than
+# baked hull art.
 MB_INTERIOR = {"units_per_tile": 6.5, "origin_units": None}
 
+
+def _sp():
+    from manufacturers import ship_sparrow
+    return ship_sparrow()
+
+
+# Sparrow interior fit: same 1 m tile canon as the Mockingbird. Her deck grid
+# is 5 x 7. Unlike every other hull's interior fit, her origin_units is
+# authored explicitly rather than left None (M4 silhouette pass): None pins
+# deckplan tile (0,0) to the exported frame's own top-left corner, which
+# forces the exterior art to be no wider than the walkable floor -- exactly
+# backwards, since a ship's outside is bigger than its inside. The values
+# below are derived in ship_sparrow's docstring in manufacturers.py: -16.25
+# centres the 32.5-unit-wide (5-tile) grid on the hull's own x=0 axis, and
+# -5.5 is one void tile row (6.5 units) fore of where her cockpit row is
+# actually drawn (y=1.0). See hull_frame's docstring for the general
+# mechanism this is an instance of -- the Goldfinch now authors the same
+# fix (GF_INTERIOR below); the Mockingbird still relies on None and still
+# carries the residual described there.
+SP_INTERIOR = {"units_per_tile": 6.5, "origin_units": (-16.25, -5.5)}
+
+
+def _gf():
+    from manufacturers import ship_goldfinch
+    return ship_goldfinch()
+
+
+# Goldfinch interior fit: same 1 m tile canon as every other hull. Her deck
+# grid is 5 x 14 walkable (Upper, Mezzanine, Lower); the sprite runs a little
+# longer, the extra being the short engine transom aft.
+#
+# origin_units is authored explicitly (M4 silhouette pass), same mechanism
+# and same x value as the Sparrow's own (see SP_INTERIOR above and
+# ship_goldfinch's docstring in manufacturers.py for the derivation): -16.25
+# centres her identically-5-tile-wide (32.5 unit) grid on the hull's own
+# x=0 axis, and -5.5 is one void tile row (6.5 units) fore of where her
+# cockpit region is actually drawn. Before this pass this was None, which
+# pinned the grid to the frame's own top-left and forced her exterior to be
+# no wider than the walkable floor -- exactly the trap that left her three
+# engine mounts bunched close enough to overlap 100%.
+GF_INTERIOR = {"units_per_tile": 6.5, "origin_units": (-16.25, -5.5)}
+
 SHIP_EXPORTS = [
-    ExportSpec("mockingbird", lambda: _mb(False), 45, 195,
+    ExportSpec("mockingbird", _mb, 45, 195,
                ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
                RIJ_C1, RIJ_C2, interior=MB_INTERIOR),
-    ExportSpec("mockingbird_interior", lambda: _mb(False), 90, 195,
+    ExportSpec("mockingbird_interior", _mb, 90, 195,
                ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
                RIJ_C1, RIJ_C2, interior=MB_INTERIOR, px_scale=2),
-    ExportSpec("mockingbird_stock", lambda: _mb(True), 45, 195,
+    # Sparrow: same base px_per_unit as every other export (PF-31 -- classic_px
+    # scales with model_units, NOT with her tile count; her sprite comes out
+    # smaller than the Mockingbird's because her authored frame IS smaller).
+    ExportSpec("sparrow", _sp, 45, 195,
                ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
-               RIJ_C1, RIJ_C2, interior=MB_INTERIOR),
+               RIJ_C1, RIJ_C2, interior=SP_INTERIOR),
+    ExportSpec("sparrow_interior", _sp, 90, 195,
+               ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
+               RIJ_C1, RIJ_C2, interior=SP_INTERIOR, px_scale=2),
+    # Goldfinch: same base px_per_unit as every other export (PF-38 --
+    # classic_px/model_units stays identical to the Mockingbird and Sparrow;
+    # she renders bigger or smaller than them only because her authored
+    # FRAME is a different size, never because of a scale fudge here).
+    ExportSpec("goldfinch", _gf, 45, 195,
+               ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
+               RIJ_C1, RIJ_C2, interior=GF_INTERIOR),
+    ExportSpec("goldfinch_interior", _gf, 90, 195,
+               ((59, 141, 224),), ((238, 242, 246),), tuple(RIJAY_PALETTE),
+               RIJ_C1, RIJ_C2, interior=GF_INTERIOR, px_scale=2),
     # Longhorn livery: c1 = the orange trim, c2 = the gray body (it has no
     # truss white — the body IS the paintable surface on a liner)
+    # classic_px stays the Classic game's 41 (NOT 45, the ratio every other
+    # export shares) — she is a known pre-existing scale outlier, decorative
+    # parked traffic with no hull document and no mounts, so nothing ever
+    # layers a part onto her. See test_longhorn_is_the_one_known_scale_outlier,
+    # which pins this so a future change is a decision, not a drift; and the
+    # exclusion in test_parts_and_hulls_share_one_base_px_per_unit.
     ExportSpec("longhorn", _lh, 41, 195,
                ((217, 122, 40), (168, 90, 30)),
                ((138, 143, 151), (223, 227, 230)),
@@ -284,7 +428,10 @@ def _downsample(arr, size, mode):
 
 
 def compose_ship(spec):
-    """full-res compose: returns dict of working arrays + frame"""
+    """full-res compose: returns dict of working arrays + frame
+
+    Reads only spec.build, spec.c1, spec.c2 and spec.palette, so it works
+    unchanged on a PartSpec — a part composes exactly like a ship."""
     hull = spec.build()
     frame = hull_frame(hull)
     albedo = rasterize(flatten(hull, sheet=False), frame)
@@ -332,7 +479,7 @@ def export_ship(spec, out_root, z_scale=6.5):
         "px_per_unit": px_per_unit, "frame": list(frame),
         "classic_px": spec.classic_px,
         "c1_base": list(spec.c1_base), "c2_base": list(spec.c2_base),
-        "anchors": [{"kind": a.kind,
+        "anchors": [{"kind": a.kind, "id": a.id,
                      "x_px": (a.x - frame[0]) * px_per_unit,
                      "y_px": (a.y - frame[1]) * px_per_unit}
                     for a in hull.anchors],
@@ -347,6 +494,53 @@ def export_ship(spec, out_root, z_scale=6.5):
             "origin_px": [(ox - frame[0]) * px_per_unit,
                           (oy - frame[1]) * px_per_unit],
         }
+    (out / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    return meta
+
+
+def export_part(spec, out_root, z_scale=6.5):
+    """Same compose/downsample/normal recipe as export_ship, but the meta
+    carries an ATTACH point instead of anchors and an interior fit: the part
+    is positioned so this pixel lands on its hull's mount anchor."""
+    c = compose_ship(spec)
+    frame, hull = c["frame"], c["hull"]
+    px_per_unit = spec.classic_px / spec.model_units
+    # Same rounding contract as export_ship: dims round at the BASE scale then
+    # multiply, so a 2x twin is exactly double its 1x and the attach point
+    # cannot drift a pixel.
+    base_ppu = px_per_unit / spec.px_scale
+    pw = max(1, round(frame[2] * base_ppu)) * spec.px_scale
+    ph = max(1, round(frame[3] * base_ppu)) * spec.px_scale
+    albedo_g = _downsample(c["albedo"], (pw, ph), "rgba")
+    height_g = _downsample(c["height"], (pw, ph), "f")
+    solid_g = _downsample(c["solid"].astype(np.float64), (pw, ph), "f") > 0.5
+    normals = height_to_normals(height_g, z_scale=z_scale / SS)
+    normals[~solid_g] = [0.0, 0.0, 1.0]
+    mask_g = np.dstack([_downsample(c["masks"][..., i], (pw, ph), "f")
+                        for i in (0, 1)] + [np.zeros((ph, pw))])
+    out = pathlib.Path(out_root) / spec.name
+    out.mkdir(parents=True, exist_ok=True)
+    Image.fromarray((np.clip(albedo_g, 0, 1) * 255).astype(np.uint8),
+                    "RGBA").save(out / "albedo.png")
+    n = normals.copy()
+    n[..., 1] *= -1.0
+    Image.fromarray(np.round((n + 1) / 2 * 255).astype(np.uint8), "RGB").save(
+        out / "normal.png")
+    Image.fromarray((np.clip(mask_g, 0, 1) * 255).astype(np.uint8),
+                    "RGB").save(out / "mask.png")
+    attach = [a for a in hull.anchors if a.kind == "attach"]
+    if len(attach) != 1:
+        raise ValueError(f"{spec.name}: expected exactly one attach anchor, "
+                         f"got {len(attach)}")
+    a = attach[0]
+    meta = {
+        "name": spec.name, "px_w": pw, "px_h": ph,
+        "px_per_unit": px_per_unit, "frame": list(frame),
+        "classic_px": spec.classic_px,
+        "c1_base": list(spec.c1_base), "c2_base": list(spec.c2_base),
+        "attach_px": [(a.x - frame[0]) * px_per_unit,
+                      (a.y - frame[1]) * px_per_unit],
+    }
     (out / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     return meta
 
@@ -450,7 +644,15 @@ def main():
         meta = export_ship(spec, out_root)
         print(f"exported {spec.name}: {meta['px_w']}x{meta['px_h']} px, "
               f"{len(meta['anchors'])} anchors")
-    build_debug_sheet(pathlib.Path(__file__).parent / "sheet_composer.png")
+    part_root = root / "client" / "assets" / "parts"
+    for spec in PART_EXPORTS:
+        meta = export_part(spec, part_root)
+        print(f"exported part {spec.name}: {meta['px_w']}x{meta['px_h']} px, "
+              f"attach {meta['attach_px']}")
+    # PART_EXPORTS alongside SHIP_EXPORTS — a part you cannot see on the
+    # debug sheet is a part nobody will review.
+    build_debug_sheet(pathlib.Path(__file__).parent / "sheet_composer.png",
+                      exports=SHIP_EXPORTS + PART_EXPORTS)
 
 
 if __name__ == "__main__":

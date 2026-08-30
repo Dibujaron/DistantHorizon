@@ -16,12 +16,14 @@ def test_sheet_mfr_render_identical():
 
 
 def test_mockingbird_is_hull_with_heights():
+    """The drums (cyl_x, glow) moved to part_engine_rijay(); the hull itself
+    now authors only flat/dome relief (body, canopy, fins, mount plates)."""
     from manufacturers import ship_mockingbird
     hull = ship_mockingbird()
     kinds = {l.height.kind for l in hull.layers if l.height is not None}
-    assert {"cyl_x", "dome", "flat"} <= kinds          # authored variety, not doming
-    assert len([a for a in hull.anchors if a.kind == "nozzle"]) == 3
-    assert any(l.role == "glow" for l in hull.layers)  # glow separated for exclusion
+    assert {"dome", "flat"} <= kinds                   # authored variety, not doming
+    mounts = {a.id for a in hull.anchors if a.kind == "mount"}
+    assert mounts == {"engine_port", "engine_center", "engine_stbd"}
     assert any(l.role == "sheet_only" for l in hull.layers)  # painted highlight split
 
 
@@ -31,7 +33,15 @@ def test_longhorn_foil_is_flat_plate():
     hull = ship_longhorn()
     foils = [l for l in hull.layers if l.height and l.height.kind == "flat"]
     assert foils, "Longhorn must have flat-plate layers (the hammer foil)"
-    assert len([a for a in hull.anchors if a.kind == "nozzle"]) == 2
+    assert len([a for a in hull.anchors if a.kind == "mount"]) == 2
+
+
+def test_mount_anchors_are_ordered_port_to_starboard():
+    """Ids are the contract, but a reader should still be able to trust the
+    left-to-right order in the file."""
+    from manufacturers import ship_mockingbird
+    ids = [a.id for a in ship_mockingbird().anchors if a.kind == "mount"]
+    assert ids == ["engine_port", "engine_center", "engine_stbd"]
 
 
 def _rect_alpha(h, w, y0, y1, x0, x1):
@@ -134,22 +144,24 @@ def test_export_mockingbird(tmp_path):
     assert len(meta["anchors"]) == 3
     for a in meta["anchors"]:
         assert 0 <= a["x_px"] < meta["px_w"] and 0 <= a["y_px"] < meta["px_h"]
-        assert a["y_px"] > meta["px_h"] * 0.7              # nozzles aft
-    # interior fit contract (scale canon: 1 tile ~ 1 m): the 14x20 deckplan
+        assert a["y_px"] > meta["px_h"] * 0.7              # mounts sit aft
+    # interior fit contract (scale canon: 1 tile ~ 1 m): the 14x23 deckplan
     # sits at 1.5 px/tile on the SPACE sprite — if the sprite ever drifts
-    # off 21x45 the deckplan no longer fits the hull, so pin EXACT
-    # dimensions here.
-    assert (meta["px_w"], meta["px_h"]) == (21, 45)
+    # off 21x43 the deckplan no longer fits the hull, so pin EXACT
+    # dimensions here. (M4 iteration 2c: the drums moved off the hull to a
+    # part, shrinking the hull's own bounding box aft from 45 to 43 px —
+    # the engine part's own bulk restores the full profile once layered on.)
+    assert (meta["px_w"], meta["px_h"]) == (21, 43)
     assert abs(meta["interior"]["px_per_tile"] - 1.5) < 1e-9
     assert meta["interior"]["origin_px"] == [0.0, 0.0]
 
 
 def test_export_mockingbird_interior_backdrop(tmp_path):
-    """the 2x walk-mode render: same hull, 42x90 px, 3 px/tile"""
+    """the 2x walk-mode render: same hull, 42x86 px, 3 px/tile"""
     from composer import SHIP_EXPORTS, export_ship
     spec = next(s for s in SHIP_EXPORTS if s.name == "mockingbird_interior")
     meta = export_ship(spec, tmp_path)
-    assert (meta["px_w"], meta["px_h"]) == (42, 90)
+    assert (meta["px_w"], meta["px_h"]) == (42, 86)
     assert abs(meta["interior"]["px_per_tile"] - 3.0) < 1e-9
     assert meta["interior"]["origin_px"] == [0.0, 0.0]
     from PIL import Image
@@ -279,3 +291,219 @@ def test_export_longhorn_foil_shades_flat(tmp_path):
         fx = int((mx - meta["frame"][0]) * meta["px_per_unit"])
         fy = int((-95 - meta["frame"][1]) * meta["px_per_unit"])
         assert n[fy, fx, 2] > 0.9, "hammer foil must shade as a thin flat plate"
+
+
+def test_mockingbird_hull_no_longer_draws_her_drums():
+    """The drums are a PART now. What stays on the hull is a blanking plate
+    per mount, which a fitted part covers."""
+    from manufacturers import ship_mockingbird
+    hull = ship_mockingbird()
+    # The drums were the only cyl_x layers on the hull.
+    assert not [l for l in hull.layers if l.height and l.height.kind == "cyl_x"]
+    assert not [l for l in hull.layers if l.role == "glow"], \
+        "engine glow belongs to the engine part"
+    mounts = {a.id for a in hull.anchors if a.kind == "mount"}
+    assert mounts == {"engine_port", "engine_center", "engine_stbd"}
+
+
+def test_consol_engine_has_no_dorsal_ridge():
+    """The lore default renders as visibly aftermarket for free: the ridge is
+    a Rijay drum fairing (the atmo-landing package), so the Consol nacelle
+    simply lacks one. Asserted by looking for the ridge itself -- a white
+    flat-height layer -- not by counting flat layers, which would couple this
+    to unrelated decisions like whether a nozzle bell carries relief."""
+    from manufacturers import RIJ_WHITE, part_engine_consol, part_engine_rijay
+
+    def ridges(hull):
+        return [l for l in hull.layers
+                if l.height and l.height.kind == "flat" and RIJ_WHITE in l.svg]
+
+    assert len(ridges(part_engine_rijay())) == 1
+    assert ridges(part_engine_consol()) == []
+
+
+def test_rijay_engine_part_has_one_attach_anchor():
+    from manufacturers import part_engine_rijay
+    part = part_engine_rijay()
+    attach = [a for a in part.anchors if a.kind == "attach"]
+    assert len(attach) == 1, "a part attaches at exactly one point"
+    assert any(l.height is not None for l in part.layers), "authored relief"
+
+
+def test_consol_engine_part_has_one_attach_anchor():
+    from manufacturers import part_engine_consol
+    part = part_engine_consol()
+    attach = [a for a in part.anchors if a.kind == "attach"]
+    assert len(attach) == 1, "a part attaches at exactly one point"
+    assert any(l.height is not None for l in part.layers), "authored relief"
+
+
+def test_wren_is_a_smaller_rijay_drum():
+    """Same design language, size `s`: a Wren must read as the family's
+    little sister, not as a different manufacturer."""
+    from composer import hull_frame
+    from manufacturers import part_engine_rijay, part_engine_wren
+    big = hull_frame(part_engine_rijay())
+    small = hull_frame(part_engine_wren())
+    assert small[3] < big[3], "the Wren is shorter than the Stork"
+    assert small[2] < big[2], "and narrower"
+
+
+def test_parts_and_hulls_share_one_base_px_per_unit():
+    """The scale canon: a part drawn on a hull must not need rescaling. The
+    2x `*_interior` renders double classic_px AND px_scale, so it is the BASE
+    ratio (classic_px / model_units / px_scale) that must be universal —
+    exactly the quantity export_ship calls base_ppu.
+
+    The Longhorn is excluded by name: she is a known pre-existing scale
+    outlier (see test_longhorn_is_the_one_known_scale_outlier) with no hull
+    document and no mounts, so no part will ever hang on her and her ratio
+    is irrelevant to this canon. Every other ship export and every part
+    export must still share exactly one ratio."""
+    from composer import PART_EXPORTS, SHIP_EXPORTS
+
+    def base(s):
+        return s.classic_px / s.model_units / s.px_scale
+
+    ratios = ({base(s) for s in SHIP_EXPORTS if s.name != "longhorn"}
+              | {base(p) for p in PART_EXPORTS})
+    assert len(ratios) == 1, f"multiple scales in play: {ratios}"
+
+
+def test_sparrow_is_a_rijay_hull_with_three_small_mounts():
+    from manufacturers import ship_sparrow
+    hull = ship_sparrow()
+    mounts = {a.id for a in hull.anchors if a.kind == "mount"}
+    assert mounts == {"engine_port", "engine_center", "engine_stbd"}
+    assert any(l.height is not None for l in hull.layers), "authored relief"
+
+
+@pytest.mark.parametrize("hull_name,tiles_w,tiles_h", [
+    ("sparrow", 5, 7),
+    ("goldfinch", 5, 14),
+])
+def test_interior_fit_covers_her_deck_grid(hull_name, tiles_w, tiles_h):
+    """The walk backdrop must fully CONTAIN the walkable grid, on both axes,
+    with real margin -- not just be close to it in width. That "close in
+    width" upper bound was the old contract, and the M4 silhouette pass
+    deliberately breaks it for both the Sparrow and the Goldfinch:
+    `SP_INTERIOR`/`GF_INTERIOR`'s `origin_units` is now authored explicitly
+    (see the derivation in each hull's `ship_*` docstring in
+    manufacturers.py) precisely so the exterior art CAN be wider than the
+    interior grid -- hull plating, tankage and engine pylons all live
+    outboard of the walkable footprint. What must still hold, on both axes,
+    is containment: the grid (positioned at origin_units, sized
+    units_per_tile per tile) must sit entirely inside the rendered frame,
+    with margin to spare, or the walk-mode backdrop would clip the floor."""
+    from composer import SHIP_EXPORTS, hull_frame
+    spec = next(s for s in SHIP_EXPORTS if s.name == hull_name)
+    frame = hull_frame(spec.build())
+    fx, fy, fw, fh = frame
+    units_per_tile = spec.interior["units_per_tile"]
+    ox, oy = spec.interior["origin_units"]
+    grid_w, grid_h = tiles_w * units_per_tile, tiles_h * units_per_tile
+    margin = 2.0  # model units of real slack, not just non-negative
+    assert ox - fx >= margin, "grid pokes past the frame's fore/port edge"
+    assert (fx + fw) - (ox + grid_w) >= margin, \
+        "grid pokes past the frame's aft/starboard edge"
+    assert oy - fy >= margin, "grid pokes past the frame's top edge"
+    assert (fy + fh) - (oy + grid_h) >= margin, \
+        "grid pokes past the frame's bottom edge"
+
+
+# The Mockingbird's own three-engine spacing is the readability bar every
+# hull's mount layout is held to (see preview_fitted.py, which renders a
+# hull wearing its default_loadout and reports part-on-part overlap as a
+# percentage of the smaller part's footprint).
+MAX_MOUNT_OVERLAP = 0.43
+
+
+def _parts_by_size(root):
+    """mount `size` -> [PartSpec.name, ...] of every part that fits it,
+    from the server's own part documents (not hardcoded)."""
+    import json
+    from composer import PART_EXPORTS
+    sprite_names = {p.name for p in PART_EXPORTS if not p.name.endswith("_interior")}
+    out = {}
+    for f in (root / "server" / "parts").glob("*.json"):
+        doc = json.loads(f.read_text(encoding="utf-8"))
+        sprite = doc.get("sprite")
+        if sprite in sprite_names:
+            out.setdefault(doc["size"], []).append(sprite)
+    return out
+
+
+@pytest.mark.parametrize("hull_name", ["sparrow", "goldfinch"])
+def test_mount_anchors_clear_her_engines(hull_name, tmp_path):
+    """Adjacent mount anchors on a hull must be far enough apart that the
+    WIDEST part its mount `size` accepts does not swamp its neighbour --
+    exactly the failure preview_fitted.py exists to catch (the Sparrow's two
+    Wrens overlapped 67%, and the Goldfinch's engine_center/engine_stbd
+    overlapped 100%, before the M4 silhouette pass spread each hull's
+    mounts). Part widths come from real exported part metas, not hardcoded
+    numbers, so the same check naturally covers any other hull's mounts
+    too -- this test is parametrized over both hulls the M4 pass touched
+    rather than duplicated per hull."""
+    import json
+    from composer import SHIP_EXPORTS, PART_EXPORTS, export_ship, export_part
+    root = HERE.parents[1]
+    part_widths = {}
+    for pspec in PART_EXPORTS:
+        if pspec.name.endswith("_interior"):
+            continue
+        pmeta = export_part(pspec, tmp_path / "parts")
+        part_widths[pspec.name] = pmeta["px_w"]
+    by_size = _parts_by_size(root)
+
+    ship_doc = json.loads(
+        (root / "server" / "shipclasses" / f"{hull_name}.json").read_text(
+            encoding="utf-8"))
+    mount_size = {m["id"]: m["size"] for m in ship_doc["mounts"]}
+    spec = next(s for s in SHIP_EXPORTS if s.name == hull_name)
+    meta = export_ship(spec, tmp_path / "ships")
+    anchors = sorted((a for a in meta["anchors"] if a["kind"] == "mount"),
+                     key=lambda a: a["x_px"])
+    assert len(anchors) >= 2
+    for a, b in zip(anchors, anchors[1:]):
+        sizes = {mount_size[a["id"]], mount_size[b["id"]]}
+        widest = max(part_widths[s] for size in sizes for s in by_size[size])
+        sep = b["x_px"] - a["x_px"]
+        overlap_ratio = max(0.0, (widest - sep) / widest)
+        assert overlap_ratio <= MAX_MOUNT_OVERLAP, (
+            f"{hull_name} {a['id']}/{b['id']}: {overlap_ratio:.0%} overlap "
+            f"(bar is {MAX_MOUNT_OVERLAP:.0%})")
+
+
+def test_longhorn_is_the_one_known_scale_outlier():
+    """The Longhorn renders at 41/195, not the 45/195 every other export
+    shares, so she draws about 9% small relative to true scale. That's safe
+    today: she is decorative parked traffic with no hull document and no
+    mounts, so nothing layers onto her and nothing else reads her ratio.
+    The discrepancy predates the M4 art pipeline and nobody has ruled on
+    whether 41 was a deliberate choice or drift from the Classic game's
+    original sprite height. Pinned here so touching it is a decision made
+    on purpose, not an accidental side effect of some other change."""
+    from composer import SHIP_EXPORTS
+    longhorn = next(s for s in SHIP_EXPORTS if s.name == "longhorn")
+    assert (longhorn.classic_px, longhorn.model_units) == (41, 195)
+
+
+def test_goldfinch_has_two_banks_of_ports():
+    """The A380 read: two rows of windows is what says 'liner'."""
+    from manufacturers import GLASS, ship_goldfinch
+    hull = ship_goldfinch()
+    glass = [l for l in hull.layers if GLASS in l.svg]
+    assert len(glass) >= 8, "two banks of cabin ports down her flank"
+
+
+def test_goldfinch_mounts_match_her_hull_document():
+    from manufacturers import ship_goldfinch
+    mounts = {a.id for a in ship_goldfinch().anchors if a.kind == "mount"}
+    assert mounts == {"engine_port", "engine_center", "engine_stbd"}
+
+
+# Her interior-fit containment is covered by the parametrized
+# test_interior_fit_covers_her_deck_grid above (M4 silhouette pass): the old
+# upper-bound-on-width contract here is exactly what authoring
+# GF_INTERIOR["origin_units"] deliberately breaks, the same way it broke for
+# the Sparrow -- see that test's docstring.

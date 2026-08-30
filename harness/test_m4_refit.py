@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import pytest
 
-from dh_client import DHClient, ProtocolError
+from dh_client import DHClient, ProtocolError, validate_snapshot
 
 pytestmark = pytest.mark.asyncio
 
@@ -180,3 +180,19 @@ async def test_refit_with_unknown_module_is_refused(server):
         assert confirm["ok"] is True, confirm
         fit = await client.recv_type("ship_fit")
         assert fit["ship_class"]["decks"] == original_class["decks"]
+
+
+async def test_snapshot_carries_hull_and_fitted_mounts(server):
+    """The wire's appearance channel: hull art key + fitted mount sprite
+    keys. This also doubles as the end-to-end proof of Task 1's
+    sprite-defaults-to-id path: the fixture hull (test_fixture.json)
+    deliberately authors no `sprite`, so its wire `hull` falling back to its
+    own id ("test_fixture") is that default actually firing, not a
+    coincidence."""
+    async with DHClient() as client:
+        await client.login("appearance_probe", "dev")
+        snapshot = await client.next_snapshot()
+        validate_snapshot(snapshot, expected_ships=1)
+        ship = snapshot["ships"][0]
+        assert ship["hull"] == "test_fixture"
+        assert ship["mounts"] == {"engine_center": "engine_consol"}

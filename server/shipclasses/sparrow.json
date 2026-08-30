@@ -2,6 +2,7 @@
   "schema": 3,
   "id": "sparrow",
   "name": "Sparrow",
+  "sprite": "sparrow",
   "decks": [
     {
       "name": "Main",

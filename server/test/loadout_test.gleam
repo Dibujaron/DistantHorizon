@@ -4,6 +4,7 @@ import dh_server/hull
 import dh_server/loadout
 import dh_server/module
 import dh_server/part
+import fit
 import gleam/dict
 import gleam/list
 import gleam/option
@@ -646,4 +647,25 @@ pub fn a_typo_in_a_multi_slot_targets_slots_is_rejected_test() {
     ])
   let assert Error(e) = two_slot_fit([typo_module_doc], lo)
   assert e == "target_slot_not_on_hull:m.typo"
+}
+
+// ---------------------------------------------------------- appearance --
+
+pub fn appearance_carries_hull_sprite_and_fitted_part_sprites_test() {
+  let f = fit.resolve_default("mockingbird")
+  assert f.appearance.hull_sprite == "mockingbird"
+  // Her lore default: a Consol centre between two Rijay originals.
+  assert list.key_find(f.appearance.mounts, "engine_port") == Ok("engine_rijay")
+  assert list.key_find(f.appearance.mounts, "engine_center")
+    == Ok("engine_consol")
+  assert list.key_find(f.appearance.mounts, "engine_stbd") == Ok("engine_rijay")
+}
+
+pub fn appearance_omits_an_unfitted_mount_test() {
+  // The Sparrow ships engine_center bare by design.
+  let f = fit.resolve_default("sparrow")
+  assert list.key_find(f.appearance.mounts, "engine_port")
+    == Ok("engine_rijay_small")
+  assert list.key_find(f.appearance.mounts, "engine_center") == Error(Nil)
+  assert list.length(f.appearance.mounts) == 2
 }

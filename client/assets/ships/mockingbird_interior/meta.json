@@ -1,13 +1,13 @@
 {
   "name": "mockingbird_interior",
   "px_w": 42,
-  "px_h": 90,
+  "px_h": 86,
   "px_per_unit": 0.46153846153846156,
   "frame": [
     -45.0,
     -114.0,
     89.0,
-    197.0
+    185.0
   ],
   "classic_px": 90,
   "c1_base": [
@@ -22,19 +22,22 @@
   ],
   "anchors": [
     {
-      "kind": "nozzle",
+      "kind": "mount",
+      "id": "engine_port",
       "x_px": 11.076923076923077,
-      "y_px": 85.61538461538461
+      "y_px": 71.07692307692308
     },
     {
-      "kind": "nozzle",
+      "kind": "mount",
+      "id": "engine_center",
       "x_px": 20.76923076923077,
-      "y_px": 85.61538461538461
+      "y_px": 71.07692307692308
     },
     {
-      "kind": "nozzle",
+      "kind": "mount",
+      "id": "engine_stbd",
       "x_px": 30.461538461538463,
-      "y_px": 85.61538461538461
+      "y_px": 71.07692307692308
     }
   ],
   "interior": {

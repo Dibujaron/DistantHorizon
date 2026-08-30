@@ -519,7 +519,13 @@ func _update_world_view() -> void:
 func _matched_interior_zoom() -> float:
 	if _space != null and _space.is_station():
 		return _world_view.matched_zoom_station(_space.station_id(), _zoom)
-	return _world_view.matched_zoom_ship(_zoom)
+	return _world_view.matched_zoom_ship(_own_hull_sprite(), _zoom)
+
+## The own ship's hull art key from the latest snapshot, "" before it
+## arrives. THE WINDOW's matched zoom and the walk-mode backdrop both key
+## off it.
+func _own_hull_sprite() -> String:
+	return _hull_sprite_for(_ship_id)
 
 ## Own character (while _predicting, i.e. standing) draws at the locally-
 ## predicted position; while seated (or before prediction has (re)started)
@@ -553,16 +559,40 @@ func _own_view_deck() -> int:
 	return _space.you_deck if _space != null else 0
 
 
+## Hull art key for the ship with `ship_id` from the latest snapshot, "" if
+## she isn't in it yet. Shared scan behind `_own_hull_sprite` and
+## `_interior_asset_for`.
+func _hull_sprite_for(ship_id: int) -> String:
+	for ship in _ships:
+		if ship.id == ship_id:
+			return ship.hull_sprite
+	return ""
+
+## The walk-mode backdrop asset for a ship id: her hull's art directory with
+## the `_interior` suffix (the 2x render). "" when we have no snapshot entry
+## for her yet.
+func _interior_asset_for(ship_id: int) -> String:
+	var hull := _hull_sprite_for(ship_id)
+	return hull + "_interior" if hull != "" else ""
+
+## The fitted mounts of a ship id, for layering onto her backdrop.
+func _mounts_for(ship_id: int) -> Dictionary:
+	for ship in _ships:
+		if ship.id == ship_id:
+			return ship.mounts
+	return {}
+
 ## Exterior-sprite backdrops for every hull in the current space: the
 ## station concourse bar (anchored by the space message's concourse
-## offset), each moored ship, or the flying ship itself. Every hull is a
-## Mockingbird until M4.
+## offset), each moored ship, or the flying ship itself.
 func _interior_backdrops() -> Array[InteriorView.Backdrop]:
 	var out: Array[InteriorView.Backdrop] = []
 	if _space == null:
 		if _ship_class != null:
-			out.append(InteriorView.Backdrop.make(
-				"ship", "mockingbird_interior", Vector2.ZERO))
+			var asset := _interior_asset_for(_ship_id)
+			if asset != "":
+				out.append(InteriorView.Backdrop.make("ship", asset, Vector2.ZERO,
+					false, _mounts_for(_ship_id)))
 		return out
 	if _space.is_station():
 		if _space.has_concourse and _world != null:
@@ -574,12 +604,16 @@ func _interior_backdrops() -> Array[InteriorView.Backdrop]:
 						Vector2(_space.concourse_dx, _space.concourse_dy)))
 		for mooring in _space.moorings:
 			# Moored ships lie side-on (the composite rotates their plans).
-			out.append(InteriorView.Backdrop.make(
-				"ship", "mockingbird_interior",
-				Vector2(mooring.dx, mooring.dy), true))
+			var asset := _interior_asset_for(mooring.ship_id)
+			if asset != "":
+				out.append(InteriorView.Backdrop.make(
+					"ship", asset, Vector2(mooring.dx, mooring.dy), true,
+					_mounts_for(mooring.ship_id)))
 	elif _space.is_ship():
-		out.append(InteriorView.Backdrop.make(
-			"ship", "mockingbird_interior", Vector2.ZERO))
+		var asset := _interior_asset_for(_ship_id)
+		if asset != "":
+			out.append(InteriorView.Backdrop.make("ship", asset, Vector2.ZERO,
+				false, _mounts_for(_ship_id)))
 	return out
 
 ## Where our own character renders this frame (predicted while walking,

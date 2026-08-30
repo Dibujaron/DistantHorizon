@@ -43,6 +43,11 @@ pub type Hull {
     schema: Int,
     id: String,
     name: String,
+    /// The art directory under `client/assets/ships/` this hull is drawn
+    /// with. Geometry (where a part sits) lives in that directory's
+    /// meta.json as a named mount anchor; the hull document deliberately
+    /// carries none. Defaults to `id`.
+    sprite: String,
     /// Authored decks as `#(name, rows)` — raw 3x3 text, not parsed cells.
     decks: List(#(String, List(String))),
     slots: List(Slot),
@@ -154,6 +159,7 @@ fn hull_decoder() -> decode.Decoder(Hull) {
   use schema <- decode.field("schema", decode.int)
   use id <- decode.field("id", decode.string)
   use name <- decode.field("name", decode.string)
+  use sprite <- decode.optional_field("sprite", id, decode.string)
   use decks <- decode.field("decks", decode.list(deck_decoder()))
   use slots <- decode.optional_field("slots", [], decode.list(slot_decoder()))
   use mounts <- decode.optional_field(
@@ -186,6 +192,7 @@ fn hull_decoder() -> decode.Decoder(Hull) {
     schema: schema,
     id: id,
     name: name,
+    sprite: sprite,
     decks: decks,
     slots: slots,
     mounts: mounts,

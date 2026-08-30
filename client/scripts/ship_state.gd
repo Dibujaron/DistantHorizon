@@ -17,6 +17,12 @@ var docked_at: String  ## station id, or "" while flying free
 ## at its own berth anchor — the same berth the server releases it at on
 ## undock (#13/#14).
 var berth: int = -1
+## Art directory key for this ship's hull, from the snapshot. The client
+## has no parts catalog, so the wire hands over sprite keys directly.
+var hull_sprite: String = ""
+## Fitted mount id -> part sprite key. An unfitted mount is simply absent
+## and the hull's blanking plate shows through.
+var mounts: Dictionary = {}
 
 
 static func from_dict(data: Dictionary) -> ShipState:
@@ -31,6 +37,11 @@ static func from_dict(data: Dictionary) -> ShipState:
 	ship.docked_at = "" if docked == null else str(docked)
 	var berth: Variant = data.get("berth")
 	ship.berth = -1 if berth == null else int(berth)
+	ship.hull_sprite = str(data.get("hull", ""))
+	var mounts: Variant = data.get("mounts")
+	if mounts is Dictionary:
+		for mount_id: Variant in mounts:
+			ship.mounts[str(mount_id)] = str(mounts[mount_id])
 	return ship
 
 
@@ -58,4 +69,6 @@ func extrapolated(elapsed: float) -> ShipState:
 	out.heading = heading
 	out.docked_at = docked_at
 	out.berth = berth
+	out.hull_sprite = hull_sprite
+	out.mounts = mounts
 	return out

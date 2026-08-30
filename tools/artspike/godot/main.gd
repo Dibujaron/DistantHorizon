@@ -5,7 +5,7 @@ extends Node2D
 # sun (shot_1sun.png); run with DH_TWO_SUNS=1 for the double-key
 # (shot_2sun.png). Saves the shot and quits.
 
-const SHIPS := ["mockingbird", "mockingbird_stock", "longhorn"]
+const SHIPS := ["mockingbird", "longhorn"]
 const HEADINGS := [0, 35, 70, 105, 140, 180, 220, 300]
 const SCALE := 3.0
 

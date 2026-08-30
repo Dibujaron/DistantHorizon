@@ -1968,7 +1968,8 @@ fn run_tick(state: State) -> actor.Next(State, Msg) {
   // occupied space fanned out only to that space's occupants.
   case tick % snapshot_every == 0 && state.clients != [] {
     True -> {
-      let snapshot = protocol.encode_snapshot(tick, ships)
+      let snapshot =
+        protocol.encode_snapshot(tick, with_appearance(ships, state.fits))
       list.each(state.clients, fn(client) {
         process.send(client.subject, SendText(snapshot))
       })
@@ -2060,6 +2061,23 @@ fn broadcast_walkers(
           Ok(#(_, text)) -> process.send(client.subject, SendText(text))
         }
       }
+    }
+  })
+}
+
+/// Pair every ship with its fit's appearance. A ship with no fit should be
+/// unreachable (spawn resolves or refuses; `prune_fits` only drops dead
+/// ships), but if it happens she still appears in the snapshot wearing an
+/// EMPTY appearance — a missing fit must never make a hull vanish from the
+/// world.
+fn with_appearance(
+  ships: List(Ship),
+  fits: List(#(Int, loadout.Fit)),
+) -> List(#(Ship, loadout.Appearance)) {
+  list.map(ships, fn(s) {
+    case list.find(fits, fn(entry) { entry.0 == s.id }) {
+      Ok(#(_, fit)) -> #(s, fit.appearance)
+      Error(Nil) -> #(s, loadout.Appearance(hull_sprite: "", mounts: []))
     }
   })
 }

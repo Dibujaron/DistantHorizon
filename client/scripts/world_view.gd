@@ -291,9 +291,10 @@ func matched_zoom_station(station_id: String, fallback: float) -> float:
 	return fallback
 
 
-## Ship-scale matched zoom (aboard a flying hull).
-func matched_zoom_ship(fallback: float) -> float:
-	var sset := _lib.ship("mockingbird")
+## Ship-scale matched zoom (aboard a flying hull). `hull_sprite` is the hull
+## we are aboard; `fallback` when its art is unknown.
+func matched_zoom_ship(hull_sprite: String, fallback: float) -> float:
+	var sset := _lib.ship(hull_sprite)
 	if sset == null or not sset.has_interior_fit():
 		return fallback
 	# SHIP_RENDER_SCALE (#15) shrinks the flying hull sprite, so the matched
@@ -371,8 +372,9 @@ func _update_parked_ships(station_sprite: Sprite2D, station: WorldData.Station,
 		# (_update_ship_sprites). No longer hardcoded side-on — and because it
 		# matches the flying formula, the hull's rotation is continuous through
 		# undock (#13). The side-on default heading (west) still yields -PI/2.
-		_park_sprite(station_sprite, "parked_%d" % ship.id, "mockingbird",
-			berth_anchors[idx] - half, units_per_px, -ship.heading + PI / 2)
+		_park_sprite(station_sprite, "parked_%d" % ship.id, ship.hull_sprite,
+			berth_anchors[idx] - half, units_per_px, -ship.heading + PI / 2,
+			ship.mounts)
 	# Flavor: on the crane station, a workaday Longhorn holds the last berth
 	# when no real ship does (DESIGN.md M3.5: Longhorn as parked traffic). It
 	# carries no snapshot, so it keeps the side-on default pose.
@@ -387,7 +389,8 @@ func _update_parked_ships(station_sprite: Sprite2D, station: WorldData.Station,
 
 
 func _park_sprite(parent: Sprite2D, key: String, kind: String,
-		local_px: Vector2, station_units_per_px: float, rotation: float) -> void:
+		local_px: Vector2, station_units_per_px: float, rotation: float,
+		mounts: Dictionary = {}) -> void:
 	var sset := _lib.ship(kind)
 	if sset == null:
 		return
@@ -407,14 +410,47 @@ func _park_sprite(parent: Sprite2D, key: String, kind: String,
 	# the bar.
 	s.rotation = rotation
 	s.scale = Vector2.ONE * (SHIP_WORLD_UNITS_PER_PX / station_units_per_px)
+	# Part children inherit this node's scale, so no scale of their own is
+	# needed (see _dress_hull).
+	_dress_hull(s, kind, sset, mounts)
+
+
+## Layer a ship's fitted exterior parts onto her hull sprite (M4 it. 2c).
+## Children live in HULL-TEXTURE px — the same frame `_update_parked_ships`
+## uses for ships parked at berths — so a part needs no scale of its own:
+## every export shares one px_per_unit. Drawn OVER the hull, covering the
+## blanking plate the hull draws at each hardpoint. Reuses `_pool_sprite`/
+## `_hide_untouched` (the same pooling `_update_ship_sprites` etc. use): a
+## hull sprite's children are exclusively `part_*` nodes (plumes are drawn in
+## the vector pass, not as child nodes), so no prefix filtering is needed.
+##
+## `hset` is the hull's already-resolved SpriteSet — both call sites hold one
+## and have null-checked it, so this doesn't re-look it up. `hull_key` is
+## kept only to name the hull in the push_error below. `mounts` is the
+## snapshot's mount id -> part sprite key. A fitted mount with no anchor in
+## the hull's meta is a data bug in one of two trees (server capability vs
+## art geometry), so it is reported, not guessed at.
+func _dress_hull(hull_sprite: Sprite2D, hull_key: String,
+		hset: AssetLibrary.SpriteSet, mounts: Dictionary) -> void:
+	var used := {}
+	for mount_id: String in mounts:
+		var pset := _lib.part(str(mounts[mount_id]))
+		if pset == null:
+			continue  # no art for this part yet
+		var anchor := hset.mount_anchor(mount_id)
+		if anchor == Vector2.INF:
+			push_error("[art] %s has no anchor for mount %s" % [hull_key, mount_id])
+			continue
+		var s := _pool_sprite(hull_sprite, "part_" + mount_id, used)
+		s.texture = pset.texture
+		s.material = pset.material
+		s.light_mask = 1  # pipeline art: sun-lit (_pool_sprite defaults new nodes to 2)
+		s.position = AssetLibrary.part_local_position(hset, pset, anchor)
+	_hide_untouched(hull_sprite, used)
 
 
 func _update_ship_sprites(screen_center: Vector2, view_scale: float,
 		delta: float, touched: Dictionary) -> void:
-	var sset := _lib.ship("mockingbird")  # every hull is a Mockingbird until M4
-	if sset == null:
-		return
-	var is_pip := _ship_is_pip(sset, view_scale)
 	for ship in ships:
 		if ship.is_docked():
 			continue  # parked at a berth by the station pass
@@ -426,8 +462,14 @@ func _update_ship_sprites(screen_center: Vector2, view_scale: float,
 		var cur: float = _render_heading.get(ship.id, target)
 		cur = lerp_angle(cur, target, clampf(HEADING_SMOOTH_RATE * delta, 0.0, 1.0))
 		_render_heading[ship.id] = cur
-		# #12: exhaust is emitted into world space from the tail this frame.
-		_emit_plume_trail(ship, cur, delta)
+		var sset := _lib.ship(ship.hull_sprite)
+		# #12: exhaust is emitted into world space from the tail this frame,
+		# even for a hull with no art yet (PF-20) — e.g. the Sparrow and
+		# Goldfinch still need to burn correctly before their sprites exist.
+		_emit_plume_trail(ship, cur, delta, sset)
+		if sset == null:
+			continue  # no art for this hull yet
+		var is_pip := _ship_is_pip(sset, view_scale)
 		var key := "ship_%d" % ship.id
 		var s := _pool_sprite(_ship_sprites, key, touched)
 		if s.texture == null:
@@ -442,6 +484,7 @@ func _update_ship_sprites(screen_center: Vector2, view_scale: float,
 		# #15/#17: SHIP_RENDER_SCALE shrinks the hull vs planets; the scale now
 		# follows the zoom all the way down (no floor) into the pip regime.
 		s.scale = Vector2.ONE * (SHIP_WORLD_UNITS_PER_PX * SHIP_RENDER_SCALE * view_scale)
+		_dress_hull(s, ship.hull_sprite, sset, ship.mounts)
 
 
 ## #12 — advance and expire every ship's world-space exhaust motes. Runs each
@@ -462,10 +505,22 @@ func _advance_plume_trails(delta: float) -> void:
 			_plume_trails[id] = kept
 
 
-## #12 — spit new exhaust motes from `ship`'s tail into world space, scaled by
-## the ramped throttle level. `heading` is the smoothed world heading so the
-## plume points where the hull visually points.
-func _emit_plume_trail(ship: ShipState, heading: float, delta: float) -> void:
+## Sentinel key into a ship's per-origin plume-carry map for the single
+## centreline tail used when there are no per-mount origins (PF-20 fallback).
+## Not a valid mount id (mount ids come from hull.schema.json's `mounts[].id`
+## and are never empty), so it can't collide with a real mount's carry entry.
+const PLUME_FALLBACK_ORIGIN_KEY := ""
+
+
+## #12 — spit new exhaust motes from `ship`'s fitted engine mounts into world
+## space, scaled by the ramped throttle level. `heading` is the smoothed
+## world heading so the plume points where the hull visually points. `hset`
+## is the hull's already-resolved SpriteSet, or null when this hull has no
+## art yet — either way (no art, or art with no fitted mounts) this falls
+## back to a single centreline tail, exactly as before per-mount plumes
+## existed (PF-20): a hull with no sprite still needs to visibly burn.
+func _emit_plume_trail(ship: ShipState, heading: float, delta: float,
+		hset: AssetLibrary.SpriteSet) -> void:
 	var throttle := own_throttle if ship.id == own_ship_id \
 		else _estimate_throttle(ship)
 	var level: float = move_toward(_plume_level.get(ship.id, 0.0),
@@ -473,23 +528,65 @@ func _emit_plume_trail(ship: ShipState, heading: float, delta: float) -> void:
 	_plume_level[ship.id] = level
 	if level <= 0.02:
 		return
-	# Fractional accumulator so low throttle still trickles whole motes.
-	var carry: float = float(_plume_emit_carry.get(ship.id, 0.0)) \
-		+ level * PLUME_EMIT_PER_SEC * delta
-	var n := int(carry)
-	_plume_emit_carry[ship.id] = carry - n
-	if n <= 0:
-		return
 	# Aft is opposite the nose; nose points along `heading` (world y-up).
+	# `lateral` is a 90-degree CW turn from `aft`, which — for a nose-up hull
+	# whose sprite rotation is -heading + PI/2, matching _world_to_screen's
+	# y-negation — points to STARBOARD: confirmed against the Mockingbird's
+	# own anchors, where engine_port sits at low x_px and engine_stbd at
+	# high x_px in the hull texture, and texture-right is world-starboard.
 	var aft := -Vector2(cos(heading), sin(heading))
 	var lateral := Vector2(-aft.y, aft.x)
-	var tail := ship.position() + aft * (PLUME_MOTE_WORLD * 1.5)
+	# #12 / M4 it. 2c — one plume per FITTED engine mount, so a hull with an
+	# empty mount visibly burns on fewer engines. Keyed by mount id (not
+	# array index) so each mount's own emit-carry accumulator (below) stays
+	# attached to that mount even if `ship.mounts`' iteration order ever
+	# shifts across frames (e.g. a refit).
+	var origins: Array[Vector2] = []
+	var origin_keys: Array[String] = []
+	if hset != null and not ship.mounts.is_empty():
+		var half := Vector2(hset.px_size()) * 0.5
+		var units_per_px := SHIP_WORLD_UNITS_PER_PX * SHIP_RENDER_SCALE
+		for mount_id: String in ship.mounts:
+			var a := hset.mount_anchor(mount_id)
+			if a == Vector2.INF:
+				# Same "mount id disagrees across two trees" data bug
+				# _dress_hull push_errors on for the identical condition.
+				push_error("[art] %s has no anchor for mount %s" % [ship.hull_sprite, mount_id])
+				continue
+			# sprite px (nose-up, +y down) -> ship-local world offset. A
+			# mount right of hull-centre (local.x > 0, starboard side of the
+			# texture) shifts toward +lateral (starboard); local.y > 0 (aft
+			# of centre in the texture) shifts toward +aft.
+			var local := (a - half) * units_per_px
+			origins.append(ship.position() + aft * local.y + lateral * local.x)
+			origin_keys.append(mount_id)
+	if origins.is_empty():
+		origins.append(ship.position() + aft * (PLUME_MOTE_WORLD * 1.5))
+		origin_keys.append(PLUME_FALLBACK_ORIGIN_KEY)
+	# Each origin gets its OWN fractional accumulator, ticking at an even
+	# share of the total emission rate -- not a round-robin over a single
+	# shared `n` (fix round 1, Finding 1): at full throttle n = int(carry)
+	# is 0 or 1 almost every frame (PLUME_EMIT_PER_SEC=44 at ~60fps is
+	# ~0.73 motes/frame), so a shared index-based rotation like
+	# `origins[i % origins.size()]` never advances past origins[0] in
+	# practice -- one drum absorbs effectively every mote and the other two
+	# starve. Splitting the rate per-origin instead means a three-engine
+	# ship's TOTAL output still matches a one-engine ship's (each of the
+	# three drums fires at a third of the rate), and every drum accumulates
+	# its own whole motes independently of how the others are doing.
+	var carry_by_origin: Dictionary = _plume_emit_carry.get_or_add(ship.id, {})
+	var rate_per_origin := level * PLUME_EMIT_PER_SEC * delta / origins.size()
 	var motes: Array = _plume_trails.get_or_add(ship.id, [])
-	for _i in n:
-		var kick := aft * PLUME_EXHAUST_SPEED \
-			+ lateral * randf_range(-PLUME_SPREAD, PLUME_SPREAD)
-		motes.append({"p": tail, "v": ship.velocity() + kick,
-			"age": 0.0, "level": level})
+	for i in origins.size():
+		var key := origin_keys[i]
+		var carry: float = float(carry_by_origin.get(key, 0.0)) + rate_per_origin
+		var n := int(carry)
+		carry_by_origin[key] = carry - n
+		for _j in n:
+			var kick := aft * PLUME_EXHAUST_SPEED \
+				+ lateral * randf_range(-PLUME_SPREAD, PLUME_SPREAD)
+			motes.append({"p": origins[i], "v": ship.velocity() + kick,
+				"age": 0.0, "level": level})
 
 
 ## Burn detection for ships we don't control: a snapshot-to-snapshot velocity
@@ -676,12 +773,12 @@ func _draw_stations(screen_center: Vector2, view_scale: float) -> void:
 
 
 func _draw_ships(screen_center: Vector2, view_scale: float) -> void:
-	var sset := _lib.ship("mockingbird")
-	var have_sprites := sset != null
-	# #17: past a zoom-out threshold the hull sprite went sub-pixel and the
-	# sprite pass hid it; render every flying ship as a fixed pip instead.
-	var pip := have_sprites and _ship_is_pip(sset, view_scale)
 	for ship in ships:
+		var sset := _lib.ship(ship.hull_sprite)
+		var have_sprites := sset != null
+		# #17: past a zoom-out threshold the hull sprite went sub-pixel and the
+		# sprite pass hid it; render every flying ship as a fixed pip instead.
+		var pip := have_sprites and _ship_is_pip(sset, view_scale)
 		if ship.is_docked() and have_sprites:
 			continue  # parked at a berth by the station sprite pass
 		var screen_pos := _world_to_screen(ship.position(), screen_center, view_scale)

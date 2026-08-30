@@ -2,6 +2,7 @@
   "schema": 3,
   "id": "mockingbird",
   "name": "Mockingbird",
+  "sprite": "mockingbird",
   "decks": [
     {
       "name": "Upper",

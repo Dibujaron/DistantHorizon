@@ -1,0 +1,50 @@
+{
+  "name": "goldfinch_interior",
+  "px_w": 34,
+  "px_h": 52,
+  "px_per_unit": 0.46153846153846156,
+  "frame": [
+    -38.0,
+    -9.0,
+    75.0,
+    114.0
+  ],
+  "classic_px": 90,
+  "c1_base": [
+    59,
+    141,
+    224
+  ],
+  "c2_base": [
+    238,
+    242,
+    246
+  ],
+  "anchors": [
+    {
+      "kind": "mount",
+      "id": "engine_port",
+      "x_px": 6.0,
+      "y_px": 46.15384615384615
+    },
+    {
+      "kind": "mount",
+      "id": "engine_center",
+      "x_px": 17.53846153846154,
+      "y_px": 46.15384615384615
+    },
+    {
+      "kind": "mount",
+      "id": "engine_stbd",
+      "x_px": 29.07692307692308,
+      "y_px": 46.15384615384615
+    }
+  ],
+  "interior": {
+    "px_per_tile": 3.0,
+    "origin_px": [
+      10.038461538461538,
+      1.6153846153846154
+    ]
+  }
+}
