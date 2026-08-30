@@ -809,11 +809,17 @@ what makes the game developable by agents rather than merely reviewable.
   leaderboard enough at launch?
 - **Module catalog:** what's the actual module list, tier structure, and per-module config
   surface — and how do we tune for "taste over solvedness" (see Ship customization) in practice?
-- **Exterior composition at runtime:** module swaps must show on the hull (see Ship
-  customization). V1 direction: the client layers pre-rendered part sprites at hull mount
-  points — it's already fully data-driven — while the full composer stays an authoring-time
-  tool. Open: whether layering holds up under the lighting pipeline (normal/height maps are
-  per-part), or whether a refit needs a server-side re-bake.
+- ~~**Exterior composition at runtime:**~~ **Decided in M4 iteration 2c: client-side sprite
+  layering at named mount anchors.** Module swaps show on the hull (see Ship
+  customization) because the server owns a mount's *capability* (`{id, kind, size}`) and
+  the renderer owns its *geometry* — a named anchor in the sprite's own `meta.json`, not on
+  the hull document — and the client layers each fitted part's sprite over the hull's own
+  blanking plate at that anchor, in flight and moored alike. The full composer stays an
+  authoring-time tool; nothing about it changed. A server or offline bake stays available
+  if the lighting pipeline (per-part normal/height maps) ever demands one — the choice was
+  always isolated to the renderer, so nothing about the data model would need to change if
+  that day comes. See `docs/modules.md`, "Mount points", "Exterior parts", and "Iteration
+  2c".
 - **Race/lineage mechanics:** races are different-but-balanced, FTL-base-game style — simple,
   legible tradeoffs, never tiers (see docs/lore.md, Population). What are the actual axes
   (walk speed? EVA tolerance? console affinities?), and how do they interact with the seat

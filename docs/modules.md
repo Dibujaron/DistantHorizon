@@ -5,10 +5,11 @@ matched to a hull by cheap declarative rules, authored as data. This is the desi
 M4 ("Modules for real", DESIGN.md Milestones) and the reference for the module content
 that lands after it.
 
-**Status:** M4 iteration 1, iteration 2a and iteration 2b have shipped, so the shapes and
-rules below describe code that exists rather than code we intend. Where something is still
-ahead of us — exterior part layering, the refit *loop* — this document says so at that
-point and "The M4 slice" at the end draws the line.
+**Status:** M4 iteration 1, iteration 2a, iteration 2b, and iteration 2c's machinery
+(client-side exterior part layering) have shipped, so the shapes and rules below describe
+code that exists rather than code we intend. Where something is still ahead of us —
+Sparrow and Goldfinch exterior art, the refit *loop* — this document says so at that point
+and "The M4 slice" at the end draws the line.
 
 See also: `docs/deckplan-format.md` (the per-cell ASCII format modules reuse), DESIGN.md
 "Ship customization" and "Content is data, not code".
@@ -107,12 +108,22 @@ A hull declares two kinds of attach point:
   check, so a module can't scribble on hull structure). Naming a module for a hull it
   has no target on, or a slot it has no target for, is refused with
   `module_not_drawn_for_slot`.
-- **Mount points** — named *exterior attach points*, currently `{id, kind, size}`:
-  `kind` gates what can hang there (`"engine"`), and `size` is the ordered scale
-  `s | m | l`, a mount taking any part of its kind up to its size. Mount **geometry** —
-  where the part actually sits on the hull sprite — is deliberately absent: it is only
-  needed by the renderer, and it arrives with client-side part layering in iteration 2c.
-  Until then a mount is a capability point, not a position.
+- **Mount points** — named *exterior attach points* the hull document declares as
+  `{id, kind, size}`: `kind` gates what can hang there (`"engine"`), and `size` is the
+  ordered scale `s | m | l`, a mount taking any part of its kind up to its size. Mount
+  **geometry** — where the part actually sits on the hull sprite — has arrived, in
+  iteration 2c, but it did not land on the hull document. It lives as a *named anchor* in
+  the sprite's own `meta.json` (`client/assets/ships/<sprite>/meta.json`), keyed by the
+  same mount id: `{"kind": "mount", "id": "engine_port", "x_px": …, "y_px": …}`. The split
+  held exactly on the reasoning above — geometry is only ever needed by the renderer, so
+  the **server keeps owning a mount's capability and the renderer owns its geometry**,
+  and the two documents never need to touch. Nothing compiles across that boundary, so a
+  mount id typo'd in one tree and not the other is a silent rendering bug, not a build
+  error: `harness/test_m4_exterior.py` cross-checks every hull's declared mount ids
+  against its sprite's drawn anchor ids, and the client itself `push_error`s if a fitted
+  mount has no matching anchor at runtime. A mount without geometry — a hull with no art
+  yet, like the Sparrow and the Goldfinch as of this writing — is still a capability point
+  only, same as before.
 
 The flexibility of slots is what keeps tradeoffs honest rather than artificial: you can
 always fit *a* medbay somewhere by giving something else up, instead of being hard-locked
@@ -301,14 +312,18 @@ Linked parts don't bind to one specific partner. An exterior gun requires *some*
 gun-room of sufficient capability to be present — expressed as a tag requirement, not a
 hardcoded pairing (see the validator).
 
-Exterior composition is **client-side sprite layering** at the mount points (already
-fully data-driven). No server-side re-bake in V1; if the lighting pipeline (per-part
-normal/height maps) ever demands a baked composite, the client can bake it — the choice
-is isolated to the renderer and can change later without touching the data model. None of
-this has shipped yet: a part's `sprite` key is authored and decoded but not yet sent over
-the wire, and mounts carry no geometry, so the client still draws the whole-hull bake.
-Layering is iteration 2c's work, and it is why the "Exterior composition at runtime"
-question stays open in DESIGN.md.
+Exterior composition is **client-side sprite layering** at the mount points, and as of
+iteration 2c it has shipped: the client layers standalone part sprites as child nodes
+onto the hull sprite, at the mount's anchor position, instead of drawing a whole-hull
+bake. Each snapshot's ship entry now carries `hull` (the ship's art-directory key) and
+`mounts` (fitted mount id → that part's **sprite key**, never its part id — the client
+has no parts catalog, so shipping an id would mean shipping it a catalog too). An
+unfitted mount is simply absent from the map, and the hull's own blanking plate shows
+through where nothing is layered — see "Mount points" above for the anchor geometry that
+makes this possible and how the two trees are kept honest. No server-side re-bake exists,
+and none is planned unless the lighting pipeline (per-part normal/height maps) ever
+demands a baked composite — the choice is isolated to the renderer and can change later
+without touching the data model. See "Iteration 2c" below.
 
 ## The validator: pooled tag sums
 
@@ -467,13 +482,16 @@ An **exterior part** (`server/parts/<id>.json` — flat, because parts *are* cro
 ```
 
 `kind` and `size` are what the mount matches against; `thrust` and `torque` are pooled and
-divided by total mass (see "Derived numbers"); `sprite` is the client's key for iteration
-2c's layering. Every field after `size` is optional and defaults to zero/empty, so a
-non-engine part simply omits `thrust` and `torque`.
+divided by total mass (see "Derived numbers"); `sprite` is the key the snapshot carries
+for this part whenever it is fitted — the client's only handle on what a mounted part
+looks like, since it never sees this document. Every field after `size` is optional and
+defaults to zero/empty, so a non-engine part simply omits `thrust` and `torque`.
 
 A **hull** (`server/shipclasses/<id>.json`, schema 3) gains `mass`, `provides`, `requires`,
-a `slots` table, `mounts`, and a `default_loadout` of `{modules: {slot: module},
-parts: {mount: part}}`. Per-instance ships carry a **loadout** of the same shape, and the
+a `slots` table, `mounts`, a `default_loadout` of `{modules: {slot: module},
+parts: {mount: part}}`, and — since iteration 2c — `sprite`, the art-directory key under
+`client/assets/ships/` this hull draws with (optional, defaults to the hull's own `id`).
+Per-instance ships carry a **loadout** of the same shape, and the
 server resolves it into the `ShipClass` the sim, the composite and the wire already speak.
 The Mockingbird's current deck is expressed as her **default loadout** — the cabins,
 commons and hold we ship today became the default-installed modules, and a test asserts
@@ -649,8 +667,48 @@ nothing derives it from the seat glyphs on a module's own map, unlike hold capac
 `deckplan.pallet_count` genuinely counts off the resolved plan's pallet tiles (see "Derived
 numbers" below).
 
-**Iteration 2c** is **client-side exterior part layering**: mount geometry, the part
-`sprite` on the wire, and a swapped nacelle that actually shows.
+**Iteration 2c's machinery has landed** — client-side exterior part layering, the piece
+"Exterior composition at runtime" was left open in DESIGN.md for (see "What this settles
+in DESIGN.md" below). The server keeps owning a mount's *capability*
+(`{id, kind, size}`, unchanged); the renderer now owns its *geometry*, as a named anchor
+in the sprite's own `meta.json` rather than on the hull document (see "Slots and mounts"
+above). Nothing compiles across that boundary, so `harness/test_m4_exterior.py`
+cross-checks every hull's declared mount ids against its sprite's drawn anchors, and the
+client `push_error`s on the identical mismatch at runtime — between the two, a mount id
+typo'd in either tree is loud rather than a silently unfitted-looking engine. The
+snapshot's ship entries now carry `hull` (the ship's art-directory key, defaulting to the
+hull id) and `mounts` (fitted mount id → part **sprite key**, never a part id, because the
+client has no parts catalog), and the client layers each fitted part as a child sprite
+over the hull's own blanking plate at that mount — in flight (`world_view.gd`,
+`_dress_hull`) and moored as a walk-mode backdrop (`interior_view.gd`,
+`_dress_backdrop`, drawn from the doubled `*_interior` art twin). Exhaust now emits per
+fitted mount rather than from one shared centreline tail, so a hull with an empty mount
+visibly burns on fewer engines — the Sparrow's unfitted `engine_center` finally reads as
+unfitted. Mount **rotation** deliberately does not exist: every shipped part is an engine
+and every engine points aft; a rotation field arrives with turrets, not before.
+
+The Mockingbird's engine drums moved off the hull sprite and onto a shared part
+(the sprite `rijay.engine.stork_240c2` mounts), and the dorsal ridge went with them — it
+was always a drum fairing, not hull structure, so a Consol nacelle in the same mount reads
+visibly finless with no extra art. Her `default_loadout` — a Consol centre engine between
+two Rijay originals — now actually renders that way: a ridgeless aftermarket nacelle at
+centre, flanked by two ridged Rijay drums either side, the lore of "her centre engine is
+foreign to the hull" (see "Exterior parts" above) made visible for the first time.
+`mockingbird_stock`, the old baked hull sprite with plain (finless) engines built in, is
+gone — finned versus finless is a part distinction now, not a separate hull sprite.
+
+Sparrow and Goldfinch exterior art has **not** landed yet; both hulls still fly with
+mounts that are pure capability points, same as before this iteration, because neither has
+a sprite directory yet. `harness/test_m4_exterior.py`'s per-hull checks are `xfail` for
+exactly those two, keyed on their art directories not existing, and self-lift the moment
+each hull's art does — the remaining iteration 2c work.
+
+Worth recording here since it surfaced while re-cutting the Mockingbird's parts: every
+exterior sprite in the pipeline shares one scale, `px_per_unit = classic_px / model_units`
+(`45/195` for everything shipped) — except the Longhorn, pinned at `41/195`. That mismatch
+predates iteration 2c, nobody has ruled on whether it was ever intentional, and a pipeline
+test now pins the value, so changing it later is a decision an author makes on purpose
+rather than drift nobody notices.
 
 **Iteration 3** is the refit *loop* as a game system rather than a verb: shipyard stations,
 a refit console you walk to, per-station catalogs of what is actually for sale, and
@@ -670,10 +728,14 @@ touches the core engine.
   outside slots and every corridor, so connectivity is guaranteed by authoring and never
   analysed. Modules *may* add walls and doors **within their slot** (that is how passenger
   staterooms get carved out of an open bay) but never move the hull's existing structure.
-- **"Exterior composition at runtime"** — **still open, deliberately.** The V1 direction is
-  client-side sprite layering at mount points, with a server/offline bake still available
-  if the lighting pipeline demands one; none of it is built yet, so nothing is proven and
-  the question stays in DESIGN.md until iteration 2c closes it.
+- **"Exterior composition at runtime"** — **answered, and DESIGN.md now carries the
+  answer rather than the question.** Client-side sprite layering at named mount anchors
+  is what shipped: the server owns a mount's capability, the sprite's own `meta.json`
+  owns its geometry, and the client layers each fitted part's sprite over the hull's
+  blanking plate at that anchor — see "Iteration 2c" above for the full shape and what it
+  proved. A server or offline bake stays available if the lighting pipeline (per-part
+  normal/height maps) ever demands one; the choice was always isolated to the renderer,
+  so nothing about the data model has to change if that day comes.
 
 DESIGN.md's "Ship customization" section, written before this was hashed out, described a
 shape-agnostic "modules rotate and fit any room" model that this supersedes: interior fit
