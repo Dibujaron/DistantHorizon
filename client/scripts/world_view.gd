@@ -412,23 +412,26 @@ func _park_sprite(parent: Sprite2D, key: String, kind: String,
 	s.scale = Vector2.ONE * (SHIP_WORLD_UNITS_PER_PX / station_units_per_px)
 	# Part children inherit this node's scale, so no scale of their own is
 	# needed (see _dress_hull).
-	_dress_hull(s, kind, mounts)
+	_dress_hull(s, kind, sset, mounts)
 
 
 ## Layer a ship's fitted exterior parts onto her hull sprite (M4 it. 2c).
 ## Children live in HULL-TEXTURE px — the same frame `_update_parked_ships`
 ## uses for ships parked at berths — so a part needs no scale of its own:
 ## every export shares one px_per_unit. Drawn OVER the hull, covering the
-## blanking plate the hull draws at each hardpoint.
+## blanking plate the hull draws at each hardpoint. Reuses `_pool_sprite`/
+## `_hide_untouched` (the same pooling `_update_ship_sprites` etc. use): a
+## hull sprite's children are exclusively `part_*` nodes (plumes are drawn in
+## the vector pass, not as child nodes), so no prefix filtering is needed.
 ##
-## `mounts` is the snapshot's mount id -> part sprite key. A fitted mount
-## with no anchor in the hull's meta is a data bug in one of two trees
-## (server capability vs art geometry), so it is reported, not guessed at.
+## `hset` is the hull's already-resolved SpriteSet — both call sites hold one
+## and have null-checked it, so this doesn't re-look it up. `hull_key` is
+## kept only to name the hull in the push_error below. `mounts` is the
+## snapshot's mount id -> part sprite key. A fitted mount with no anchor in
+## the hull's meta is a data bug in one of two trees (server capability vs
+## art geometry), so it is reported, not guessed at.
 func _dress_hull(hull_sprite: Sprite2D, hull_key: String,
-		mounts: Dictionary) -> void:
-	var hset := _lib.ship(hull_key)
-	if hset == null:
-		return
+		hset: AssetLibrary.SpriteSet, mounts: Dictionary) -> void:
 	var used := {}
 	for mount_id: String in mounts:
 		var pset := _lib.part(str(mounts[mount_id]))
@@ -438,23 +441,12 @@ func _dress_hull(hull_sprite: Sprite2D, hull_key: String,
 		if anchor == Vector2.INF:
 			push_error("[art] %s has no anchor for mount %s" % [hull_key, mount_id])
 			continue
-		var key := "part_" + mount_id
-		used[key] = true
-		var s: Sprite2D = hull_sprite.get_node_or_null(NodePath(key))
-		if s == null:
-			s = Sprite2D.new()
-			s.name = key
-			s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-			s.light_mask = 1  # pipeline art: sun-lit
-			hull_sprite.add_child(s)
+		var s := _pool_sprite(hull_sprite, "part_" + mount_id, used)
 		s.texture = pset.texture
 		s.material = pset.material
-		s.visible = true
+		s.light_mask = 1  # pipeline art: sun-lit (_pool_sprite defaults new nodes to 2)
 		s.position = AssetLibrary.part_local_position(hset, pset, anchor)
-	for child in hull_sprite.get_children():
-		var name := String(child.name)
-		if name.begins_with("part_") and not used.has(name):
-			child.visible = false
+	_hide_untouched(hull_sprite, used)
 
 
 func _update_ship_sprites(screen_center: Vector2, view_scale: float,
@@ -490,7 +482,7 @@ func _update_ship_sprites(screen_center: Vector2, view_scale: float,
 		# #15/#17: SHIP_RENDER_SCALE shrinks the hull vs planets; the scale now
 		# follows the zoom all the way down (no floor) into the pip regime.
 		s.scale = Vector2.ONE * (SHIP_WORLD_UNITS_PER_PX * SHIP_RENDER_SCALE * view_scale)
-		_dress_hull(s, ship.hull_sprite, ship.mounts)
+		_dress_hull(s, ship.hull_sprite, sset, ship.mounts)
 
 
 ## #12 — advance and expire every ship's world-space exhaust motes. Runs each
