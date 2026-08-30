@@ -103,7 +103,32 @@ def rasterize(svg_fragment, frame, ss=SS):
 def hull_frame(hull, pad=8.0):
     """tight frame around the flat albedo, padded, in model units. The
     probe box must exceed any hull's extent — station bars run ~530 units
-    wide (a clipped probe silently truncates the frame AND every anchor)."""
+    wide (a clipped probe silently truncates the frame AND every anchor).
+
+    KNOWN GAP (M4 iteration 2c, Task 12, deferred on purpose — do not fix
+    without re-exporting and re-reviewing every hull): a hull with an
+    interior fit (ExportSpec.interior, origin_units=None) has its deckplan
+    tile (0,0) pinned to THIS frame's own top-left corner by export_ship,
+    void rows/columns included. That pin assumes the frame's pad
+    approximates one void row/column's real width (units_per_tile) — but
+    `pad` here is a fixed 8.0 model units regardless of the hull's own
+    tile pitch, so for the Sparrow (units_per_tile=6.5) the two are off by
+    a fixed 1.5 units, which shows up as a small but unavoidable void-side
+    overhang between her tile floor and her hull backdrop in the walk-mode
+    view (see `ship_sparrow`'s docstring in manufacturers.py for the full
+    derivation and the exact residual).
+
+    The one-line pipeline fix: give a hull carrying an interior fit
+    `pad = spec.interior["units_per_tile"]` instead of the default 8.0 (or,
+    equivalently, have `export_ship` pass an explicit `origin_units` rather
+    than relying on `None`, so the pin no longer depends on pad matching
+    the tile pitch at all). Either change alters the FRAME of every hull
+    that carries an interior fit — including the Mockingbird's shipped
+    `mockingbird`/`mockingbird_interior` — so it requires re-exporting and
+    re-reviewing (by eye, in-engine) every such hull, not just the one that
+    prompted this note. Deferred at Task 12 of 14 rather than taken
+    mid-iteration, before anyone had eyeballed the results of touching
+    every hull's frame at once."""
     probe = rasterize(flatten(hull, sheet=False), (-400, -400, 800, 800), ss=1)
     ys, xs = np.where(probe[..., 3] > 0.1)
     minx, maxx = xs.min() - 400 - pad, xs.max() - 400 + pad

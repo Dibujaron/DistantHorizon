@@ -280,16 +280,24 @@ def rij_mount_plates(centres, y, r, size=1.0):
     plus bolt ring, drawn by the HULL so an empty mount still reads
     deliberate. `centres` is [(x, mount_id), ...] on the transom at `y`;
     `size` scales the plate for an `s` vs `m` mount, which is a free
-    readability win — you can see which hardpoint takes the big engine."""
+    readability win — you can see which hardpoint takes the big engine.
+    The bolt radius and the plate's own outline stroke scale with `size`
+    too (not just the plate footprint via `pr`) -- otherwise a small plate
+    (e.g. the Sparrow's `s` mounts at size=0.85) keeps the Mockingbird's
+    `m`-mount absolute bolt/stroke sizes and the bolts collide with the
+    outline, reading as notches rather than bolts. At size=1.0 this is a
+    no-op and reproduces the Mockingbird's plates exactly."""
     layers, anchors = [], []
     for cx, mount_id in centres:
         pr = r * size
+        plate_sw = 1.6 * size
+        bolt_r = 0.7 * size
         layers.append(Layer(rrect(cx - pr * .82, y - 1.5, pr * 1.64, 6.0, 2.0,
-                                  RIJ_BLUE_D, sw=1.6), flat(0.30)))
+                                  RIJ_BLUE_D, sw=plate_sw), flat(0.30)))
         for by in (y + 0.6, y + 3.4):   # bolt ring
-            layers.append(Layer(circle(cx - pr * .5, by, .7, INK,
+            layers.append(Layer(circle(cx - pr * .5, by, bolt_r, INK,
                                        stroke="none")))
-            layers.append(Layer(circle(cx + pr * .5, by, .7, INK,
+            layers.append(Layer(circle(cx + pr * .5, by, bolt_r, INK,
                                        stroke="none")))
         anchors.append(Anchor("mount", cx, y, id=mount_id))
     return layers, anchors
@@ -489,23 +497,40 @@ def ship_mockingbird():
 # columns included -- to the sprite's own top-left corner (see
 # interior_view.gd's `_update_backdrops`). That "top-left, not centre" pin
 # is the trap for a LEFT-RIGHT SYMMETRIC hull: `hull_frame` centres the
-# frame on whatever the art's own widest point is, so if the hull is
-# authored any wider than (grid_width/2 - hull_frame's 8-unit pad =
-# 16.25-8 = 8.25 half-width here), the frame grows symmetrically about the
-# hull's centreline while the grid stays pinned to the frame's LEFT edge --
-# and the excess width lands entirely on the right, so the ship reads
-# noticeably off-centre from the tile floor it is supposed to frame (an
-# earlier draft at half-width ~13 put a full extra tile of hull on the
-# right and none on the left; confirmed with debug prints of the exact
-# on-screen sprite/tile rects, not by eye alone). The Mockingbird avoids
-# this because her actual half-width (~36, from the outboard fins) already
-# lands close to HER equivalent target (45.5-8=37.5) -- this hull needs the
-# same discipline deliberately: stay close to 8.25 half-width, uniform, and
-# accept the ~1.5-unit residual (pad 8 vs one void row's 6.5) the
-# convention leaves no way to close. A second in-engine screenshot (before
-# this width fix) also caught a too-gradual nose taper leaving the cockpit
-# row's first few units narrower than the hull below it; fixed the same
-# way as the length -- blunt, not tapered.
+# frame on whatever the art's own widest point is, so if the hull is too
+# narrow to contain the walkable band, the grid's left (port/fore) void
+# column overhangs the hull, and any width beyond what containment needs
+# lands as EXCESS on the right (starboard/aft) side only, since the grid
+# stays pinned to the frame's left edge while the hull is centred on its
+# own symmetric axis.
+#
+# The two constraints, worked out from `hull_frame`'s fixed 8-unit pad and
+# this grid's own numbers (walkable band 19.5 units = 3 tiles,
+# units_per_tile 6.5, grid width 32.5 = 5 tiles):
+#   - CONTAINMENT (no overhang on the right): half-width >=
+#     (walkable_width + units_per_tile - 8) / 2 = (19.5 + 6.5 - 8) / 2 = 9.
+#   - CENTRING (grid centreline == hull centreline): half-width ==
+#     grid_width/2 - 8 = 16.25 - 8 = 8.25.
+# These are UNSATISFIABLE TOGETHER (9 > 8.25) -- containment is the one
+# that must win, since an overhanging tile floor is worse than an
+# off-centre one. At the required half-width (9, or a little over once
+# `mirrored_path`'s stroke width is accounted for -- this hull's actual
+# path half-width is 9.6, not 8.25), the LEFT (port/fore) void column is
+# left uncovered by a FIXED 1.5 units regardless of how wide the hull is
+# drawn (pad 8 minus one void row/column's actual width 6.5 -- confirmed
+# algebraically and with debug prints of the exact on-screen sprite/tile
+# rects, not by eye alone). There is no geometry-level fix for that 1.5
+# -- see the deferred pipeline-level fix noted on `hull_frame` in
+# composer.py, NOT taken this iteration. Do not go hunting for a way to
+# close it by redrawing; author to the containment formula above and
+# accept the residual.
+#
+# The Mockingbird never exposed any of this because her actual half-width
+# (~36, from the outboard fins) already lands close to HER equivalent
+# containment target for her much wider grid. A second in-engine
+# screenshot (before this width fix) also caught a too-gradual nose taper
+# leaving the cockpit row's first few units narrower than the hull below
+# it; fixed the same way as the length -- blunt, not tapered.
 SP_SPACING, SP_R, SP_MOUNT_Y = 5.3, MB_R * 0.6, 29.0   # mount spread/scale/y
 
 def ship_sparrow():
@@ -519,8 +544,8 @@ def ship_sparrow():
             ("L", 8.0, 26.0),               # constant-width body: cockpit
                                              # through the dock row -- no
                                              # waist, no bulge, kept close to
-                                             # the grid-centring half-width
-                                             # (see note above)
+                                             # the containment-formula
+                                             # half-width (see note above)
             ("Q", 8.3, 27.5, 8.6, 29.0),    # a whisper of flare for the
                                              # mount plates, nothing more
             ("L", 8.6, 31.5),
@@ -562,7 +587,7 @@ def ship_sparrow():
         x0 = 5.9 if sx > 0 else -8.7
         layers.append(Layer(rrect(x0, 24.0, 2.8, 4.2, 1.1, RIJ_BLUE,
                                   stroke=INK, sw=1.0), flat(0.50)))
-        layers.append(Layer(rrect(x0 + (0.3 if sx > 0 else 2.2), 24.5, 1.9,
+        layers.append(Layer(rrect(x0 + (0.3 if sx > 0 else 0.6), 24.5, 1.9,
                                   3.2, 0, RIJ_BLUE_D, stroke="none")))
         for by in (24.8, 27.3):
             layers.append(Layer(circle(sx * 7.3, by, .35, GLASS,
