@@ -379,22 +379,89 @@ def test_sparrow_is_a_rijay_hull_with_three_small_mounts():
 
 
 def test_sparrow_interior_fit_covers_her_deck_grid():
-    """The walk backdrop must reach every walkable tile: 5 wide x 7 long.
-
-    The width also has an UPPER bound (Task 13 Fix round 1, Finding 3): the
-    lower bound alone let the Goldfinch ship with a backdrop 8.67 tiles wide
-    against a 5-tile grid, the whole excess hanging to starboard because
-    `interior_view.gd` pins the sprite's top-left to deck tile (0,0) and
-    never centres it. `frame[2]` is the WIDTH only -- length legitimately
-    runs longer than the grid (the engine bay/mount plates sit past the
-    walkable footprint), so no upper bound applies to `frame[3]`."""
+    """The walk backdrop must fully CONTAIN the walkable grid, on both axes,
+    with real margin -- not just be close to it in width. That "close in
+    width" upper bound was the old contract, and the M4 silhouette pass
+    deliberately breaks it: `SP_INTERIOR["origin_units"]` is now authored
+    explicitly (see its derivation in ship_sparrow's docstring in
+    manufacturers.py) precisely so the exterior art CAN be wider than the
+    5x7 interior grid -- hull plating, tankage and engine pylons all live
+    outboard of the walkable footprint. What must still hold, on both axes,
+    is containment: the grid (positioned at origin_units, sized
+    units_per_tile per tile) must sit entirely inside the rendered frame,
+    with margin to spare, or the walk-mode backdrop would clip the floor."""
     from composer import SHIP_EXPORTS, hull_frame
     spec = next(s for s in SHIP_EXPORTS if s.name == "sparrow")
     frame = hull_frame(spec.build())
+    fx, fy, fw, fh = frame
     units_per_tile = spec.interior["units_per_tile"]
-    assert frame[2] >= 5 * units_per_tile - 1e-6
-    assert frame[3] >= 7 * units_per_tile - 1e-6
-    assert frame[2] / units_per_tile - 5 <= 0.5
+    ox, oy = spec.interior["origin_units"]
+    grid_w, grid_h = 5 * units_per_tile, 7 * units_per_tile
+    margin = 2.0  # model units of real slack, not just non-negative
+    assert ox - fx >= margin, "grid pokes past the frame's fore/port edge"
+    assert (fx + fw) - (ox + grid_w) >= margin, \
+        "grid pokes past the frame's aft/starboard edge"
+    assert oy - fy >= margin, "grid pokes past the frame's top edge"
+    assert (fy + fh) - (oy + grid_h) >= margin, \
+        "grid pokes past the frame's bottom edge"
+
+
+# The Mockingbird's own three-engine spacing is the readability bar every
+# hull's mount layout is held to (see preview_fitted.py, which renders a
+# hull wearing its default_loadout and reports part-on-part overlap as a
+# percentage of the smaller part's footprint).
+MAX_MOUNT_OVERLAP = 0.43
+
+
+def _parts_by_size(root):
+    """mount `size` -> [PartSpec.name, ...] of every part that fits it,
+    from the server's own part documents (not hardcoded)."""
+    import json
+    from composer import PART_EXPORTS
+    sprite_names = {p.name for p in PART_EXPORTS if not p.name.endswith("_interior")}
+    out = {}
+    for f in (root / "server" / "parts").glob("*.json"):
+        doc = json.loads(f.read_text(encoding="utf-8"))
+        sprite = doc.get("sprite")
+        if sprite in sprite_names:
+            out.setdefault(doc["size"], []).append(sprite)
+    return out
+
+
+def test_sparrow_mount_anchors_clear_her_engines(tmp_path):
+    """Adjacent mount anchors on a hull must be far enough apart that the
+    WIDEST part its mount `size` accepts does not swamp its neighbour --
+    exactly the failure preview_fitted.py exists to catch (the Sparrow's two
+    Wrens overlapped 67% before the M4 silhouette pass spread her mounts).
+    Part widths come from real exported part metas, not hardcoded numbers,
+    so the same check naturally covers any other hull's mounts too."""
+    import json
+    from composer import SHIP_EXPORTS, PART_EXPORTS, export_ship, export_part
+    root = HERE.parents[1]
+    part_widths = {}
+    for pspec in PART_EXPORTS:
+        if pspec.name.endswith("_interior"):
+            continue
+        pmeta = export_part(pspec, tmp_path / "parts")
+        part_widths[pspec.name] = pmeta["px_w"]
+    by_size = _parts_by_size(root)
+
+    ship_doc = json.loads(
+        (root / "server" / "shipclasses" / "sparrow.json").read_text(encoding="utf-8"))
+    mount_size = {m["id"]: m["size"] for m in ship_doc["mounts"]}
+    spec = next(s for s in SHIP_EXPORTS if s.name == "sparrow")
+    meta = export_ship(spec, tmp_path / "ships")
+    anchors = sorted((a for a in meta["anchors"] if a["kind"] == "mount"),
+                     key=lambda a: a["x_px"])
+    assert len(anchors) >= 2
+    for a, b in zip(anchors, anchors[1:]):
+        sizes = {mount_size[a["id"]], mount_size[b["id"]]}
+        widest = max(part_widths[s] for size in sizes for s in by_size[size])
+        sep = b["x_px"] - a["x_px"]
+        overlap_ratio = max(0.0, (widest - sep) / widest)
+        assert overlap_ratio <= MAX_MOUNT_OVERLAP, (
+            f"sparrow {a['id']}/{b['id']}: {overlap_ratio:.0%} overlap "
+            f"(bar is {MAX_MOUNT_OVERLAP:.0%})")
 
 
 def test_longhorn_is_the_one_known_scale_outlier():

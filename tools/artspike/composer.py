@@ -341,8 +341,18 @@ def _sp():
 
 
 # Sparrow interior fit: same 1 m tile canon as the Mockingbird. Her deck grid
-# is 5 x 7; the sprite runs longer, the extra being the engine bay aft.
-SP_INTERIOR = {"units_per_tile": 6.5, "origin_units": None}
+# is 5 x 7. Unlike every other hull's interior fit, her origin_units is
+# authored explicitly rather than left None (M4 silhouette pass): None pins
+# deckplan tile (0,0) to the exported frame's own top-left corner, which
+# forces the exterior art to be no wider than the walkable floor -- exactly
+# backwards, since a ship's outside is bigger than its inside. The values
+# below are derived in ship_sparrow's docstring in manufacturers.py: -16.25
+# centres the 32.5-unit-wide (5-tile) grid on the hull's own x=0 axis, and
+# -5.5 is one void tile row (6.5 units) fore of where her cockpit row is
+# actually drawn (y=1.0). See hull_frame's docstring for the general
+# mechanism this is an instance of -- the Mockingbird and Goldfinch still
+# rely on None and still carry the residual described there.
+SP_INTERIOR = {"units_per_tile": 6.5, "origin_units": (-16.25, -5.5)}
 
 
 def _gf():

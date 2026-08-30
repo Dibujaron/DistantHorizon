@@ -502,119 +502,135 @@ def ship_mockingbird():
     layers += mb_canopy()
     return Hull(layers=layers, anchors=anchors)
 
-# --- Sparrow, iteration 2c Task 12. Rijay's packet courier and the game's
+# --- Sparrow, M4 silhouette pass. Rijay's packet courier and the game's
 # smallest hull: lore.md calls her "visually like a small mockingbird
 # without the central bulging cargo section" -- so the goose's fat-breast
-# waist is gone on purpose; her body runs nearly parallel-sided from the
-# cockpit straight through the pod bay, only flaring at the very stern where
-# her three `s` mounts sit. Her cockpit slot (`rijay.cockpit.solo_3x1`) is
-# one full-width row, not a narrow needle nose like the Mockingbird's hybrid
-# head, so the bow is drawn blunt and nearly as wide as the body from the
-# start -- "the Toyota Corolla of space fighters," not a dart.
+# waist stays gone on purpose; her body runs nearly parallel-sided from the
+# cockpit straight through the pod bay. Her cockpit slot
+# (`rijay.cockpit.solo_3x1`) is one full-width row, not a narrow needle nose
+# like the Mockingbird's hybrid head, so the bow reaches most of the body's
+# width within a few units of the tip rather than a long dart taper --
+# "the Toyota Corolla of space fighters," not a dart, but still a nose, not
+# a blunt cap.
+#
 # Her shipclass document (server/shipclasses/sparrow.json) authors a 5 x 7
-# tile deck grid (32.5 x 45.5 model units at the 6.5-units-per-tile canon)
-# and NO MORE -- unlike the Mockingbird's own grid, which reserves extra
-# void rows past her walkable footprint for the drum bay, the Sparrow's grid
-# ends at her dock-port row plus one closing void row. The client's walk
-# backdrop scales her exported sprite so ITS tile pitch matches 64 px/tile
-# and pins deckplan tile (0,0) -- the grid's own TOP-LEFT corner, void
-# columns included -- to the sprite's own top-left corner (see
-# interior_view.gd's `_update_backdrops`). That "top-left, not centre" pin
-# is the trap for a LEFT-RIGHT SYMMETRIC hull: `hull_frame` centres the
-# frame on whatever the art's own widest point is, so if the hull is too
-# narrow to contain the walkable band, the grid's left (port/fore) void
-# column overhangs the hull, and any width beyond what containment needs
-# lands as EXCESS on the right (starboard/aft) side only, since the grid
-# stays pinned to the frame's left edge while the hull is centred on its
-# own symmetric axis.
+# tile deck grid (32.5 x 45.5 model units at the 6.5-units-per-tile canon):
+# one void row fore of the cockpit, five walkable rows (cockpit, fore bay,
+# two pod-bay rows, dock row), one closing void row aft for the
+# transom/engine bay -- same convention as the Goldfinch, one void column
+# each side throughout.
 #
-# The two constraints, worked out from `hull_frame`'s fixed 8-unit pad and
-# this grid's own numbers (walkable band 19.5 units = 3 tiles,
-# units_per_tile 6.5, grid width 32.5 = 5 tiles):
-#   - CONTAINMENT (no overhang on the right): half-width >=
-#     (walkable_width + units_per_tile - 8) / 2 = (19.5 + 6.5 - 8) / 2 = 9.
-#   - CENTRING (grid centreline == hull centreline): half-width ==
-#     grid_width/2 - 8 = 16.25 - 8 = 8.25.
-# These are UNSATISFIABLE TOGETHER (9 > 8.25) -- containment is the one
-# that must win, since an overhanging tile floor is worse than an
-# off-centre one. At the required half-width (9, or a little over once
-# `mirrored_path`'s stroke width is accounted for -- this hull's actual
-# path half-width is 9.6, not 8.25), the LEFT (port/fore) void column is
-# left uncovered by a FIXED 1.5 units regardless of how wide the hull is
-# drawn (pad 8 minus one void row/column's actual width 6.5 -- confirmed
-# algebraically and with debug prints of the exact on-screen sprite/tile
-# rects, not by eye alone). There is no geometry-level fix for that 1.5
-# -- see the deferred pipeline-level fix noted on `hull_frame` in
-# composer.py, NOT taken this iteration. Do not go hunting for a way to
-# close it by redrawing; author to the containment formula above and
-# accept the residual.
-#
-# The Mockingbird never exposed any of this because her actual half-width
-# (~36, from the outboard fins) already lands close to HER equivalent
-# containment target for her much wider grid. A second in-engine
-# screenshot (before this width fix) also caught a too-gradual nose taper
-# leaving the cockpit row's first few units narrower than the hull below
-# it; fixed the same way as the length -- blunt, not tapered.
-SP_SPACING, SP_R, SP_MOUNT_Y = 5.3, MB_R * 0.6, 29.0   # mount spread/scale/y
+# Before this pass, `SP_INTERIOR["origin_units"]` was None, which pins
+# deckplan tile (0,0) to the exported frame's own top-left corner (see
+# `hull_frame`'s docstring in composer.py) -- forcing the exterior art to be
+# no wider than the walkable floor, so the Sparrow rendered as an 8x12 px
+# stub with her two Wren engines overlapping 67%. `origin_units` is now
+# authored explicitly instead, which is what actually lets the hull be
+# wider than its own interior:
+#   - X: the art is drawn symmetric about x=0, and the grid's 5 tile
+#     columns (32.5 units) are centred on that axis, so the grid's left
+#     edge sits at x = -32.5/2 = -16.25.
+#   - Y: origin_units[1] is the model y of deckplan tile (0,0)'s top edge --
+#     one void row (6.5 units) fore of the cockpit slot. This hull places
+#     the cockpit row's top edge at y=1.0 (see the body path below), so
+#     origin_y = 1.0 - 6.5 = -5.5. Each subsequent tile row is another 6.5
+#     units: cockpit [1.0, 7.5), fore bay [7.5, 14.0), pod bay [14.0, 27.0)
+#     (two rows), dock row [27.0, 33.5), closing void/engine bay
+#     [33.5, 40.0) -- the transom and mount plates live in that last band,
+#     same idea as the Mockingbird's drums sitting past her own footprint.
+# Containment (both axes fully inside the rendered frame, `hull_frame`'s
+# fixed 8-unit pad included) is verified in
+# test_sparrow_interior_fit_covers_her_deck_grid and, at export time, in
+# client/assets/ships/sparrow/meta.json's `interior.origin_px`.
+SP_SPACING, SP_R, SP_MOUNT_Y = 16.0, MB_R * 0.6, 35.5   # mount spread/scale/y
+# SP_SPACING must clear the mount-spacing test for EVERY adjacent pair, not
+# just the two mounts her default_loadout actually fits: engine_center ships
+# bare on purpose (see ship_sparrow's docstring), but a future loadout could
+# fill it, so port-center and center-stbd both need the same clearance as
+# port-stbd once fitted with the widest part an `s` mount accepts (the Wren).
 
 def ship_sparrow():
     """Rijay's smallest hull. Engines are parts; the transom carries three
     `s` blanking plates, and she ships with the centre one bare -- the first
-    hull in the game with a visibly empty hardpoint."""
-    segs = [("Q", 6.5, 0.3, 7.8, 2.0),      # near-instant blunt cap -- the
-                                             # cockpit row needs full width
-                                             # almost immediately, not a
-                                             # gradual taper
-            ("L", 8.0, 26.0),               # constant-width body: cockpit
-                                             # through the dock row -- no
-                                             # waist, no bulge, kept close to
-                                             # the containment-formula
-                                             # half-width (see note above)
-            ("Q", 8.3, 27.5, 8.6, 29.0),    # a whisper of flare for the
-                                             # mount plates, nothing more
-            ("L", 8.6, 31.5),
-            ("L", 0.0, 31.5)]               # stern cap, at her grid's edge
-    layers = [Layer(mirrored_path((0, 0), segs, RIJ_BLUE, sw=2.0),
+    hull in the game with a visibly empty hardpoint. A small fast courier,
+    not a shrunken freighter: flank tankage sponsons alongside the pod bay,
+    a nose that tapers to a point rather than a blunt cap, and engine
+    pylons that carry her mounts outboard of the tail boom so her three
+    Wrens read as separate engines instead of one lump."""
+    segs = [("Q", 4.5, -4.2, 6.6, -1.5),    # tapered point, not a blunt cap
+            ("L", 7.6, 1.0),                # full body width by the cockpit
+                                             # row's own top edge
+            ("L", 7.6, 20.5),               # constant-width body: cockpit
+                                             # through the first pod-bay row
+            ("L", 7.3, 27.0),               # a whisper of taper into the
+                                             # dock row
+            ("L", 6.1, 30.0),               # narrows into the tail boom
+            ("L", 6.1, 34.0),               # tail boom, engine bay begins
+            ("L", 0.0, 34.0)]               # stern cap, short of the plates
+    layers = [Layer(mirrored_path((0, -5.0), segs, RIJ_BLUE, sw=2.0),
                     dome(0.35, 0.60, blur=3.0))]
-    hi = mirrored_path((0, 0), segs, "#5aa3ea", stroke="none", opacity=.5)
+    hi = mirrored_path((0, -5.0), segs, "#5aa3ea", stroke="none", opacity=.5)
     layers.append(Layer(group(hi, ty=-1.5, scale=.85), role="sheet_only"))
     # dorsal stripe, nose to the flare -- paint only, same idiom as the MB
-    layers.append(Layer(poly([(-1.1, 2), (1.1, 2), (1.4, 27), (-1.4, 27)],
+    layers.append(Layer(poly([(-1.1, -3.5), (1.1, -3.5), (1.4, 27), (-1.4, 27)],
                              RIJ_WHITE, stroke="none")))
-    # flank stripe: breaks at the port-side dormers near the stern
-    for pts in ([(6.5, 0.3), (7.8, 2), (8.0, 24)], [(8.3, 27.5), (8.6, 29)]):
+    # flank stripe: breaks at the port-side dormers near the stern, brief
+    # reconnect on the tail boom
+    for pts in ([(6.6, -1.5), (7.6, 1.0), (7.6, 20.5), (7.3, 27.0)],
+                [(6.1, 30.0), (6.1, 34.0)]):
         for sx in (-1, 1):
             d = "M " + " L ".join(f"{sx * (x - 1.1):.1f},{y:.1f}" for x, y in pts)
             layers.append(Layer(
                 f'<path d="{d}" fill="none" stroke="{RIJ_WHITE}" '
                 f'stroke-width="1.4" stroke-linecap="round" '
                 f'stroke-linejoin="round" opacity=".9"/>'))
-    # the packet's cargo door: a double-hatch outline in the pod bay, paint
-    # only -- "all cockpit and cargo door" per the design brief
+    # flank tankage sponsons alongside the pod bay -- outboard structure a
+    # courier this size would actually carry (fuel/reaction mass), not just
+    # a wider hull plate. Drawn as a tube running fore-aft (cyl_x reads as
+    # round left-right at every row), overlapping the hull edge so there is
+    # no seam.
+    for sx in (-1, 1):
+        x_in, x_out, y0, y1 = 6.8, 12.5, 14.5, 26.0
+        w = x_out - x_in
+        x0 = x_in if sx > 0 else -x_out
+        layers.append(Layer(rrect(x0, y0, w, y1 - y0, 2.2, RIJ_BLUE, sw=1.6),
+                            cyl_x(0.30, 0.58)))
+        layers.append(Layer(rrect(x0 + w * .15, y0 + (y1 - y0) * .1,
+                                  w * .55, (y1 - y0) * .28, 1.2, RIJ_BLUE_D,
+                                  stroke="none")))
+    # engine pylons: short struts bridging the tail boom to the outboard
+    # mount plates, so the plates read as carried outboard rather than
+    # floating clear of the hull
+    for sx in (-1, 1):
+        pts = [(6.3 * sx, 27.5), (SP_SPACING * sx, 32.0),
+               (SP_SPACING * sx, 36.0), (6.1 * sx, 34.0)]
+        layers.append(Layer(poly(pts, RIJ_BLUE, sw=1.6), flat(0.35)))
+    # the packet's cargo door: a double-hatch outline over the fore/pod bay,
+    # paint only -- "all cockpit and cargo door" per the design brief
     layers.append(Layer(
-        f'<rect x="-4.6" y="12.0" width="9.2" height="9.0" rx="1.4" '
+        f'<rect x="-5.0" y="8.0" width="10.0" height="18.0" rx="1.5" '
         f'fill="none" stroke="{INK}" stroke-width="1.0" opacity="0.55"/>'))
-    layers.append(Layer(line(0, 12, 0, 21, INK, 0.9, .5)))
+    layers.append(Layer(line(0, 8.0, 0, 26.0, INK, 0.9, .5)))
     # compact mb_canopy-style nose glass -- the head-tip window IS the
     # cockpit, just at her scale (mb_canopy's absolute size reads oversize
     # on a hull this small)
-    layers.append(Layer(mirrored_path((0, 1.0), [
-        ("L", 2.8, 4.0),
-        ("Q", 3.6, 6.5, 3.1, 9.0),
-        ("L", 0, 10.5)], GLASS, stroke=INK, sw=1.2),
+    layers.append(Layer(mirrored_path((0, -1.0), [
+        ("L", 2.8, 2.0),
+        ("Q", 3.6, 4.5, 3.1, 6.5),
+        ("L", 0, 7.0)], GLASS, stroke=INK, sw=1.2),
         dome(0.58, 0.74, blur=1.5)))
-    layers.append(Layer(line(0, 1.5, 0, 10.0, INK, 0.9)))
-    layers.append(Layer(line(-2.9, 6.0, 2.9, 6.0, INK, 0.8)))
-    # dock-port dormers, mb_ports-style but sized down and moved aft to her
-    # sternmost interior row rather than a mid-ship waist
+    layers.append(Layer(line(0, -0.5, 0, 6.5, INK, 0.9)))
+    layers.append(Layer(line(-2.9, 3.0, 2.9, 3.0, INK, 0.8)))
+    # dock-port dormers, mb_ports-style but sized down, sitting over the
+    # dock row (the grid's "q" tiles)
     for sx in (-1, 1):
-        x0 = 5.9 if sx > 0 else -8.7
-        layers.append(Layer(rrect(x0, 24.0, 2.8, 4.2, 1.1, RIJ_BLUE,
+        x0 = 5.4 if sx > 0 else -8.2
+        layers.append(Layer(rrect(x0, 28.0, 2.8, 4.5, 1.1, RIJ_BLUE,
                                   stroke=INK, sw=1.0), flat(0.50)))
-        layers.append(Layer(rrect(x0 + (0.3 if sx > 0 else 0.6), 24.5, 1.9,
-                                  3.2, 0, RIJ_BLUE_D, stroke="none")))
-        for by in (24.8, 27.3):
-            layers.append(Layer(circle(sx * 7.3, by, .35, GLASS,
+        layers.append(Layer(rrect(x0 + (0.3 if sx > 0 else 0.6), 28.5, 1.9,
+                                  3.4, 0, RIJ_BLUE_D, stroke="none")))
+        for by in (28.3, 31.0):
+            layers.append(Layer(circle(sx * 6.8, by, .35, GLASS,
                                        stroke="none")))
     plates, anchors = rij_mount_plates(
         [(-SP_SPACING, "engine_port"), (0, "engine_center"),
