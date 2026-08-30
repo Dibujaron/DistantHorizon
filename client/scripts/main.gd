@@ -575,6 +575,13 @@ func _interior_asset_for(ship_id: int) -> String:
 	var hull := _hull_sprite_for(ship_id)
 	return hull + "_interior" if hull != "" else ""
 
+## The fitted mounts of a ship id, for layering onto her backdrop.
+func _mounts_for(ship_id: int) -> Dictionary:
+	for ship in _ships:
+		if ship.id == ship_id:
+			return ship.mounts
+	return {}
+
 ## Exterior-sprite backdrops for every hull in the current space: the
 ## station concourse bar (anchored by the space message's concourse
 ## offset), each moored ship, or the flying ship itself.
@@ -584,7 +591,8 @@ func _interior_backdrops() -> Array[InteriorView.Backdrop]:
 		if _ship_class != null:
 			var asset := _interior_asset_for(_ship_id)
 			if asset != "":
-				out.append(InteriorView.Backdrop.make("ship", asset, Vector2.ZERO))
+				out.append(InteriorView.Backdrop.make("ship", asset, Vector2.ZERO,
+					false, _mounts_for(_ship_id)))
 		return out
 	if _space.is_station():
 		if _space.has_concourse and _world != null:
@@ -599,11 +607,13 @@ func _interior_backdrops() -> Array[InteriorView.Backdrop]:
 			var asset := _interior_asset_for(mooring.ship_id)
 			if asset != "":
 				out.append(InteriorView.Backdrop.make(
-					"ship", asset, Vector2(mooring.dx, mooring.dy), true))
+					"ship", asset, Vector2(mooring.dx, mooring.dy), true,
+					_mounts_for(mooring.ship_id)))
 	elif _space.is_ship():
 		var asset := _interior_asset_for(_ship_id)
 		if asset != "":
-			out.append(InteriorView.Backdrop.make("ship", asset, Vector2.ZERO))
+			out.append(InteriorView.Backdrop.make("ship", asset, Vector2.ZERO,
+				false, _mounts_for(_ship_id)))
 	return out
 
 ## Where our own character renders this frame (predicted while walking,

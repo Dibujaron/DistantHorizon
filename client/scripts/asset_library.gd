@@ -43,6 +43,12 @@ class SpriteSet:
 				return Vector2(float(a["x_px"]), float(a["y_px"]))
 		return Vector2.INF
 
+	## Texture-px point on a PART sprite that lands on its hull's mount
+	## anchor. Zero for hull sprites, which carry no attach point.
+	func attach_px() -> Vector2:
+		var a: Array = meta.get("attach_px", [0.0, 0.0])
+		return Vector2(float(a[0]), float(a[1]))
+
 	## Whether this hull carries interior-fit metadata (deckplan tile grid
 	## position inside the sprite) — see composer.py ExportSpec.interior.
 	func has_interior_fit() -> bool:
@@ -60,12 +66,27 @@ class SpriteSet:
 		return Vector2(float(origin[0]), float(origin[1]))
 
 
+## Local position (parent-space texture px, hull-centre origin — the frame
+## every hull-dressing call site shares) for a part sprite whose own
+## `attach_px()` must land on the hull's mount `anchor`. `Sprite2D` is
+## centre-origin, so this is: step from the hull's centre to the anchor,
+## then from the part's attach point to the part's own centre. Identical
+## for every caller (space hulls, parked hulls, interior backdrops) because
+## all three frames are "this sprite's own texture px" — pulled out once so
+## the one easy-to-get-subtly-wrong calculation exists in a single place.
+static func part_local_position(hset: SpriteSet, pset: SpriteSet,
+		anchor: Vector2) -> Vector2:
+	var half := Vector2(hset.px_size()) * 0.5
+	return anchor - half + (Vector2(pset.px_size()) * 0.5 - pset.attach_px())
+
+
 var _ships: Dictionary = {}
 var _stations: Dictionary = {}
 var _bodies: Dictionary = {}
 var _star_layers: Dictionary = {}
 var _interior: Dictionary = {}
 var _characters: Dictionary = {}
+var _parts: Dictionary = {}
 var _shader: Shader = null
 
 
@@ -78,6 +99,10 @@ static func load_all() -> AssetLibrary:
 		lib._ships[kind] = lib._load_set(root + "/ships/" + kind)
 	for archetype: String in STATION_ARCHETYPES:
 		lib._stations[archetype] = lib._load_set(root + "/stations/" + archetype)
+	var parts_dir := root + "/parts"
+	if DirAccess.dir_exists_absolute(parts_dir):
+		for key: String in DirAccess.get_directories_at(parts_dir):
+			lib._parts[key] = lib._load_set(parts_dir + "/" + key)
 	for f in DirAccess.get_files_at(root + "/bodies"):
 		if f.ends_with(".png"):
 			lib._bodies[f.trim_suffix(".png")] = _load_tex(root + "/bodies/" + f)
@@ -135,6 +160,11 @@ func ship(kind: String) -> SpriteSet:
 
 func station(archetype: String) -> SpriteSet:
 	return _stations.get(archetype)
+
+
+## An exterior part's SpriteSet by its `sprite` key (the wire's mount value).
+func part(sprite_key: String) -> SpriteSet:
+	return _parts.get(sprite_key)
 
 
 func body(kind_id: String) -> Texture2D:
