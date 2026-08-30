@@ -165,7 +165,7 @@ pub fn every_shipped_module_resolves_in_its_slot_test() {
   })
 }
 
-/// Her art has three nozzle anchors and always has. The default loadout is
+/// Her art has three mount anchors and always has. The default loadout is
 /// now the lore verbatim: "a Consol center engine shoved between two Rijay
 /// originals".
 pub fn she_flies_on_three_engines_test() {

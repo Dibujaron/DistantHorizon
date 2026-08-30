@@ -192,7 +192,7 @@ we ship therefore redraws that console.
 ### The Mockingbird's engine mounts
 
 Iteration 2b split her single mount into three — `engine_port`, `engine_center`,
-`engine_stbd`, all `size: m` — matching the three `nozzle` anchors her exterior art has
+`engine_stbd`, all `size: m` — matching the three `mount` anchors her exterior art has
 always carried. Every shipped engine's `thrust` and `torque` dropped to roughly a third of
 its pre-2b value at the same time, because the old numbers were authored against a
 one-mount hull and were implicitly "the whole ship's push" wearing one part's name. Her

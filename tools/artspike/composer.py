@@ -11,7 +11,7 @@ on non-blob hulls like the Thumper).
 Roles: "albedo" is real geometry/paint; "sheet_only" is painted pseudo-light
 kept for the legacy sheets but dropped from lit-pipeline albedo (which is
 authored FLAT); "glow" is engine glow, excluded from exports entirely —
-plumes become throttle-driven dynamic art, and the composer emits nozzle
+plumes become throttle-driven dynamic art, and the composer emits mount
 anchors instead.
 """
 import io
