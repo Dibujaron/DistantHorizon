@@ -456,18 +456,20 @@ func _update_ship_sprites(screen_center: Vector2, view_scale: float,
 			continue  # parked at a berth by the station pass
 		if interior_mode and ship.id == suppress_ship_id:
 			continue  # InteriorView draws this hull as the tile backdrop
-		var sset := _lib.ship(ship.hull_sprite)
-		if sset == null:
-			continue  # no art for this hull yet
-		var is_pip := _ship_is_pip(sset, view_scale)
 		# #10: ease the rendered heading toward the snapshot's target — the
 		# wire carries no angular velocity, so a raw assign steps at ~15 Hz.
 		var target: float = ship.heading
 		var cur: float = _render_heading.get(ship.id, target)
 		cur = lerp_angle(cur, target, clampf(HEADING_SMOOTH_RATE * delta, 0.0, 1.0))
 		_render_heading[ship.id] = cur
-		# #12: exhaust is emitted into world space from the tail this frame.
-		_emit_plume_trail(ship, cur, delta)
+		var sset := _lib.ship(ship.hull_sprite)
+		# #12: exhaust is emitted into world space from the tail this frame,
+		# even for a hull with no art yet (PF-20) — e.g. the Sparrow and
+		# Goldfinch still need to burn correctly before their sprites exist.
+		_emit_plume_trail(ship, cur, delta, sset)
+		if sset == null:
+			continue  # no art for this hull yet
+		var is_pip := _ship_is_pip(sset, view_scale)
 		var key := "ship_%d" % ship.id
 		var s := _pool_sprite(_ship_sprites, key, touched)
 		if s.texture == null:
@@ -503,10 +505,15 @@ func _advance_plume_trails(delta: float) -> void:
 			_plume_trails[id] = kept
 
 
-## #12 — spit new exhaust motes from `ship`'s tail into world space, scaled by
-## the ramped throttle level. `heading` is the smoothed world heading so the
-## plume points where the hull visually points.
-func _emit_plume_trail(ship: ShipState, heading: float, delta: float) -> void:
+## #12 — spit new exhaust motes from `ship`'s fitted engine mounts into world
+## space, scaled by the ramped throttle level. `heading` is the smoothed
+## world heading so the plume points where the hull visually points. `hset`
+## is the hull's already-resolved SpriteSet, or null when this hull has no
+## art yet — either way (no art, or art with no fitted mounts) this falls
+## back to a single centreline tail, exactly as before per-mount plumes
+## existed (PF-20): a hull with no sprite still needs to visibly burn.
+func _emit_plume_trail(ship: ShipState, heading: float, delta: float,
+		hset: AssetLibrary.SpriteSet) -> void:
 	var throttle := own_throttle if ship.id == own_ship_id \
 		else _estimate_throttle(ship)
 	var level: float = move_toward(_plume_level.get(ship.id, 0.0),
@@ -522,14 +529,37 @@ func _emit_plume_trail(ship: ShipState, heading: float, delta: float) -> void:
 	if n <= 0:
 		return
 	# Aft is opposite the nose; nose points along `heading` (world y-up).
+	# `lateral` is a 90-degree CW turn from `aft`, which — for a nose-up hull
+	# whose sprite rotation is -heading + PI/2, matching _world_to_screen's
+	# y-negation — points to STARBOARD: confirmed against the Mockingbird's
+	# own anchors, where engine_port sits at low x_px and engine_stbd at
+	# high x_px in the hull texture, and texture-right is world-starboard.
 	var aft := -Vector2(cos(heading), sin(heading))
 	var lateral := Vector2(-aft.y, aft.x)
-	var tail := ship.position() + aft * (PLUME_MOTE_WORLD * 1.5)
+	# #12 / M4 it. 2c — one plume per FITTED engine mount, so a hull with an
+	# empty mount visibly burns on fewer engines.
+	var origins: Array[Vector2] = []
+	if hset != null and not ship.mounts.is_empty():
+		var half := Vector2(hset.px_size()) * 0.5
+		var units_per_px := SHIP_WORLD_UNITS_PER_PX * SHIP_RENDER_SCALE
+		for mount_id: String in ship.mounts:
+			var a := hset.mount_anchor(mount_id)
+			if a == Vector2.INF:
+				continue
+			# sprite px (nose-up, +y down) -> ship-local world offset. A
+			# mount right of hull-centre (local.x > 0, starboard side of the
+			# texture) shifts toward +lateral (starboard); local.y > 0 (aft
+			# of centre in the texture) shifts toward +aft.
+			var local := (a - half) * units_per_px
+			origins.append(ship.position() + aft * local.y + lateral * local.x)
+	if origins.is_empty():
+		origins.append(ship.position() + aft * (PLUME_MOTE_WORLD * 1.5))
 	var motes: Array = _plume_trails.get_or_add(ship.id, [])
-	for _i in n:
+	for i in n:
+		var origin: Vector2 = origins[i % origins.size()]
 		var kick := aft * PLUME_EXHAUST_SPEED \
 			+ lateral * randf_range(-PLUME_SPREAD, PLUME_SPREAD)
-		motes.append({"p": tail, "v": ship.velocity() + kick,
+		motes.append({"p": origin, "v": ship.velocity() + kick,
 			"age": 0.0, "level": level})
 
 
